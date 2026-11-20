@@ -53,3 +53,6 @@ import Interval64Proofs
 #print axioms Interval64Proofs.Div.firstRoundedAcc_norm_of_enough
 #print axioms Interval64Proofs.IntervalMem.mul_mem_iv_of_finite
 
+#print axioms Interval64Proofs.Div.divCore_enough_bits
+#print axioms Interval64Proofs.Div.div_encloses
+#print axioms Interval64Proofs.Div.div_exact
