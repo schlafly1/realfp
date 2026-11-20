@@ -126,7 +126,7 @@ theorem shiftToTargetExponent_exact_em (spec : Format) (m : Nat) (e : Int) :
   rfl
 
 
-private def firstRounded (s : Sign) (m : Nat) (e : Int) (up : Bool) : Nat × Int :=
+def firstRounded (s : Sign) (m : Nat) (e : Int) (up : Bool) : Nat × Int :=
   let p := decreaseExponent m e (spec64.targetExponent (totalExponent m e))
   let sh := shiftToTargetExponent spec64 p.1 p.2 Accuracy.exact
   (roundMantissaDirected sh.1.mantissa up s sh.1.accuracy, sh.2)
