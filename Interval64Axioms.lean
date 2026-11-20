@@ -26,4 +26,11 @@ import Interval64Proofs
 #print axioms Interval64Proofs.ExactAdd.int_le_pow53_representable
 #print axioms Interval64Proofs.ExactAdd.normalizeDirected_eq_of_canonical
 #print axioms Interval64Proofs.ExactAdd.roundDirected_eq_of_canonical
+#print axioms Interval64Proofs.Mul.mul_encloses
+#print axioms Interval64Proofs.Mul.mul_mem_nonneg
+#print axioms Interval64Proofs.Mul.mul_mem_nonpos
+#print axioms Interval64Proofs.Mul.mul_mem_nonneg_nonpos
+#print axioms Interval64Proofs.Mul.mul_mem_nonpos_nonneg
+#print axioms Interval64Proofs.Mul.mul_exact
+#print axioms Interval64Proofs.Mul.mul_exact_int
 
