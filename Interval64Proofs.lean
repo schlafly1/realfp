@@ -8,3 +8,4 @@ import Interval64Proofs.Grid
 import Interval64Proofs.RoundOpt
 import Interval64Proofs.OfRat
 import Interval64Proofs.Tight
+import Interval64Proofs.TightIv
