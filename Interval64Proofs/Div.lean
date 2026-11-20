@@ -1139,4 +1139,425 @@ theorem div_exact {a b : UInt64} {qa qb : Rat}
           rw [hdiv, hex, hs, heq]
           simpa [hvq] using bitsToRat?_packDirected_canonical true sCan h' hc
 
+
+/-! ### Interval membership for `Interval64.div` -/
+
+theorem bitsToRat?_float_zero : bitsToRat? (0 : Float).toBits = some 0 := by decide
+
+theorem unpack_float_zero : ∃ s, unpackBits (0 : Float).toBits = .zero s := by
+  have h := bitsToRat?_float_zero
+  rcases bitsToRat?_cases h with hz | hf
+  · rcases hz with ⟨s, hu, _⟩
+    exact ⟨s, hu⟩
+  · rcases hf with ⟨s, m, e, hm, _, hq, _⟩
+    exact (signedVal_ne_zero_of_pos hm hq.symm).elim
+
+theorem le_zero_iff_rat {f : Float} {q : Rat}
+    (h : bitsToRat? f.toBits = some q) : f ≤ 0 ↔ q ≤ 0 := by
+  constructor
+  · intro hle
+    exact float_le_rat h bitsToRat?_float_zero hle
+  · intro hle
+    have hleU : (unpackBits f.toBits).le (unpackBits (0 : Float).toBits) = true := by
+      rcases unpack_float_zero with ⟨sz, hsz⟩
+      rw [hsz]
+      rcases bitsToRat?_cases h with hz | hf
+      · rcases hz with ⟨s, hu, rfl⟩
+        simp [hu, UnpackedFloat.le, UnpackedFloat.compare, Option.any]
+      · rcases hf with ⟨s, m, e, hm, hu, rfl, _⟩
+        cases s with
+        | positive =>
+          have hpos : ¬ signedVal .positive m e ≤ 0 := by
+            intro hle'
+            exact (Rat.lt_iff_le_and_not_ge.mp (mag_pos hm)).2 (by
+              simpa [signedVal] using hle')
+          exact (hpos hle).elim
+        | negative =>
+          simp [hu, UnpackedFloat.le, UnpackedFloat.compare, Option.any]
+    exact (float_le_iff f 0).mpr hleU
+
+theorem zero_le_iff_rat {f : Float} {q : Rat}
+    (h : bitsToRat? f.toBits = some q) : 0 ≤ f ↔ 0 ≤ q := by
+  constructor
+  · intro hle
+    exact float_le_rat bitsToRat?_float_zero h hle
+  · intro hle
+    have hleU : (unpackBits (0 : Float).toBits).le (unpackBits f.toBits) = true := by
+      rcases unpack_float_zero with ⟨sz, hsz⟩
+      rw [hsz]
+      rcases bitsToRat?_cases h with hz | hf
+      · rcases hz with ⟨s, hu, rfl⟩
+        simp [hu, UnpackedFloat.le, UnpackedFloat.compare, Option.any]
+      · rcases hf with ⟨s, m, e, hm, hu, rfl, _⟩
+        cases s with
+        | negative =>
+          have hneg : signedVal .negative m e < 0 := signedVal_neg_lt_zero hm
+          exact ((Rat.lt_iff_le_and_not_ge.mp hneg).2 hle).elim
+        | positive =>
+          simp [hu, UnpackedFloat.le, UnpackedFloat.compare, Option.any]
+    exact (float_le_iff 0 f).mpr hleU
+
+theorem isInvalid_eq_false_of_rats {I : Interval64.Interval64} {lo hi : Rat}
+    (hlo : bitsToRat? I.lo.toBits = some lo)
+    (hhi : bitsToRat? I.hi.toBits = some hi) :
+    Interval64.isInvalid I = false := by
+  have hnlo := not_isNaN_of_bitsToEVal (bitsToEVal_rat_of_bitsToRat? hlo)
+  have hnhi := not_isNaN_of_bitsToEVal (bitsToEVal_rat_of_bitsToRat? hhi)
+  simp only [Interval64.isInvalid, hnlo, hnhi, Bool.or_false]
+
+theorem containsZero_iff {Y : Interval64.Interval64} {blo bhi : Rat}
+    (hlo : bitsToRat? Y.lo.toBits = some blo)
+    (hhi : bitsToRat? Y.hi.toBits = some bhi) :
+    Interval64.containsZero Y = true ↔ blo ≤ 0 ∧ 0 ≤ bhi := by
+  have hinv : Interval64.isInvalid Y = false := isInvalid_eq_false_of_rats hlo hhi
+  simp only [Interval64.containsZero, hinv, Bool.not_false, Bool.true_and,
+    Bool.and_eq_true, decide_eq_true_eq]
+  constructor
+  · intro ⟨hle, hge⟩
+    exact ⟨(le_zero_iff_rat hlo).mp hle, (zero_le_iff_rat hhi).mp hge⟩
+  · intro ⟨hle, hge⟩
+    exact ⟨(le_zero_iff_rat hlo).mpr hle, (zero_le_iff_rat hhi).mpr hge⟩
+
+theorem rat_lt_of_lt_of_le {a b c : Rat} (h₁ : a < b) (h₂ : b ≤ c) : a < c := by
+  have hle : a ≤ c := Rat.le_trans (Rat.le_of_lt h₁) h₂
+  have hne : a ≠ c := fun he =>
+    (Rat.lt_iff_le_and_not_ge.mp h₁).2 (he ▸ h₂)
+  exact Rat.lt_of_le_of_ne hle hne
+
+theorem not_containsZero_same_sign {Y : Interval64.Interval64} {blo bhi : Rat}
+    (hlo : bitsToRat? Y.lo.toBits = some blo)
+    (hhi : bitsToRat? Y.hi.toBits = some bhi)
+    (hz : Interval64.containsZero Y = false) :
+    0 < blo ∨ bhi < 0 := by
+  have hnot : ¬ (blo ≤ 0 ∧ 0 ≤ bhi) := by
+    intro h
+    have : Interval64.containsZero Y = true := (containsZero_iff hlo hhi).mpr h
+    simp [this] at hz
+  by_cases h1 : blo ≤ 0
+  · by_cases h2 : 0 ≤ bhi
+    · exact (hnot ⟨h1, h2⟩).elim
+    · exact Or.inr (Rat.not_le.mp h2)
+  · exact Or.inl (Rat.not_le.mp h1)
+
+theorem ne_of_pos_rat {a : Rat} (h : 0 < a) : a ≠ 0 :=
+  fun hz => Rat.lt_irrefl (hz ▸ h)
+
+theorem ne_of_neg_rat {a : Rat} (h : a < 0) : a ≠ 0 :=
+  fun hz => Rat.lt_irrefl (hz ▸ h)
+
+theorem ne_zero_of_same_sign {blo bhi : Rat} (hle : blo ≤ bhi)
+    (hs : 0 < blo ∨ bhi < 0) : blo ≠ 0 ∧ bhi ≠ 0 := by
+  cases hs with
+  | inl h =>
+    exact ⟨ne_of_pos_rat h, ne_of_pos_rat (rat_lt_of_lt_of_le h hle)⟩
+  | inr h =>
+    exact ⟨ne_of_neg_rat (rat_lt_of_le_of_lt hle h), ne_of_neg_rat h⟩
+
+theorem inv_le_inv_of_pos {a b : Rat} (ha : 0 < a) (h : a ≤ b) : b⁻¹ ≤ a⁻¹ := by
+  have hb : 0 < b := rat_lt_of_lt_of_le ha h
+  have hbne : b ≠ 0 := ne_of_pos_rat hb
+  have hane : a ≠ 0 := ne_of_pos_rat ha
+  have h1 : a * b⁻¹ ≤ 1 := by
+    have := Rat.mul_le_mul_of_nonneg_right h (Rat.le_of_lt (Rat.inv_pos.mpr hb))
+    rwa [Rat.mul_inv_cancel b hbne] at this
+  have := Rat.mul_le_mul_of_nonneg_left h1 (Rat.le_of_lt (Rat.inv_pos.mpr ha))
+  have h2 : a⁻¹ * (a * b⁻¹) = b⁻¹ := by
+    rw [← Rat.mul_assoc, Rat.inv_mul_cancel a hane, Rat.one_mul]
+  have h3 : a⁻¹ * 1 = a⁻¹ := Rat.mul_one _
+  rwa [h2, h3] at this
+
+theorem inv_le_inv_of_neg {a b : Rat} (hb : b < 0) (h : a ≤ b) : b⁻¹ ≤ a⁻¹ := by
+  have ha : a < 0 := rat_lt_of_le_of_lt h hb
+  have hneg : -b ≤ -a := Rat.neg_le_neg h
+  have hbp : 0 < -b := by
+    have := Rat.neg_lt_neg hb
+    simpa [Rat.neg_zero] using this
+  have := inv_le_inv_of_pos hbp hneg
+  rw [inv_neg, inv_neg] at this
+  have := Rat.neg_le_neg this
+  simpa [Rat.neg_neg] using this
+
+theorem inv_bounds {y blo bhi : Rat}
+    (hyl : blo ≤ y) (hyh : y ≤ bhi) (hy0 : y ≠ 0)
+    (hs : 0 < blo ∨ bhi < 0) :
+    bhi⁻¹ ≤ y⁻¹ ∧ y⁻¹ ≤ blo⁻¹ := by
+  cases hs with
+  | inl hpos =>
+    have hypos : 0 < y := rat_lt_of_lt_of_le hpos hyl
+    exact ⟨inv_le_inv_of_pos hypos hyh, inv_le_inv_of_pos hpos hyl⟩
+  | inr hneg =>
+    have hyneg : y < 0 := rat_lt_of_le_of_lt hyh hneg
+    exact ⟨inv_le_inv_of_neg hneg hyh, inv_le_inv_of_neg hyneg hyl⟩
+
+theorem rmin_4_assoc (a b c d : Rat) :
+    rmin (rmin a b) (rmin c d) = rmin a (rmin b (rmin c d)) := by
+  apply Rat.le_antisymm
+  · exact le_rmin
+      (Rat.le_trans (rmin_le_left _ _) (rmin_le_left _ _))
+      (le_rmin
+        (Rat.le_trans (rmin_le_left _ _) (rmin_le_right _ _))
+        (le_rmin
+          (Rat.le_trans (rmin_le_right _ _) (rmin_le_left _ _))
+          (Rat.le_trans (rmin_le_right _ _) (rmin_le_right _ _))))
+  · exact le_rmin
+      (le_rmin (rmin_le_left a _)
+        (Rat.le_trans (rmin_le_right a _) (rmin_le_left b _)))
+      (le_rmin
+        (Rat.le_trans (rmin_le_right a _)
+          (Rat.le_trans (rmin_le_right b _) (rmin_le_left c d)))
+        (Rat.le_trans (rmin_le_right a _)
+          (Rat.le_trans (rmin_le_right b _) (rmin_le_right c d))))
+
+
+theorem rmin_comm (a b : Rat) : rmin a b = rmin b a :=
+  Rat.le_antisymm
+    (le_rmin (rmin_le_right a b) (rmin_le_left a b))
+    (le_rmin (rmin_le_right b a) (rmin_le_left b a))
+
+theorem rmax_comm (a b : Rat) : rmax a b = rmax b a :=
+  Rat.le_antisymm
+    (rmax_le (le_rmax_right b a) (le_rmax_left b a))
+    (rmax_le (le_rmax_right a b) (le_rmax_left a b))
+
+theorem rmax_4_assoc (a b c d : Rat) :
+    rmax (rmax a b) (rmax c d) = rmax a (rmax b (rmax c d)) := by
+  apply Rat.le_antisymm
+  · exact rmax_le
+      (rmax_le (le_rmax_left a _)
+        (Rat.le_trans (le_rmax_left b (rmax c d)) (le_rmax_right a _)))
+      (rmax_le
+        (Rat.le_trans (le_rmax_left c d)
+          (Rat.le_trans (le_rmax_right b _) (le_rmax_right a _)))
+        (Rat.le_trans (le_rmax_right c d)
+          (Rat.le_trans (le_rmax_right b _) (le_rmax_right a _))))
+  · exact rmax_le
+      (Rat.le_trans (le_rmax_left a b) (le_rmax_left (rmax a b) _))
+      (rmax_le
+        (Rat.le_trans (le_rmax_right a b) (le_rmax_left (rmax a b) _))
+        (le_rmax_right (rmax a b) _))
+
+theorem min_div_le_of_interval {x y alo ahi blo bhi : Rat}
+    (hxl : alo ≤ x) (hxh : x ≤ ahi) (hyl : blo ≤ y) (hyh : y ≤ bhi)
+    (hy0 : y ≠ 0) (hs : 0 < blo ∨ bhi < 0) :
+    rmin (rmin (alo / blo) (alo / bhi)) (rmin (ahi / blo) (ahi / bhi)) ≤ x / y := by
+  have ⟨hinvL, hinvR⟩ := inv_bounds hyl hyh hy0 hs
+  have h := min_mul_le_of_interval (blo := bhi⁻¹) (bhi := blo⁻¹) hxl hxh hinvL hinvR
+  simp only [← Rat.div_def] at h
+  rw [rmin_comm (alo / bhi) (alo / blo), rmin_comm (ahi / bhi) (ahi / blo)] at h
+  simpa [Rat.div_def] using h
+
+theorem max_div_ge_of_interval {x y alo ahi blo bhi : Rat}
+    (hxl : alo ≤ x) (hxh : x ≤ ahi) (hyl : blo ≤ y) (hyh : y ≤ bhi)
+    (hy0 : y ≠ 0) (hs : 0 < blo ∨ bhi < 0) :
+    x / y ≤ rmax (rmax (alo / blo) (alo / bhi)) (rmax (ahi / blo) (ahi / bhi)) := by
+  have ⟨hinvL, hinvR⟩ := inv_bounds hyl hyh hy0 hs
+  have h := max_mul_ge_of_interval (blo := bhi⁻¹) (bhi := blo⁻¹) hxl hxh hinvL hinvR
+  simp only [← Rat.div_def] at h
+  rw [rmax_comm (alo / bhi) (alo / blo), rmax_comm (ahi / bhi) (ahi / blo)] at h
+  simpa [Rat.div_def] using h
+
+theorem loEncloses_divDown {a b : Float} {qa qb : Rat}
+    (ha : bitsToRat? a.toBits = some qa)
+    (hb : bitsToRat? b.toBits = some qb)
+    (hqb : qb ≠ 0) :
+    loEncloses? (bitsToEVal (Interval64.Directed.divDown a b).toBits) (qa / qb) := by
+  have h := div_encloses_lo ha hb hqb
+  rcases bitsToEVal_some_of_loEncloses h with ⟨ev, hev⟩
+  rw [divDown_toBits, bitsToEVal_pack_unpack_of_some hev, ← hev]
+  exact h
+
+theorem hiEncloses_divUp {a b : Float} {qa qb : Rat}
+    (ha : bitsToRat? a.toBits = some qa)
+    (hb : bitsToRat? b.toBits = some qb)
+    (hqb : qb ≠ 0) :
+    hiEncloses? (bitsToEVal (Interval64.Directed.divUp a b).toBits) (qa / qb) := by
+  have h := div_encloses_hi ha hb hqb
+  rcases bitsToEVal_some_of_hiEncloses h with ⟨ev, hev⟩
+  rw [divUp_toBits, bitsToEVal_pack_unpack_of_some hev, ← hev]
+  exact h
+
+theorem loEncloses_fmin {a b : Float} {xa xb z : Rat}
+    (ha : loEncloses? (bitsToEVal a.toBits) xa)
+    (hb : loEncloses? (bitsToEVal b.toBits) xb)
+    (hx : rmin xa xb ≤ z) :
+    loEncloses? (bitsToEVal (Interval64.fmin a b).toBits) z := by
+  cases hqa : bitsToRat? a.toBits with
+  | none =>
+    have hI := eq_negInf_of_loEncloses_not_rat ha hqa
+    have := fmin_negInf (Or.inl hI) (ne_none_of_loEncloses ha) (ne_none_of_loEncloses hb)
+    simp [this, loEncloses?, loEncloses]
+  | some qa =>
+    cases hqb : bitsToRat? b.toBits with
+    | none =>
+      have hI := eq_negInf_of_loEncloses_not_rat hb hqb
+      have := fmin_negInf (Or.inr hI) (ne_none_of_loEncloses ha) (ne_none_of_loEncloses hb)
+      simp [this, loEncloses?, loEncloses]
+    | some qb =>
+      rcases bitsToRat?_fmin hqa hqb with ⟨ql, hql, hql_a, hql_b⟩
+      have hqa' : qa ≤ xa := by
+        have := ha
+        simp [loEncloses?, loEncloses, bitsToEVal_rat_of_bitsToRat? hqa] at this
+        exact this
+      have hqb' : qb ≤ xb := by
+        have := hb
+        simp [loEncloses?, loEncloses, bitsToEVal_rat_of_bitsToRat? hqb] at this
+        exact this
+      have : ql ≤ z :=
+        Rat.le_trans (le_rmin (Rat.le_trans hql_a hqa') (Rat.le_trans hql_b hqb')) hx
+      rw [bitsToEVal_rat_of_bitsToRat? hql]
+      simp [loEncloses?, loEncloses]
+      exact this
+
+theorem hiEncloses_fmax {a b : Float} {xa xb z : Rat}
+    (ha : hiEncloses? (bitsToEVal a.toBits) xa)
+    (hb : hiEncloses? (bitsToEVal b.toBits) xb)
+    (hx : z ≤ rmax xa xb) :
+    hiEncloses? (bitsToEVal (Interval64.fmax a b).toBits) z := by
+  cases hqa : bitsToRat? a.toBits with
+  | none =>
+    have hI := eq_posInf_of_hiEncloses_not_rat ha hqa
+    have := fmax_posInf (Or.inl hI) (ne_none_of_hiEncloses ha) (ne_none_of_hiEncloses hb)
+    simp [this, hiEncloses?, hiEncloses]
+  | some qa =>
+    cases hqb : bitsToRat? b.toBits with
+    | none =>
+      have hI := eq_posInf_of_hiEncloses_not_rat hb hqb
+      have := fmax_posInf (Or.inr hI) (ne_none_of_hiEncloses ha) (ne_none_of_hiEncloses hb)
+      simp [this, hiEncloses?, hiEncloses]
+    | some qb =>
+      rcases bitsToRat?_fmax hqa hqb with ⟨qh, hqh, haq, hbq⟩
+      have hqa' : xa ≤ qa := by
+        have := ha
+        simp [hiEncloses?, hiEncloses, bitsToEVal_rat_of_bitsToRat? hqa] at this
+        exact this
+      have hqb' : xb ≤ qb := by
+        have := hb
+        simp [hiEncloses?, hiEncloses, bitsToEVal_rat_of_bitsToRat? hqb] at this
+        exact this
+      have : z ≤ qh :=
+        Rat.le_trans hx (rmax_le (Rat.le_trans hqa' haq) (Rat.le_trans hqb' hbq))
+      rw [bitsToEVal_rat_of_bitsToRat? hqh]
+      simp [hiEncloses?, hiEncloses]
+      exact this
+
+theorem fmin_not_nan {a b : Float}
+    (ha : a.isNaN = false) (hb : b.isNaN = false) :
+    (Interval64.fmin a b).isNaN = false := by
+  simp only [Interval64.fmin]
+  cases h : decide (a < b) with
+  | true => simpa [h] using ha
+  | false => simpa [h] using hb
+
+theorem fmax_not_nan {a b : Float}
+    (ha : a.isNaN = false) (hb : b.isNaN = false) :
+    (Interval64.fmax a b).isNaN = false := by
+  simp only [Interval64.fmax]
+  cases h : decide (a > b) with
+  | true => simpa [h] using ha
+  | false => simpa [h] using hb
+
+theorem not_nan_of_loEncloses {f : Float} {z : Rat}
+    (h : loEncloses? (bitsToEVal f.toBits) z) : f.isNaN = false := by
+  rcases bitsToEVal_some_of_loEncloses h with ⟨ev, hev⟩
+  exact not_isNaN_of_bitsToEVal hev
+
+theorem not_nan_of_hiEncloses {f : Float} {z : Rat}
+    (h : hiEncloses? (bitsToEVal f.toBits) z) : f.isNaN = false := by
+  rcases bitsToEVal_some_of_hiEncloses h with ⟨ev, hev⟩
+  exact not_isNaN_of_bitsToEVal hev
+
+/-- The four-corner rule implemented by `Interval64.div`, for finite
+    endpoints, when the denominator interval does not contain zero.
+    If the denominator contains zero, the result is `whole` (see
+    `memIv_whole`). `y ≠ 0` is required because `x / 0` is not a
+    meaningful quotient (Lean would send it to `0`). An invalid
+    interval has no rational members (`not_memIv_invalid`). -/
+theorem div_mem_iv {x y : Rat} {X Y : Interval64.Interval64}
+    (hx : MemIv x X) (hy : MemIv y Y) (hy0 : y ≠ 0)
+    (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q)
+    (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)
+    (hYlo : ∃ q, bitsToRat? Y.lo.toBits = some q)
+    (hYhi : ∃ q, bitsToRat? Y.hi.toBits = some q) :
+    MemIv (x / y) (X / Y) := by
+  rcases hXlo with ⟨alo, hAlo⟩
+  rcases hXhi with ⟨ahi, hAhi⟩
+  rcases hYlo with ⟨blo, hBlo⟩
+  rcases hYhi with ⟨bhi, hBhi⟩
+  have hnan : Interval64.anyNan X Y = false := anyNan_eq_false hx hy
+  cases hcz : Interval64.containsZero Y with
+  | true =>
+    have heq : X / Y = Interval64.whole := by
+      change Interval64.div X Y = Interval64.whole
+      unfold Interval64.div
+      simp [hnan, hcz]
+    rw [heq]
+    exact memIv_whole _
+  | false =>
+    have hs : 0 < blo ∨ bhi < 0 := not_containsZero_same_sign hBlo hBhi hcz
+    have hxl : alo ≤ x := by
+      have := hx.1
+      simp [loEncloses?, loEncloses, bitsToEVal_rat_of_bitsToRat? hAlo] at this
+      exact this
+    have hxh : x ≤ ahi := by
+      have := hx.2
+      simp [hiEncloses?, hiEncloses, bitsToEVal_rat_of_bitsToRat? hAhi] at this
+      exact this
+    have hyl : blo ≤ y := by
+      have := hy.1
+      simp [loEncloses?, loEncloses, bitsToEVal_rat_of_bitsToRat? hBlo] at this
+      exact this
+    have hyh : y ≤ bhi := by
+      have := hy.2
+      simp [hiEncloses?, hiEncloses, bitsToEVal_rat_of_bitsToRat? hBhi] at this
+      exact this
+    have ⟨hblo0, hbhi0⟩ := ne_zero_of_same_sign (Rat.le_trans hyl hyh) hs
+    let d0 := Interval64.Directed.divDown X.lo Y.lo
+    let d1 := Interval64.Directed.divDown X.lo Y.hi
+    let d2 := Interval64.Directed.divDown X.hi Y.lo
+    let d3 := Interval64.Directed.divDown X.hi Y.hi
+    let u0 := Interval64.Directed.divUp X.lo Y.lo
+    let u1 := Interval64.Directed.divUp X.lo Y.hi
+    let u2 := Interval64.Directed.divUp X.hi Y.lo
+    let u3 := Interval64.Directed.divUp X.hi Y.hi
+    have hlo0 := loEncloses_divDown hAlo hBlo hblo0
+    have hlo1 := loEncloses_divDown hAlo hBhi hbhi0
+    have hlo2 := loEncloses_divDown hAhi hBlo hblo0
+    have hlo3 := loEncloses_divDown hAhi hBhi hbhi0
+    have hhi0 := hiEncloses_divUp hAlo hBlo hblo0
+    have hhi1 := hiEncloses_divUp hAlo hBhi hbhi0
+    have hhi2 := hiEncloses_divUp hAhi hBlo hblo0
+    have hhi3 := hiEncloses_divUp hAhi hBhi hbhi0
+    have hmin := min_div_le_of_interval hxl hxh hyl hyh hy0 hs
+    have hmax := max_div_ge_of_interval hxl hxh hyl hyh hy0 hs
+    have hlo23 := loEncloses_fmin hlo2 hlo3 (Rat.le_refl)
+    have hlo123 := loEncloses_fmin hlo1 hlo23 (Rat.le_refl)
+    have hloall : loEncloses? (bitsToEVal (Interval64.fmin d0
+        (Interval64.fmin d1 (Interval64.fmin d2 d3))).toBits) (x / y) :=
+      loEncloses_fmin hlo0 hlo123 (by
+        rwa [rmin_4_assoc] at hmin)
+    have hhi23 := hiEncloses_fmax hhi2 hhi3 (Rat.le_refl)
+    have hhi123 := hiEncloses_fmax hhi1 hhi23 (Rat.le_refl)
+    have hhiall : hiEncloses? (bitsToEVal (Interval64.fmax u0
+        (Interval64.fmax u1 (Interval64.fmax u2 u3))).toBits) (x / y) :=
+      hiEncloses_fmax hhi0 hhi123 (by
+        rwa [rmax_4_assoc] at hmax)
+    have hlonan : (Interval64.fmin d0 (Interval64.fmin d1 (Interval64.fmin d2 d3))).isNaN =
+        false :=
+      fmin_not_nan (not_nan_of_loEncloses hlo0)
+        (fmin_not_nan (not_nan_of_loEncloses hlo1)
+          (fmin_not_nan (not_nan_of_loEncloses hlo2) (not_nan_of_loEncloses hlo3)))
+    have hhinan : (Interval64.fmax u0 (Interval64.fmax u1 (Interval64.fmax u2 u3))).isNaN =
+        false :=
+      fmax_not_nan (not_nan_of_hiEncloses hhi0)
+        (fmax_not_nan (not_nan_of_hiEncloses hhi1)
+          (fmax_not_nan (not_nan_of_hiEncloses hhi2) (not_nan_of_hiEncloses hhi3)))
+    have heq : X / Y =
+        ⟨Interval64.fmin d0 (Interval64.fmin d1 (Interval64.fmin d2 d3)),
+         Interval64.fmax u0 (Interval64.fmax u1 (Interval64.fmax u2 u3))⟩ := by
+      change Interval64.div X Y = _
+      unfold Interval64.div
+      simp [hnan, hcz, d0, d1, d2, d3, u0, u1, u2, u3, hlonan, hhinan]
+    rw [heq]
+    exact ⟨hloall, hhiall⟩
+
 end Interval64Proofs.Div

@@ -113,6 +113,16 @@ theorem mulUp_toBits (a b : Float) :
       packBits (unpackBits (Spec.mulUp a.toBits b.toBits)) := by
   simp only [Directed.mulUp, mulUpSpec, toBits_ofBits]
 
+theorem divDown_toBits (a b : Float) :
+    (Directed.divDown a b).toBits =
+      packBits (unpackBits (Spec.divDown a.toBits b.toBits)) := by
+  simp only [Directed.divDown, divDownSpec, toBits_ofBits]
+
+theorem divUp_toBits (a b : Float) :
+    (Directed.divUp a b).toBits =
+      packBits (unpackBits (Spec.divUp a.toBits b.toBits)) := by
+  simp only [Directed.divUp, divUpSpec, toBits_ofBits]
+
 /-! ### Comparing finite floats by rational value -/
 
 theorem mag_pow53_succ (e : Int) :

@@ -56,3 +56,4 @@ import Interval64Proofs
 #print axioms Interval64Proofs.Div.divCore_enough_bits
 #print axioms Interval64Proofs.Div.div_encloses
 #print axioms Interval64Proofs.Div.div_exact
+#print axioms Interval64Proofs.Div.div_mem_iv
