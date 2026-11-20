@@ -119,14 +119,14 @@ uint64_t iv64_run_benches(void *u);
 uint64_t iv64_debug_reset(uint64_t token);
 uint64_t iv64_debug_count(uint64_t token);
 
-/* Lean FFI wrappers: increment the debug counter, then call the AVX kernel. */
-double iv64_lean_add_down(double a, double b);
-double iv64_lean_add_up(double a, double b);
-double iv64_lean_sub_down(double a, double b);
-double iv64_lean_sub_up(double a, double b);
-double iv64_lean_mul_down(double a, double b);
-double iv64_lean_mul_up(double a, double b);
-double iv64_lean_div_down(double a, double b);
-double iv64_lean_div_up(double a, double b);
-double iv64_lean_sqrt_down(double a);
-double iv64_lean_sqrt_up(double a);
+/* Optional counted wrappers (not on the `@[implemented_by]` hot path). */
+double iv64_debug_add_down(double a, double b);
+double iv64_debug_add_up(double a, double b);
+double iv64_debug_sub_down(double a, double b);
+double iv64_debug_sub_up(double a, double b);
+double iv64_debug_mul_down(double a, double b);
+double iv64_debug_mul_up(double a, double b);
+double iv64_debug_div_down(double a, double b);
+double iv64_debug_div_up(double a, double b);
+double iv64_debug_sqrt_down(double a);
+double iv64_debug_sqrt_up(double a);

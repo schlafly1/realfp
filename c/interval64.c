@@ -1303,15 +1303,18 @@ uint64_t iv64_debug_count(uint64_t token) {
   return iv64_debug_ops;
 }
 
+/* Production Lean FFI is the AVX kernels themselves (`iv64_avx_*`): no
+   debug increment on the hot path. Optional counted wrappers below are
+   only for manual debugging; they are not used by `@[implemented_by]`. */
 static inline void iv64_debug_inc(void) { iv64_debug_ops++; }
 
-double iv64_lean_add_down(double a, double b) { iv64_debug_inc(); return iv64_avx_add_down(a, b); }
-double iv64_lean_add_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_add_up(a, b); }
-double iv64_lean_sub_down(double a, double b) { iv64_debug_inc(); return iv64_avx_sub_down(a, b); }
-double iv64_lean_sub_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_sub_up(a, b); }
-double iv64_lean_mul_down(double a, double b) { iv64_debug_inc(); return iv64_avx_mul_down(a, b); }
-double iv64_lean_mul_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_mul_up(a, b); }
-double iv64_lean_div_down(double a, double b) { iv64_debug_inc(); return iv64_avx_div_down(a, b); }
-double iv64_lean_div_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_div_up(a, b); }
-double iv64_lean_sqrt_down(double a) { iv64_debug_inc(); return iv64_avx_sqrt_down(a); }
-double iv64_lean_sqrt_up  (double a) { iv64_debug_inc(); return iv64_avx_sqrt_up(a); }
+double iv64_debug_add_down(double a, double b) { iv64_debug_inc(); return iv64_avx_add_down(a, b); }
+double iv64_debug_add_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_add_up(a, b); }
+double iv64_debug_sub_down(double a, double b) { iv64_debug_inc(); return iv64_avx_sub_down(a, b); }
+double iv64_debug_sub_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_sub_up(a, b); }
+double iv64_debug_mul_down(double a, double b) { iv64_debug_inc(); return iv64_avx_mul_down(a, b); }
+double iv64_debug_mul_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_mul_up(a, b); }
+double iv64_debug_div_down(double a, double b) { iv64_debug_inc(); return iv64_avx_div_down(a, b); }
+double iv64_debug_div_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_div_up(a, b); }
+double iv64_debug_sqrt_down(double a) { iv64_debug_inc(); return iv64_avx_sqrt_down(a); }
+double iv64_debug_sqrt_up  (double a) { iv64_debug_inc(); return iv64_avx_sqrt_up(a); }

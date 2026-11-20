@@ -47,18 +47,18 @@ def divUpSpec   (a b : Float) : Float := Float.ofBits (Spec.divUp   a.toBits b.t
 def sqrtDownSpec (a : Float) : Float := Float.ofBits (Spec.sqrtDown a.toBits)
 def sqrtUpSpec   (a : Float) : Float := Float.ofBits (Spec.sqrtUp   a.toBits)
 
-/-! # Compiled implementations (AVX-512 embedded rounding, debug-counted) -/
+/-! # Compiled implementations (AVX-512 embedded rounding; no debug counter) -/
 
-@[extern "iv64_lean_add_down"] opaque addDownImpl (a b : Float) : Float
-@[extern "iv64_lean_add_up"]   opaque addUpImpl   (a b : Float) : Float
-@[extern "iv64_lean_sub_down"] opaque subDownImpl (a b : Float) : Float
-@[extern "iv64_lean_sub_up"]   opaque subUpImpl   (a b : Float) : Float
-@[extern "iv64_lean_mul_down"] opaque mulDownImpl (a b : Float) : Float
-@[extern "iv64_lean_mul_up"]   opaque mulUpImpl   (a b : Float) : Float
-@[extern "iv64_lean_div_down"] opaque divDownImpl (a b : Float) : Float
-@[extern "iv64_lean_div_up"]   opaque divUpImpl   (a b : Float) : Float
-@[extern "iv64_lean_sqrt_down"] opaque sqrtDownImpl (a : Float) : Float
-@[extern "iv64_lean_sqrt_up"]   opaque sqrtUpImpl   (a : Float) : Float
+@[extern "iv64_avx_add_down"] opaque addDownImpl (a b : Float) : Float
+@[extern "iv64_avx_add_up"]   opaque addUpImpl   (a b : Float) : Float
+@[extern "iv64_avx_sub_down"] opaque subDownImpl (a b : Float) : Float
+@[extern "iv64_avx_sub_up"]   opaque subUpImpl   (a b : Float) : Float
+@[extern "iv64_avx_mul_down"] opaque mulDownImpl (a b : Float) : Float
+@[extern "iv64_avx_mul_up"]   opaque mulUpImpl   (a b : Float) : Float
+@[extern "iv64_avx_div_down"] opaque divDownImpl (a b : Float) : Float
+@[extern "iv64_avx_div_up"]   opaque divUpImpl   (a b : Float) : Float
+@[extern "iv64_avx_sqrt_down"] opaque sqrtDownImpl (a : Float) : Float
+@[extern "iv64_avx_sqrt_up"]   opaque sqrtUpImpl   (a : Float) : Float
 
 /-! # Public operators: spec for the kernel, AVX-512 C at runtime -/
 

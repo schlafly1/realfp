@@ -9,21 +9,9 @@ def main : IO UInt32 := do
   IO.println s!"(demoIv * demoIv + demoIv).hi = {demoHi}"
   IO.println s!"demoHi_le_bool (compiled decide) = {demoHi_le_bool}"
 
-  -- Pass a runtime token so the impure C calls cannot be constant-folded.
-  let tok0 ← IO.monoNanosNow
-  let tok := UInt64.ofNat tok0
-  let resetVal := debugReset tok
-  let c0 := debugCount (tok + 1)
   -- A fresh interval computation (not the already-evaluated `demoHi`).
   let iv : Interval64 := ⟨0.25, 0.75⟩ * ⟨0.25, 0.75⟩ + ⟨0.25, 0.75⟩
-  let c1 := debugCount (tok + 2)
-  IO.println s!"debugReset returned {resetVal}"
-  IO.println s!"C debug counter after reset: {c0}"
-  IO.println s!"C debug counter after compiled interval ops: {c1}  (hi={iv.hi})"
-  if c1 > c0 then
-    IO.println "Runtime path: compiled Interval64 ops called the AVX-512 C kernels (counter increased)."
-  else
-    IO.println "Runtime path: C counter did not increase."
+  IO.println s!"fresh interval ([0.25,0.75]² + [0.25,0.75]).hi = {iv.hi}"
 
   -- Timing uses a start value derived from the clock so the loop cannot be
   -- constant-folded at compile time.
@@ -55,7 +43,7 @@ def main : IO UInt32 := do
   else
     IO.println "Timing: no large gap; the compiled addDown path may be the Lean spec."
 
-  if demoHi_le_bool && decide (iv.hi ≤ 1.5) && c1 > c0 then
+  if demoHi_le_bool && decide (iv.hi ≤ 1.5) && decide (nsS > nsC * 5) then
     IO.println "native_decide demo: OK"
     return 0
   else

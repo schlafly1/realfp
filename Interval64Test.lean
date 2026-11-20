@@ -50,16 +50,6 @@ def xorshift (s : UInt64) : UInt64 :=
   let z2 := (z1 ^^^ (z1 >>> 27)) * 0x94d049bb133111eb
   z2 ^^^ (z2 >>> 31)
 
-/-- Mix in some random bit patterns, keeping a few "ordinary" finite values. -/
-def randomBits (seed : UInt64) (n : Nat) : Array UInt64 :=
-  Id.run do
-    let mut s := seed
-    let mut out := #[]
-    for _ in [0:n] do
-      s := xorshift s
-      out := out.push s
-    return out
-
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
   IO.println s!"AVX-512F available: {avx512fAvailable}"
@@ -187,21 +177,31 @@ def main : IO UInt32 := do
     specFails := check2 "spec sqrt.down" a 0 (sqrtDown a) (sqrtDownSpec a) specFails
     specFails := check2 "spec sqrt.up"   a 0 (sqrtUp a)   (sqrtUpSpec a)   specFails
 
-  -- Random bit patterns (including NaN / Inf / subnormals)
-  let rnd := randomBits 0xC0FFEE 64
-  for ha in rnd do
-    for hb in rnd[:8] do
-      let a := Float.ofBits ha
-      let b := Float.ofBits hb
-      specFails := check2 "specR add.down" a b (addDown a b) (addDownSpec a b) specFails
-      specFails := check2 "specR add.up"   a b (addUp a b)   (addUpSpec a b)   specFails
-      specFails := check2 "specR mul.down" a b (mulDown a b) (mulDownSpec a b) specFails
-      specFails := check2 "specR mul.up"   a b (mulUp a b)   (mulUpSpec a b)   specFails
-      specFails := check2 "specR div.down" a b (divDown a b) (divDownSpec a b) specFails
-      specFails := check2 "specR div.up"   a b (divUp a b)   (divUpSpec a b)   specFails
-    let a := Float.ofBits ha
+  -- Random bit patterns (including NaN / Inf / subnormals).
+  -- 100000 independent pairs per binary op (and 100000 sqrt inputs), not a Cartesian product.
+  let nRand : Nat := 100000
+  IO.println s!"C vs Lean spec: {nRand} random cases per op ..."
+  let mut s := (0xC0FFEE : UInt64)
+  let mut nAdd := 0; let mut nSub := 0; let mut nMul := 0; let mut nDiv := 0; let mut nSqrt := 0
+  for _ in [0:nRand] do
+    s := xorshift s; let a := Float.ofBits s
+    s := xorshift s; let b := Float.ofBits s
+    specFails := check2 "specR add.down" a b (addDown a b) (addDownSpec a b) specFails
+    specFails := check2 "specR add.up"   a b (addUp a b)   (addUpSpec a b)   specFails
+    nAdd := nAdd + 2
+    specFails := check2 "specR sub.down" a b (subDown a b) (subDownSpec a b) specFails
+    specFails := check2 "specR sub.up"   a b (subUp a b)   (subUpSpec a b)   specFails
+    nSub := nSub + 2
+    specFails := check2 "specR mul.down" a b (mulDown a b) (mulDownSpec a b) specFails
+    specFails := check2 "specR mul.up"   a b (mulUp a b)   (mulUpSpec a b)   specFails
+    nMul := nMul + 2
+    specFails := check2 "specR div.down" a b (divDown a b) (divDownSpec a b) specFails
+    specFails := check2 "specR div.up"   a b (divUp a b)   (divUpSpec a b)   specFails
+    nDiv := nDiv + 2
     specFails := check2 "specR sqrt.down" a 0 (sqrtDown a) (sqrtDownSpec a) specFails
     specFails := check2 "specR sqrt.up"   a 0 (sqrtUp a)   (sqrtUpSpec a)   specFails
+    nSqrt := nSqrt + 2
+  IO.println s!"  random cases: add={nAdd} sub={nSub} mul={nMul} div={nDiv} sqrt={nSqrt}"
 
   IO.println s!"C runtime vs Lean spec: {specFails.size} mismatches"
   for f in specFails[:16] do
