@@ -1,11 +1,34 @@
 /* Interval64 directed-rounding kernels.
-   Compile with gcc: -O2 -fPIC -mavx512f -mavx512vl -ffp-contract=off -frounding-math -fno-math-errno
-   The Lean toolchain clang on this box lacks immintrin.h; use gcc/cc. */
+   x86_64: gcc -O2 -fPIC -mavx512f -mavx512vl -ffp-contract=off -frounding-math -fno-math-errno
+   aarch64 (or -DIV64_FORCE_RNERR): gcc -O2 -fPIC -ffp-contract=off -frounding-math -fno-math-errno
+   The Lean toolchain clang on this box lacks immintrin.h; use gcc/cc.
+
+   Backend used by Lean (`iv64_dir_*`):
+     IV64_BACKEND_AVX512 : AVX-512 embedded rounding (x86_64 built with -mavx512f)
+     otherwise           : round-to-nearest + exact error term (c/iv64_rnerr.h) */
 
 #define _GNU_SOURCE
 #include "interval64.h"
 
+#if defined(__x86_64__) && defined(__AVX512F__)
+#define IV64_HAVE_AVX512 1
 #include <immintrin.h>
+#else
+#define IV64_HAVE_AVX512 0
+#endif
+#if IV64_HAVE_AVX512 && !defined(IV64_FORCE_RNERR)
+#define IV64_BACKEND_AVX512 1
+#else
+#define IV64_BACKEND_AVX512 0
+#endif
+#include "iv64_rnerr.h"
+
+/* binary128 type for the software oracle: __float128 on x86, _Float128 elsewhere. */
+#if defined(__x86_64__) || defined(__i386__)
+typedef __float128 iv64_f128;
+#else
+typedef _Float128 iv64_f128;
+#endif
 #include <fenv.h>
 #include <math.h>
 #include <float.h>
@@ -56,12 +79,38 @@ double iv64_next_down(double x) {
 }
 
 uint8_t iv64_has_avx512f(void) {
-#if defined(__GNUC__)
+#if defined(__GNUC__) && defined(__x86_64__)
   return __builtin_cpu_supports("avx512f") ? 1 : 0;
 #else
-  return 1;
+  return 0;
 #endif
 }
+
+/* 0 = AVX-512 embedded rounding, 1 = RN + exact error term. */
+uint8_t iv64_backend_id(void) { return IV64_BACKEND_AVX512 ? 0 : 1; }
+uint8_t iv64_backend_id_unit(void *u) { (void)u; return iv64_backend_id(); }
+/* 1 if the compiled backend can run on this CPU. */
+uint8_t iv64_backend_ok_unit(void *u) {
+  (void)u;
+  return IV64_BACKEND_AVX512 ? iv64_has_avx512f() : 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* RN + exact error term (portable; the aarch64 backend)                        */
+/* -------------------------------------------------------------------------- */
+
+double iv64_rn_add_down(double a, double b) { return iv64r_add(a, b, 0); }
+double iv64_rn_add_up  (double a, double b) { return iv64r_add(a, b, 1); }
+double iv64_rn_sub_down(double a, double b) { return iv64r_sub(a, b, 0); }
+double iv64_rn_sub_up  (double a, double b) { return iv64r_sub(a, b, 1); }
+double iv64_rn_mul_down(double a, double b) { return iv64r_mul(a, b, 0); }
+double iv64_rn_mul_up  (double a, double b) { return iv64r_mul(a, b, 1); }
+double iv64_rn_div_down(double a, double b) { return iv64r_div(a, b, 0); }
+double iv64_rn_div_up  (double a, double b) { return iv64r_div(a, b, 1); }
+double iv64_rn_sqrt_down(double a) { return iv64r_sqrt(a, 0); }
+double iv64_rn_sqrt_up  (double a) { return iv64r_sqrt(a, 1); }
+
+#if IV64_HAVE_AVX512
 
 /* -------------------------------------------------------------------------- */
 /* AVX-512 embedded rounding (no MXCSR change)                                  */
@@ -94,6 +143,27 @@ double iv64_avx_sqrt_up(double a) {
   __m128d x = _mm_set_sd(a);
   return _mm_cvtsd_f64(_mm_sqrt_round_sd(x, x, ROUND_UP));
 }
+
+#endif /* IV64_HAVE_AVX512 */
+
+/* -------------------------------------------------------------------------- */
+/* Backend dispatch used by Lean (`@[implemented_by]` externs)                   */
+/* -------------------------------------------------------------------------- */
+#if IV64_BACKEND_AVX512
+#define IV64_DIR(op) iv64_avx_##op
+#else
+#define IV64_DIR(op) iv64_rn_##op
+#endif
+double iv64_dir_add_down(double a, double b) { return IV64_DIR(add_down)(a, b); }
+double iv64_dir_add_up  (double a, double b) { return IV64_DIR(add_up)(a, b); }
+double iv64_dir_sub_down(double a, double b) { return IV64_DIR(sub_down)(a, b); }
+double iv64_dir_sub_up  (double a, double b) { return IV64_DIR(sub_up)(a, b); }
+double iv64_dir_mul_down(double a, double b) { return IV64_DIR(mul_down)(a, b); }
+double iv64_dir_mul_up  (double a, double b) { return IV64_DIR(mul_up)(a, b); }
+double iv64_dir_div_down(double a, double b) { return IV64_DIR(div_down)(a, b); }
+double iv64_dir_div_up  (double a, double b) { return IV64_DIR(div_up)(a, b); }
+double iv64_dir_sqrt_down(double a) { return IV64_DIR(sqrt_down)(a); }
+double iv64_dir_sqrt_up  (double a) { return IV64_DIR(sqrt_up)(a); }
 
 /* -------------------------------------------------------------------------- */
 /* fesetround save / restore (thread-local MXCSR + x87 CW)                      */
@@ -143,38 +213,38 @@ double iv64_fe_sqrt_up(double a) {
 /* Software oracles                                                             */
 /* -------------------------------------------------------------------------- */
 
-/* Convert an exact (or already correctly-rounded-to-113-bit? no: exact) __float128
+/* Convert an exact (or already correctly-rounded-to-113-bit? no: exact) iv64_f128
    to binary64 with directed rounding, via RN conversion plus a side test. */
-static int q_isnan(__float128 x) { return x != x; }
-static int q_isinf(__float128 x) {
+static int q_isnan(iv64_f128 x) { return x != x; }
+static int q_isinf(iv64_f128 x) {
   return x != 0 && (x + x == x) && (x == x);
 }
-static double q2d_down(__float128 x) {
+static double q2d_down(iv64_f128 x) {
   if (q_isnan(x)) return u2d(0x7ff8000000000000ull);
   if (q_isinf(x)) return (double)x;
   double d = (double)x; /* typically round-to-nearest-even */
   if (isnan(d)) return u2d(0x7ff8000000000000ull);
-  __float128 back = (__float128)d;
+  iv64_f128 back = (iv64_f128)d;
   if (back <= x) return d;
   return iv64_next_down(d);
 }
-static double q2d_up(__float128 x) {
+static double q2d_up(iv64_f128 x) {
   if (q_isnan(x)) return u2d(0x7ff8000000000000ull);
   if (q_isinf(x)) return (double)x;
   double d = (double)x;
   if (isnan(d)) return u2d(0x7ff8000000000000ull);
-  __float128 back = (__float128)d;
+  iv64_f128 back = (iv64_f128)d;
   if (back >= x) return d;
   return iv64_next_up(d);
 }
 
 double iv64_soft_mul_down(double a, double b) {
   if (isnan(a) || isnan(b)) return u2d(0x7ff8000000000000ull);
-  return q2d_down((__float128)a * (__float128)b);
+  return q2d_down((iv64_f128)a * (iv64_f128)b);
 }
 double iv64_soft_mul_up(double a, double b) {
   if (isnan(a) || isnan(b)) return u2d(0x7ff8000000000000ull);
-  return q2d_up((__float128)a * (__float128)b);
+  return q2d_up((iv64_f128)a * (iv64_f128)b);
 }
 
 /* Integer-significand directed rounding for binary64.
@@ -439,7 +509,7 @@ static double signed_zero(int negative) {
 }
 
 /* Exact integer add/sub of two finite binary64 values, then directed pack.
-   (__float128 is only 113 bits, so it is NOT exact when exponents differ by more
+   (iv64_f128 is only 113 bits, so it is NOT exact when exponents differ by more
    than 112, e.g. 1 + min_subnormal.) */
 static double soft_add(double a, double b, int up) {
   if (isnan(a) || isnan(b)) return u2d(0x7ff8000000000000ull);
@@ -776,7 +846,11 @@ static void iv_sqrt(double lo, double hi, double *rlo, double *rhi,
   void iv64_##pref##_interval_sqrt(double lo, double hi, double *rlo, double *rhi) { \
     iv_sqrt(lo,hi,rlo,rhi, iv64_##pref##_sqrt_down, iv64_##pref##_sqrt_up); }
 
+#if IV64_HAVE_AVX512
 DEF_IV(avx)
+#endif
+DEF_IV(dir)
+DEF_IV(rn)
 DEF_IV(fe)
 DEF_IV(widen)
 
@@ -817,8 +891,13 @@ static uint64_t bench_dot3(const double *a, const double *b, uint64_t n,
   return acc;
 }
 
+#if IV64_HAVE_AVX512
 uint64_t iv64_bench_dot3_sq_cmp_avx(const double *a, const double *b, uint64_t n) {
   return bench_dot3(a,b,n, iv64_avx_interval_mul, iv64_avx_interval_add);
+}
+#endif
+uint64_t iv64_bench_dot3_sq_cmp_rn(const double *a, const double *b, uint64_t n) {
+  return bench_dot3(a,b,n, iv64_rn_interval_mul, iv64_rn_interval_add);
 }
 uint64_t iv64_bench_dot3_sq_cmp_fe(const double *a, const double *b, uint64_t n) {
   return bench_dot3(a,b,n, iv64_fe_interval_mul, iv64_fe_interval_add);
@@ -960,10 +1039,10 @@ static void check3(ctr *c, const char *op, int up,
                    double avx, double fe, double soft) {
   int ok_fe = same_bits_or_nan(avx, fe);
   int ok_soft = same_bits_or_nan(avx, soft);
-  rec(&c_fe, ok_fe, a, b, avx, fe, "avx vs fe");
-  rec(&c_soft, ok_soft, a, b, avx, soft, "avx vs soft");
+  rec(&c_fe, ok_fe, a, b, avx, fe, "dir vs fe");
+  rec(&c_soft, ok_soft, a, b, avx, soft, "dir vs soft");
   rec(c, ok_fe && ok_soft, a, b, ok_fe ? avx : avx, ok_fe ? soft : fe,
-      ok_fe ? "avx vs soft" : "avx vs fe");
+      ok_fe ? "dir vs soft" : "dir vs fe");
   (void)op; (void)up;
 }
 
@@ -1023,43 +1102,43 @@ uint64_t iv64_run_selftest(char *out, uint64_t out_cap) {
   for (int i = 0; i < ns; i++) {
     for (int j = 0; j < ns; j++) {
       double a = u2d(specials[i]), b = u2d(specials[j]);
-      check3(&c, "add", 0, a, b, iv64_avx_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
-      check3(&c, "add", 1, a, b, iv64_avx_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
-      check3(&c, "sub", 0, a, b, iv64_avx_sub_down(a,b), iv64_fe_sub_down(a,b), iv64_soft_sub_down(a,b));
-      check3(&c, "sub", 1, a, b, iv64_avx_sub_up(a,b),   iv64_fe_sub_up(a,b),   iv64_soft_sub_up(a,b));
-      check3(&c, "mul", 0, a, b, iv64_avx_mul_down(a,b), iv64_fe_mul_down(a,b), iv64_soft_mul_down(a,b));
-      check3(&c, "mul", 1, a, b, iv64_avx_mul_up(a,b),   iv64_fe_mul_up(a,b),   iv64_soft_mul_up(a,b));
-      check3(&c, "div", 0, a, b, iv64_avx_div_down(a,b), iv64_fe_div_down(a,b), iv64_soft_div_down(a,b));
-      check3(&c, "div", 1, a, b, iv64_avx_div_up(a,b),   iv64_fe_div_up(a,b),   iv64_soft_div_up(a,b));
+      check3(&c, "add", 0, a, b, iv64_dir_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
+      check3(&c, "add", 1, a, b, iv64_dir_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
+      check3(&c, "sub", 0, a, b, iv64_dir_sub_down(a,b), iv64_fe_sub_down(a,b), iv64_soft_sub_down(a,b));
+      check3(&c, "sub", 1, a, b, iv64_dir_sub_up(a,b),   iv64_fe_sub_up(a,b),   iv64_soft_sub_up(a,b));
+      check3(&c, "mul", 0, a, b, iv64_dir_mul_down(a,b), iv64_fe_mul_down(a,b), iv64_soft_mul_down(a,b));
+      check3(&c, "mul", 1, a, b, iv64_dir_mul_up(a,b),   iv64_fe_mul_up(a,b),   iv64_soft_mul_up(a,b));
+      check3(&c, "div", 0, a, b, iv64_dir_div_down(a,b), iv64_fe_div_down(a,b), iv64_soft_div_down(a,b));
+      check3(&c, "div", 1, a, b, iv64_dir_div_up(a,b),   iv64_fe_div_up(a,b),   iv64_soft_div_up(a,b));
     }
     double a = u2d(specials[i]);
-    check3(&c, "sqrt", 0, a, 0, iv64_avx_sqrt_down(a), iv64_fe_sqrt_down(a), iv64_soft_sqrt_down(a));
-    check3(&c, "sqrt", 1, a, 0, iv64_avx_sqrt_up(a),   iv64_fe_sqrt_up(a),   iv64_soft_sqrt_up(a));
+    check3(&c, "sqrt", 0, a, 0, iv64_dir_sqrt_down(a), iv64_fe_sqrt_down(a), iv64_soft_sqrt_down(a));
+    check3(&c, "sqrt", 1, a, 0, iv64_dir_sqrt_up(a),   iv64_fe_sqrt_up(a),   iv64_soft_sqrt_up(a));
   }
 
   /* Classic halfway case: 1 + 2^-53, ulp(1)=2^-52 */
   {
     double a = 1.0, b = 0x1p-53;
-    check3(&c, "add", 0, a, b, iv64_avx_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
-    check3(&c, "add", 1, a, b, iv64_avx_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
+    check3(&c, "add", 0, a, b, iv64_dir_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
+    check3(&c, "add", 1, a, b, iv64_dir_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
   }
   /* 1/3 */
   {
     double a = 1.0, b = 3.0;
-    check3(&c, "div", 0, a, b, iv64_avx_div_down(a,b), iv64_fe_div_down(a,b), iv64_soft_div_down(a,b));
-    check3(&c, "div", 1, a, b, iv64_avx_div_up(a,b),   iv64_fe_div_up(a,b),   iv64_soft_div_up(a,b));
+    check3(&c, "div", 0, a, b, iv64_dir_div_down(a,b), iv64_fe_div_down(a,b), iv64_soft_div_down(a,b));
+    check3(&c, "div", 1, a, b, iv64_dir_div_up(a,b),   iv64_fe_div_up(a,b),   iv64_soft_div_up(a,b));
   }
   /* sqrt(2) */
   {
     double a = 2.0;
-    check3(&c, "sqrt", 0, a, 0, iv64_avx_sqrt_down(a), iv64_fe_sqrt_down(a), iv64_soft_sqrt_down(a));
-    check3(&c, "sqrt", 1, a, 0, iv64_avx_sqrt_up(a),   iv64_fe_sqrt_up(a),   iv64_soft_sqrt_up(a));
+    check3(&c, "sqrt", 0, a, 0, iv64_dir_sqrt_down(a), iv64_fe_sqrt_down(a), iv64_soft_sqrt_down(a));
+    check3(&c, "sqrt", 1, a, 0, iv64_dir_sqrt_up(a),   iv64_fe_sqrt_up(a),   iv64_soft_sqrt_up(a));
   }
   /* cancellation zeros */
   {
     double a = 1.0, b = -1.0;
-    check3(&c, "add", 0, a, b, iv64_avx_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
-    check3(&c, "add", 1, a, b, iv64_avx_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
+    check3(&c, "add", 0, a, b, iv64_dir_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
+    check3(&c, "add", 1, a, b, iv64_dir_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
   }
 
   /* Random bit patterns, including many finites and some specials */
@@ -1067,16 +1146,16 @@ uint64_t iv64_run_selftest(char *out, uint64_t out_cap) {
   for (int k = 0; k < 20000; k++) {
     double a = u2d(splitmix64(&seed));
     double b = u2d(splitmix64(&seed));
-    check3(&c, "add", 0, a, b, iv64_avx_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
-    check3(&c, "add", 1, a, b, iv64_avx_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
-    check3(&c, "sub", 0, a, b, iv64_avx_sub_down(a,b), iv64_fe_sub_down(a,b), iv64_soft_sub_down(a,b));
-    check3(&c, "sub", 1, a, b, iv64_avx_sub_up(a,b),   iv64_fe_sub_up(a,b),   iv64_soft_sub_up(a,b));
-    check3(&c, "mul", 0, a, b, iv64_avx_mul_down(a,b), iv64_fe_mul_down(a,b), iv64_soft_mul_down(a,b));
-    check3(&c, "mul", 1, a, b, iv64_avx_mul_up(a,b),   iv64_fe_mul_up(a,b),   iv64_soft_mul_up(a,b));
-    check3(&c, "div", 0, a, b, iv64_avx_div_down(a,b), iv64_fe_div_down(a,b), iv64_soft_div_down(a,b));
-    check3(&c, "div", 1, a, b, iv64_avx_div_up(a,b),   iv64_fe_div_up(a,b),   iv64_soft_div_up(a,b));
-    check3(&c, "sqrt", 0, a, 0, iv64_avx_sqrt_down(a), iv64_fe_sqrt_down(a), iv64_soft_sqrt_down(a));
-    check3(&c, "sqrt", 1, a, 0, iv64_avx_sqrt_up(a),   iv64_fe_sqrt_up(a),   iv64_soft_sqrt_up(a));
+    check3(&c, "add", 0, a, b, iv64_dir_add_down(a,b), iv64_fe_add_down(a,b), iv64_soft_add_down(a,b));
+    check3(&c, "add", 1, a, b, iv64_dir_add_up(a,b),   iv64_fe_add_up(a,b),   iv64_soft_add_up(a,b));
+    check3(&c, "sub", 0, a, b, iv64_dir_sub_down(a,b), iv64_fe_sub_down(a,b), iv64_soft_sub_down(a,b));
+    check3(&c, "sub", 1, a, b, iv64_dir_sub_up(a,b),   iv64_fe_sub_up(a,b),   iv64_soft_sub_up(a,b));
+    check3(&c, "mul", 0, a, b, iv64_dir_mul_down(a,b), iv64_fe_mul_down(a,b), iv64_soft_mul_down(a,b));
+    check3(&c, "mul", 1, a, b, iv64_dir_mul_up(a,b),   iv64_fe_mul_up(a,b),   iv64_soft_mul_up(a,b));
+    check3(&c, "div", 0, a, b, iv64_dir_div_down(a,b), iv64_fe_div_down(a,b), iv64_soft_div_down(a,b));
+    check3(&c, "div", 1, a, b, iv64_dir_div_up(a,b),   iv64_fe_div_up(a,b),   iv64_soft_div_up(a,b));
+    check3(&c, "sqrt", 0, a, 0, iv64_dir_sqrt_down(a), iv64_fe_sqrt_down(a), iv64_soft_sqrt_down(a));
+    check3(&c, "sqrt", 1, a, 0, iv64_dir_sqrt_up(a),   iv64_fe_sqrt_up(a),   iv64_soft_sqrt_up(a));
   }
 
   /* Interval laws on finite samples: enclosure of the four corners under soft rounding. */
@@ -1097,10 +1176,10 @@ uint64_t iv64_run_selftest(char *out, uint64_t out_cap) {
     double bhi = xs[2] < xs[3] ? xs[3] : xs[2];
     double rlo, rhi;
     double flo, fhi;
-    iv64_avx_interval_add(alo,ahi,blo,bhi,&rlo,&rhi);
+    iv64_dir_interval_add(alo,ahi,blo,bhi,&rlo,&rhi);
     iv64_fe_interval_add(alo,ahi,blo,bhi,&flo,&fhi);
     if (!same_bits_or_nan(rlo,flo) || !same_bits_or_nan(rhi,fhi)) iv_fail++; else iv_ok++;
-    iv64_avx_interval_mul(alo,ahi,blo,bhi,&rlo,&rhi);
+    iv64_dir_interval_mul(alo,ahi,blo,bhi,&rlo,&rhi);
     iv64_fe_interval_mul(alo,ahi,blo,bhi,&flo,&fhi);
     if (!same_bits_or_nan(rlo,flo) || !same_bits_or_nan(rhi,fhi)) iv_fail++; else iv_ok++;
     /* enclosure: every finite corner product is inside [rlo,rhi] after accounting for rounding */
@@ -1120,14 +1199,14 @@ uint64_t iv64_run_selftest(char *out, uint64_t out_cap) {
   /* Specific interval cases */
   {
     double rlo, rhi;
-    iv64_avx_interval_div(1,2, -1, 1, &rlo, &rhi);
+    iv64_dir_interval_div(1,2, -1, 1, &rlo, &rhi);
     if (!(isinf(rlo) && rlo < 0 && isinf(rhi) && rhi > 0)) iv_fail++; else iv_ok++;
-    iv64_avx_interval_sqrt(-2, -1, &rlo, &rhi);
+    iv64_dir_interval_sqrt(-2, -1, &rlo, &rhi);
     if (!(isnan(rlo) && isnan(rhi))) iv_fail++; else iv_ok++;
-    iv64_avx_interval_sqrt(-1, 4, &rlo, &rhi);
+    iv64_dir_interval_sqrt(-1, 4, &rlo, &rhi);
     /* [0, 2] approximately, lo should be +0, hi = sqrt_up(4)=2 */
     if (!(rlo == 0.0 && d2u(rlo) == 0 && rhi == 2.0)) iv_fail++; else iv_ok++;
-    iv64_avx_interval_sqrt(-0.0, 0.0, &rlo, &rhi);
+    iv64_dir_interval_sqrt(-0.0, 0.0, &rlo, &rhi);
     /* lo = sqrt_down(-0) = -0, hi = sqrt_up(+0) = +0 */
     if (!(rlo == 0.0 && rhi == 0.0 && (d2u(rlo) == 0x8000000000000000ull) && d2u(rhi) == 0)) {
       /* Some implementations may normalize. Record but still count. */
@@ -1135,15 +1214,42 @@ uint64_t iv64_run_selftest(char *out, uint64_t out_cap) {
     } else iv_ok++;
   }
 
+  /* RN + exact-error kernels vs fesetround on specials x specials and random bits
+     (the production backend on aarch64; on x86 this also exercises it). */
+  uint64_t rn_checked = 0, rn_mism = 0;
+  {
+#define RNCHK(x, y) do { rn_checked++; if (!same_bits_or_nan((x), (y))) rn_mism++; } while (0)
+#define RNALL(a, b) do { \
+      RNCHK(iv64_rn_add_down(a,b), iv64_fe_add_down(a,b)); RNCHK(iv64_rn_add_up(a,b), iv64_fe_add_up(a,b)); \
+      RNCHK(iv64_rn_sub_down(a,b), iv64_fe_sub_down(a,b)); RNCHK(iv64_rn_sub_up(a,b), iv64_fe_sub_up(a,b)); \
+      RNCHK(iv64_rn_mul_down(a,b), iv64_fe_mul_down(a,b)); RNCHK(iv64_rn_mul_up(a,b), iv64_fe_mul_up(a,b)); \
+      RNCHK(iv64_rn_div_down(a,b), iv64_fe_div_down(a,b)); RNCHK(iv64_rn_div_up(a,b), iv64_fe_div_up(a,b)); \
+      RNCHK(iv64_rn_sqrt_down(a), iv64_fe_sqrt_down(a)); RNCHK(iv64_rn_sqrt_up(a), iv64_fe_sqrt_up(a)); } while (0)
+    for (int i2 = 0; i2 < ns; i2++)
+      for (int j2 = 0; j2 < ns; j2++) {
+        double a = u2d(specials[i2]), b = u2d(specials[j2]);
+        RNALL(a, b);
+      }
+    uint64_t rs = 0x5eed1234abcdull;
+    for (int t = 0; t < 100000; t++) {
+      double a = u2d(splitmix64(&rs)), b = u2d(splitmix64(&rs));
+      RNALL(a, b);
+    }
+#undef RNALL
+#undef RNCHK
+  }
+
   uint64_t len = 0;
   if (out && out_cap) {
     appendf(out, out_cap, &len,
-      "avx512f=%d\n"
-      "avx vs fe:   checked=%llu  mismatches=%llu\n"
-      "avx vs soft: checked=%llu  mismatches=%llu\n",
-      (int)iv64_has_avx512f(),
+      "backend=%s avx512f=%d\n"
+      "dir vs fe:   checked=%llu  mismatches=%llu\n"
+      "dir vs soft: checked=%llu  mismatches=%llu\n"
+      "rn+err vs fe: checked=%llu  mismatches=%llu\n",
+      IV64_BACKEND_AVX512 ? "avx512" : "rn+err", (int)iv64_has_avx512f(),
       (unsigned long long)c_fe.checked, (unsigned long long)c_fe.mismatches,
-      (unsigned long long)c_soft.checked, (unsigned long long)c_soft.mismatches);
+      (unsigned long long)c_soft.checked, (unsigned long long)c_soft.mismatches,
+      (unsigned long long)rn_checked, (unsigned long long)rn_mism);
     ctr *fm = c_fe.mismatches ? &c_fe : (c_soft.mismatches ? &c_soft : 0);
     if (fm) {
       appendf(out, out_cap, &len,
@@ -1161,7 +1267,7 @@ uint64_t iv64_run_selftest(char *out, uint64_t out_cap) {
     int mode = fegetround();
     appendf(out, out_cap, &len, "fegetround_after=%d (FE_TONEAREST=%d)\n", mode, FE_TONEAREST);
   }
-  return c.mismatches + iv_fail;
+  return c.mismatches + iv_fail + rn_mism;
 }
 
 
@@ -1265,23 +1371,35 @@ uint64_t iv64_run_benches(void *u) {
   const uint64_t reps = 2000;
   const uint64_t seed = 0xC0FFEEULL;
   volatile uint64_t sink = 0;
+#if IV64_HAVE_AVX512
   double avx = bench_kernel(n, reps, seed, iv64_bench_dot3_sq_cmp_avx, &sink);
+#endif
+  double rn  = bench_kernel(n, reps, seed, iv64_bench_dot3_sq_cmp_rn, &sink);
   double fe  = bench_kernel(n, reps, seed, iv64_bench_dot3_sq_cmp_fe, &sink);
   double wid = bench_kernel(n, reps, seed, iv64_bench_dot3_sq_cmp_widen, &sink);
   double bat = bench_kernel(n, reps, seed, iv64_bench_dot3_sq_cmp_fe_up_batch, &sink);
   printf("C kernel (COMPARE.md style): interval dot3 + square + compare\n");
   printf("  n=%llu pairs, reps=%llu, 8 timed runs, median ns/kernel, one loop in-process\n",
          (unsigned long long)n, (unsigned long long)reps);
+#if IV64_HAVE_AVX512
   printf("  AVX-512 embedded:     %8.2f ns\n", avx);
+#endif
+  printf("  RN + exact error:     %8.2f ns\n", rn);
   printf("  fesetround per op:    %8.2f ns\n", fe);
   printf("  RN + 1-ulp widen:     %8.2f ns\n", wid);
   printf("  FE_UPWARD batch:      %8.2f ns\n", bat);
   const uint64_t sn = 20000000ull;
+#if IV64_HAVE_AVX512
   double s_avx = bench_scalar(sn, iv64_avx_add_up);
+#endif
+  double s_rn  = bench_scalar(sn, iv64_rn_add_up);
   double s_fe  = bench_scalar(sn, iv64_fe_add_up);
   double s_wid = bench_scalar(sn, iv64_widen_add_up);
   printf("Scalar dependent add_up chain, %llu ops:\n", (unsigned long long)sn);
+#if IV64_HAVE_AVX512
   printf("  AVX-512 add_up:       %8.2f ns\n", s_avx);
+#endif
+  printf("  RN+err add_up:        %8.2f ns\n", s_rn);
   printf("  fesetround add_up:    %8.2f ns\n", s_fe);
   printf("  RN+ulp add_up:        %8.2f ns\n", s_wid);
   printf("sink=%llu\n", (unsigned long long)sink);
@@ -1303,18 +1421,18 @@ uint64_t iv64_debug_count(uint64_t token) {
   return iv64_debug_ops;
 }
 
-/* Production Lean FFI is the AVX kernels themselves (`iv64_avx_*`): no
+/* Production Lean FFI is the backend kernels themselves (`iv64_dir_*`): no
    debug increment on the hot path. Optional counted wrappers below are
    only for manual debugging; they are not used by `@[implemented_by]`. */
 static inline void iv64_debug_inc(void) { iv64_debug_ops++; }
 
-double iv64_debug_add_down(double a, double b) { iv64_debug_inc(); return iv64_avx_add_down(a, b); }
-double iv64_debug_add_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_add_up(a, b); }
-double iv64_debug_sub_down(double a, double b) { iv64_debug_inc(); return iv64_avx_sub_down(a, b); }
-double iv64_debug_sub_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_sub_up(a, b); }
-double iv64_debug_mul_down(double a, double b) { iv64_debug_inc(); return iv64_avx_mul_down(a, b); }
-double iv64_debug_mul_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_mul_up(a, b); }
-double iv64_debug_div_down(double a, double b) { iv64_debug_inc(); return iv64_avx_div_down(a, b); }
-double iv64_debug_div_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_div_up(a, b); }
-double iv64_debug_sqrt_down(double a) { iv64_debug_inc(); return iv64_avx_sqrt_down(a); }
-double iv64_debug_sqrt_up  (double a) { iv64_debug_inc(); return iv64_avx_sqrt_up(a); }
+double iv64_debug_add_down(double a, double b) { iv64_debug_inc(); return iv64_dir_add_down(a, b); }
+double iv64_debug_add_up  (double a, double b) { iv64_debug_inc(); return iv64_dir_add_up(a, b); }
+double iv64_debug_sub_down(double a, double b) { iv64_debug_inc(); return iv64_dir_sub_down(a, b); }
+double iv64_debug_sub_up  (double a, double b) { iv64_debug_inc(); return iv64_dir_sub_up(a, b); }
+double iv64_debug_mul_down(double a, double b) { iv64_debug_inc(); return iv64_dir_mul_down(a, b); }
+double iv64_debug_mul_up  (double a, double b) { iv64_debug_inc(); return iv64_dir_mul_up(a, b); }
+double iv64_debug_div_down(double a, double b) { iv64_debug_inc(); return iv64_dir_div_down(a, b); }
+double iv64_debug_div_up  (double a, double b) { iv64_debug_inc(); return iv64_dir_div_up(a, b); }
+double iv64_debug_sqrt_down(double a) { iv64_debug_inc(); return iv64_dir_sqrt_down(a); }
+double iv64_debug_sqrt_up  (double a) { iv64_debug_inc(); return iv64_dir_sqrt_up(a); }

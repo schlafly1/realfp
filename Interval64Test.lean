@@ -52,9 +52,10 @@ def xorshift (s : UInt64) : UInt64 :=
 
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
+  IO.println s!"C backend: {backendName}"
   IO.println s!"AVX-512F available: {avx512fAvailable}"
-  if !avx512fAvailable then
-    IO.println "ERROR: AVX-512F not available at runtime"
+  if !backendOk () then
+    IO.println "ERROR: compiled backend needs AVX-512F, which is not available at runtime"
     return 1
 
   -- C self-test report (AVX vs FE vs software oracles)
@@ -100,7 +101,7 @@ def main : IO UInt32 := do
   if sm.toBits != 0x8000000000000000 then
     fails := fails.push { op := "sqrt(-0) should be -0", a := Float.ofBits 0x8000000000000000, b := 0, left := sm, right := feSqrtDown (Float.ofBits 0x8000000000000000) }
 
-  IO.println s!"Lean AVX vs FE specials: {fails.size} mismatches"
+  IO.println s!"Lean backend vs FE specials: {fails.size} mismatches"
   for f in fails[:12] do
     IO.println (failToString f)
 
@@ -238,7 +239,7 @@ def main : IO UInt32 := do
   let leanFails := fails.size + ivFails + specFails.size + ratFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
-    IO.println "  (AVX vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
+    IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
     IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size}"

@@ -3,7 +3,8 @@ Directed binary64 `+`, `-`, `*`, `/`, `sqrt`.
 
 Each operator has a computable Lean specification (`*Spec` / `Interval64.Spec`)
 that the kernel can unfold and reason about. The compiled runtime is the
-AVX-512 C kernel, attached with `@[implemented_by]`. The two are intended to
+C backend kernel (`iv64_dir_*`), attached with `@[implemented_by]`: AVX-512
+embedded rounding on x86_64, round-to-nearest + exact error term on aarch64. The two are intended to
 be bit-identical (all NaNs equal, signed zeros distinguished); the test
 executable checks this differentially.
 
@@ -19,6 +20,18 @@ namespace Interval64.Directed
 opaque hasAvx512f (u : Unit) : Bool
 
 def avx512fAvailable : Bool := hasAvx512f ()
+
+/-- Compiled C backend: 0 = AVX-512 embedded rounding, 1 = RN + exact error term. -/
+@[extern "iv64_backend_id_unit"]
+opaque backendId (u : Unit) : UInt8
+
+/-- True if the compiled backend can run on this CPU (AVX-512F present, or the
+    portable RN + exact-error backend). -/
+@[extern "iv64_backend_ok_unit"]
+opaque backendOk (u : Unit) : Bool
+
+def backendName : String :=
+  if backendId () == 0 then "avx512 (embedded rounding)" else "rn+err (round-to-nearest + exact error term)"
 
 @[extern "iv64_next_up"]
 opaque nextUp (x : Float) : Float
@@ -47,20 +60,20 @@ def divUpSpec   (a b : Float) : Float := Float.ofBits (Spec.divUp   a.toBits b.t
 def sqrtDownSpec (a : Float) : Float := Float.ofBits (Spec.sqrtDown a.toBits)
 def sqrtUpSpec   (a : Float) : Float := Float.ofBits (Spec.sqrtUp   a.toBits)
 
-/-! # Compiled implementations (AVX-512 embedded rounding; no debug counter) -/
+/-! # Compiled implementations (backend C kernels: AVX-512 or RN + exact error; no debug counter) -/
 
-@[extern "iv64_avx_add_down"] opaque addDownImpl (a b : Float) : Float
-@[extern "iv64_avx_add_up"]   opaque addUpImpl   (a b : Float) : Float
-@[extern "iv64_avx_sub_down"] opaque subDownImpl (a b : Float) : Float
-@[extern "iv64_avx_sub_up"]   opaque subUpImpl   (a b : Float) : Float
-@[extern "iv64_avx_mul_down"] opaque mulDownImpl (a b : Float) : Float
-@[extern "iv64_avx_mul_up"]   opaque mulUpImpl   (a b : Float) : Float
-@[extern "iv64_avx_div_down"] opaque divDownImpl (a b : Float) : Float
-@[extern "iv64_avx_div_up"]   opaque divUpImpl   (a b : Float) : Float
-@[extern "iv64_avx_sqrt_down"] opaque sqrtDownImpl (a : Float) : Float
-@[extern "iv64_avx_sqrt_up"]   opaque sqrtUpImpl   (a : Float) : Float
+@[extern "iv64_dir_add_down"] opaque addDownImpl (a b : Float) : Float
+@[extern "iv64_dir_add_up"]   opaque addUpImpl   (a b : Float) : Float
+@[extern "iv64_dir_sub_down"] opaque subDownImpl (a b : Float) : Float
+@[extern "iv64_dir_sub_up"]   opaque subUpImpl   (a b : Float) : Float
+@[extern "iv64_dir_mul_down"] opaque mulDownImpl (a b : Float) : Float
+@[extern "iv64_dir_mul_up"]   opaque mulUpImpl   (a b : Float) : Float
+@[extern "iv64_dir_div_down"] opaque divDownImpl (a b : Float) : Float
+@[extern "iv64_dir_div_up"]   opaque divUpImpl   (a b : Float) : Float
+@[extern "iv64_dir_sqrt_down"] opaque sqrtDownImpl (a : Float) : Float
+@[extern "iv64_dir_sqrt_up"]   opaque sqrtUpImpl   (a : Float) : Float
 
-/-! # Public operators: spec for the kernel, AVX-512 C at runtime -/
+/-! # Public operators: spec for the kernel, backend C at runtime -/
 
 @[implemented_by addDownImpl]
 def addDown (a b : Float) : Float := addDownSpec a b
@@ -106,8 +119,8 @@ abbrev avxSqrtUp := sqrtUp
 @[extern "iv64_fe_sqrt_down"] opaque feSqrtDown (a : Float) : Float
 @[extern "iv64_fe_sqrt_up"]   opaque feSqrtUp   (a : Float) : Float
 
-/-- Run the C self-test (AVX vs fesetround vs software oracles) and print a report.
-    Returns the number of recorded failures. The official gate is AVX vs fesetround. -/
+/-- Run the C self-test (backend vs fesetround vs software oracles, and RN+err vs fesetround) and print a report.
+    Returns the number of recorded failures. The official gate is backend vs fesetround. -/
 @[extern "iv64_selftest_report"]
 opaque selftestReport (u : Unit) : UInt64
 

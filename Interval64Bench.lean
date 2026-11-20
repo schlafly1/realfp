@@ -44,7 +44,7 @@ def kernel (t : Interval64 × Interval64 × Interval64 × Interval64 × Interval
 
 def main : IO Unit := do
   IO.println "Interval64 benches"
-  IO.println s!"AVX-512F available: {avx512fAvailable}"
+  IO.println s!"C backend: {backendName}  AVX-512F available: {avx512fAvailable}"
   IO.println "----- C kernels (pinned by the caller if using taskset) -----"
   let sinkC := runCBenches ()
   IO.println s!"C bench returned sink={sinkC}"

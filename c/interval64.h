@@ -10,12 +10,39 @@ extern "C" {
 #endif
 
 uint8_t iv64_has_avx512f(void);
+/* 0 = AVX-512 embedded rounding, 1 = RN + exact error term (aarch64 / generic). */
+uint8_t iv64_backend_id(void);
+
+/* Backend used by Lean: AVX-512 on x86_64, RN + exact error elsewhere. */
+double iv64_dir_add_down(double a, double b);
+double iv64_dir_add_up(double a, double b);
+double iv64_dir_sub_down(double a, double b);
+double iv64_dir_sub_up(double a, double b);
+double iv64_dir_mul_down(double a, double b);
+double iv64_dir_mul_up(double a, double b);
+double iv64_dir_div_down(double a, double b);
+double iv64_dir_div_up(double a, double b);
+double iv64_dir_sqrt_down(double a);
+double iv64_dir_sqrt_up(double a);
+
+/* Portable RN + exact error term kernels (c/iv64_rnerr.h); never change FPCR/MXCSR
+   except on the rare tiny-result slow path of mul/div. */
+double iv64_rn_add_down(double a, double b);
+double iv64_rn_add_up(double a, double b);
+double iv64_rn_sub_down(double a, double b);
+double iv64_rn_sub_up(double a, double b);
+double iv64_rn_mul_down(double a, double b);
+double iv64_rn_mul_up(double a, double b);
+double iv64_rn_div_down(double a, double b);
+double iv64_rn_div_up(double a, double b);
+double iv64_rn_sqrt_down(double a);
+double iv64_rn_sqrt_up(double a);
 
 /* nextafter-style helpers (bit-identical IEEE nextUp / nextDown, independent of rounding mode). */
 double iv64_next_up(double x);
 double iv64_next_down(double x);
 
-/* AVX-512 embedded rounding (does not change MXCSR). */
+/* AVX-512 embedded rounding (does not change MXCSR). x86_64 + -mavx512f only. */
 double iv64_avx_add_down(double a, double b);
 double iv64_avx_add_up(double a, double b);
 double iv64_avx_sub_down(double a, double b);
