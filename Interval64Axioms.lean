@@ -21,3 +21,9 @@ import Interval64Proofs
 #print axioms Interval64Proofs.AddBits.add_mem
 #print axioms Interval64Proofs.AddBits.add_exact_of_same
 #print axioms Interval64Proofs.AddBits.target_eq_of_normal
+#print axioms Interval64Proofs.ExactAdd.add_exact
+#print axioms Interval64Proofs.ExactAdd.add_exact_int
+#print axioms Interval64Proofs.ExactAdd.int_le_pow53_representable
+#print axioms Interval64Proofs.ExactAdd.normalizeDirected_eq_of_canonical
+#print axioms Interval64Proofs.ExactAdd.roundDirected_eq_of_canonical
+
