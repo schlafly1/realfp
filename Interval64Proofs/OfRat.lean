@@ -40,11 +40,11 @@ theorem signedVal_ratSign {q : Rat} {M : Nat} {E : Int} (h : ratAbs q = mag M E)
   unfold ratAbs at h
   split
   · rename_i hlt
-    rw [if_pos hlt] at h
+    rw [ite_eq_left hlt] at h
     simp only [signedVal]
     rw [← h, Rat.neg_neg]
   · rename_i hlt
-    rw [if_neg hlt] at h
+    rw [ite_eq_right hlt] at h
     exact h
 
 theorem floor_nonneg {Y : Rat} (h : 0 ≤ Y) : 0 ≤ Y.floor :=

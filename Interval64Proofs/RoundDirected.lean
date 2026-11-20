@@ -92,7 +92,7 @@ theorem rounded_le_pow53 (s : Sign) (up : Bool) (m k : Nat)
     shiftRight_exact_mantissa m k
   cases hacc : ((ExtendedMantissa.ofMantissaAndAccuracy m .exact) >>> k).accuracy with
   | exact =>
-    simp [hacc, hm']
+    simp [hm']
     exact Nat.le_of_lt hm
   | inexact o =>
     simp [roundMantissaDirected_inexact, hm']
@@ -213,7 +213,7 @@ theorem roundDirected_lo (s : Sign) (m : Nat) (e : Int) :
           (firstRounded s m e false).2 Accuracy.exact).1.mantissa ≠ 0 :=
       shiftToTarget_short_ne_zero he hm h0
     dsimp
-    rw [dif_neg hne]
+    rw [dite_eq_right hne]
     have hpres := signedVal_shiftToTarget_short s he hm
     have : signedVal s
         (shiftToTargetExponent spec64 (firstRounded s m e false).1
@@ -249,7 +249,7 @@ theorem roundDirected_hi (s : Sign) (m : Nat) (e : Int) :
           (firstRounded s m e true).2 Accuracy.exact).1.mantissa ≠ 0 :=
       shiftToTarget_short_ne_zero he hm h0
     dsimp
-    rw [dif_neg hne]
+    rw [dite_eq_right hne]
     have hpres := signedVal_shiftToTarget_short s he hm
     have : signedVal s m e ≤
         signedVal s

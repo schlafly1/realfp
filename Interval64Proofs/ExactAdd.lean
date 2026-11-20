@@ -29,7 +29,7 @@ theorem rat_eq_nat_mul_pow {m m' k : Nat}
     rfl
   exact Rat.natCast_inj.mp this
 
-theorem mag_eq_cases {m m' : Nat} {e e' : Int} (hm : 0 < m) (hm' : 0 < m')
+theorem mag_eq_cases {m m' : Nat} {e e' : Int} (_hm : 0 < m) (_hm' : 0 < m')
     (h : mag m e = mag m' e') :
     (e ≤ e' ∧ m = m' * 2 ^ (e' - e).toNat) ∨
       (e' ≤ e ∧ m' = m * 2 ^ (e - e').toNat) := by
@@ -275,7 +275,7 @@ theorem roundDirected_eq_of_canonical (s : Sign) (m : Nat) (e : Int) (up : Bool)
     rw [hmnt]
     exact Nat.ne_of_gt h'
   dsimp
-  rw [dif_neg hne]
+  rw [dite_eq_right hne]
   exact finite_congr s _ h' hmnt hexp
 
 theorem signedVal_of_pos_toNat (mant : Int) (e : Int) (h : 0 < mant) :
@@ -364,7 +364,7 @@ theorem bitsToRat?_packDirected_zero (up : Bool) (s : Sign) :
   simp [packDirected_zero, bitsToRat?, unpackBits_zero, toRat?]
 
 theorem representable_cases {q : Rat} (h : ∃ c, bitsToRat? c = some q) :
-    q = 0 ∨ ∃ s m e, ∃ hp : 0 < m, IsCanonicalFinite m e ∧ q = signedVal s m e := by
+    q = 0 ∨ ∃ s m e, ∃ _hp : 0 < m, IsCanonicalFinite m e ∧ q = signedVal s m e := by
   rcases h with ⟨c, hc⟩
   rcases bitsToRat?_cases hc with h0 | hf
   · rcases h0 with ⟨_, _, rfl⟩

@@ -32,7 +32,7 @@ theorem exponentVec_trichotomy (v : BitVec spec64.exponentBits) :
   · by_cases h1 : v.toNat = 2047
     · right; left
       apply BitVec.eq_of_toNat_eq
-      simp [BitVec.neg_one_eq_allOnes, BitVec.toNat_allOnes, exponentBits_pow, h1]
+      simp [BitVec.neg_one_eq_allOnes, h1]
     · right; right
       refine ⟨hpos, ?_⟩
       have : 2 ^ spec64.exponentBits - 1 = 2047 := by rw [exponentBits_pow]
@@ -42,7 +42,7 @@ theorem exponentVec_trichotomy (v : BitVec spec64.exponentBits) :
 theorem zero_ne_negOne_11 : (0#11 : BitVec 11) ≠ -1#11 := by
   intro h
   have := congrArg BitVec.toNat h
-  simp [BitVec.neg_one_eq_allOnes, BitVec.toNat_allOnes] at this
+  simp [BitVec.neg_one_eq_allOnes] at this
 
 theorem unpack_of_inf_field {b : BitVec spec64.numBits}
     (hinf : unpackExponent b = -1#_) :
@@ -65,8 +65,8 @@ theorem unpack_of_subnormal {b : BitVec spec64.numBits}
     intro h
     rw [hz] at h
     have ht := congrArg BitVec.toNat h
-    simp [BitVec.neg_one_eq_allOnes, BitVec.toNat_allOnes, exponentBits_pow] at ht
-  simp [UnpackedFloat.unpack, hne1, hz, hmnz, zero_ne_negOne_11]
+    simp [BitVec.neg_one_eq_allOnes] at ht
+  simp [UnpackedFloat.unpack, hz, hmnz]
 
 theorem unpack_of_zero_field {b : BitVec spec64.numBits}
     (hz : unpackExponent b = 0#_) (hm0 : unpackMantissa b = 0#_) :
@@ -75,8 +75,8 @@ theorem unpack_of_zero_field {b : BitVec spec64.numBits}
     intro h
     rw [hz] at h
     have ht := congrArg BitVec.toNat h
-    simp [BitVec.neg_one_eq_allOnes, BitVec.toNat_allOnes, exponentBits_pow] at ht
-  simp [UnpackedFloat.unpack, hne1, hz, hm0, zero_ne_negOne_11]
+    simp [BitVec.neg_one_eq_allOnes] at ht
+  simp [UnpackedFloat.unpack, hz, hm0]
 
 theorem unpack_of_normal_field {b : BitVec spec64.numBits}
     (hne0 : unpackExponent b ≠ 0#_) (hne1 : unpackExponent b ≠ -1#_) :
@@ -119,7 +119,7 @@ theorem unpack_finite_is_canonical {b : BitVec spec64.numBits} {s : Sign}
       refine Or.inl ⟨?_, ?_, ?_⟩
       · rw [he, hz]
         simp [exponentBits_spec64, exponentBias_spec64,
-          mantissaBitsWithoutImplicit_spec64, minExponent_spec64]
+          minExponent_spec64]
       · rw [hm]
         exact Nat.pos_of_ne_zero (fun hmz =>
           hm0 (BitVec.eq_of_toNat_eq (by simp [hmz])))
@@ -133,7 +133,7 @@ theorem unpack_finite_is_canonical {b : BitVec spec64.numBits} {s : Sign}
   · have hne0 : unpackExponent b ≠ 0#_ := by
       intro heq
       have := congrArg BitVec.toNat heq
-      simp [BitVec.toNat_zero] at this
+      simp at this
       exact Nat.ne_of_gt hpos this
     have hne1 : unpackExponent b ≠ -1#_ := by
       intro heq
@@ -162,7 +162,7 @@ theorem unpack_finite_is_canonical {b : BitVec spec64.numBits} {s : Sign}
     have hle : spec64.minExponent ≤ e := by
       have heq : ((unpackExponent b).toNat : Int) ≥ 1 := by exact_mod_cast (Nat.succ_le_of_lt hpos)
       rw [he]
-      simp [exponentBias_spec64, mantissaBitsWithoutImplicit_spec64, minExponent_spec64]
+      simp [exponentBias_spec64, minExponent_spec64]
       omega
     have hlt : e < overflowExponent := by
       have hpow : 2 ^ spec64.exponentBits - 1 = 2047 := by rw [exponentBits_pow]
@@ -172,7 +172,7 @@ theorem unpack_finite_is_canonical {b : BitVec spec64.numBits} {s : Sign}
       have hbound : (unpackExponent b).toNat ≤ 2046 := Nat.le_of_lt_succ hlt2047
       rw [he]
       have hbias : (spec64.exponentBias + spec64.mantissaBitsWithoutImplicit : Int) = 1075 := by
-        simp [exponentBias_spec64, mantissaBitsWithoutImplicit_spec64]
+        simp [exponentBias_spec64]
       have hov : overflowExponent = 972 := rfl
       have hcast : ((unpackExponent b).toNat : Int) ≤ (2046 : Int) :=
         Int.ofNat_le.mpr hbound
@@ -399,7 +399,7 @@ theorem decreaseExponent_id (m : Nat) (e : Int) :
     decreaseExponent m e e = (m, e) := by
   simp only [decreaseExponent]
   have : (e - e).toNat = 0 := by simp
-  simp [this, Nat.shiftLeft_zero]
+  simp [Nat.shiftLeft_zero]
 
 theorem target_eq_of_normal {m : Nat} {e : Int} (hn : IsNormal m e) :
     spec64.targetExponent (totalExponent m e) = e := by

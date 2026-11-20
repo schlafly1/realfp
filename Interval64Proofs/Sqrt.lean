@@ -277,7 +277,7 @@ theorem mul_self_lt_mul_self {a b : Rat} (ha : 0 ≤ a) (h : a < b) : a * a < b 
     have h2 : a * b < b * b := Rat.mul_lt_mul_of_pos_right h hb
     exact rat_lt_trans h1 h2
 
-theorem le_of_sq_le_sq {a b : Rat} (ha : 0 ≤ a) (hb : 0 ≤ b) (h : a * a ≤ b * b) :
+theorem le_of_sq_le_sq {a b : Rat} (_ha : 0 ≤ a) (hb : 0 ≤ b) (h : a * a ≤ b * b) :
     a ≤ b := by
   by_cases hle : a ≤ b
   · exact hle
@@ -966,7 +966,7 @@ theorem sqrt_mem_iv {x r : Rat} {X : Interval64.Interval64}
 /-- The representable root cannot be subnormal if `sqrtCore` used a
     normal-range target exponent. -/
 theorem sqrt_rep_not_subnormal {m : Nat} {e : Int} {m' : Nat} {e' : Int}
-    (h0 : 0 < m) (hs : m < 2 ^ 53) (h' : 0 < m')
+    (h0 : 0 < m) (hs : m < 2 ^ 53) (_h' : 0 < m')
     (hgt : spec64.minExponent < (sqrtCore spec64 m e).2.1)
     (hv : mag m e = mag m' e' * mag m' e')
     (hsub : IsSubnormal m' e') : False := by

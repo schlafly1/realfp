@@ -376,17 +376,17 @@ theorem le_of_not_lt_of_rats {a b : Float} {qa qb : Rat}
       · rcases hfb with ⟨sb, mb, eb, _, hub, _, _⟩
         cases sa <;> cases sb
         · simp [UnpackedFloat.le, UnpackedFloat.lt, hua, hub, UnpackedFloat.compare,
-            Option.any, beq_iff_eq] at hlt ⊢
+            Option.any] at hlt ⊢
           rw [compare_then_swap ea eb ma mb]
           cases hc : (compare ea eb).then (compare ma mb) <;>
-            simp [hc, Ordering.swap, Ordering.isLE, Ordering.isGE] at hlt ⊢
+            simp [hc, Ordering.swap, Ordering.isGE] at hlt ⊢
         · simp [UnpackedFloat.lt, hua, hub, UnpackedFloat.compare] at hlt
         · simp [UnpackedFloat.le, hua, hub, UnpackedFloat.compare, Option.any]
         · simp [UnpackedFloat.le, UnpackedFloat.lt, hua, hub, UnpackedFloat.compare,
-            Option.any, beq_iff_eq] at hlt ⊢
+            Option.any] at hlt ⊢
           rw [compare_then_swap ea eb ma mb]
           cases hc : (compare ea eb).then (compare ma mb) <;>
-            simp [hc, Ordering.swap, Ordering.isLE, Ordering.isGE] at hlt ⊢
+            simp [hc, Ordering.swap, Ordering.isLE] at hlt ⊢
   exact (float_le_iff b a).mpr hle
 
 theorem bitsToRat?_fmin {a b : Float} {qa qb : Rat}
@@ -431,7 +431,7 @@ theorem fmin_negInf {a b : Float}
   | true =>
     cases h with
     | inl haI =>
-      simp [hdec]; exact haI
+      simp; exact haI
     | inr hbI =>
       have hlt : a < b := of_decide_eq_true hdec
       have hub : unpackBits b.toBits = .infinity .negative := unpackBits_eq_negInf hbI
@@ -444,13 +444,13 @@ theorem fmin_negInf {a b : Float}
       | infinity s =>
         cases s with
         | positive => simp [hua, UnpackedFloat.compare] at hlt'
-        | negative => simp [hdec, bitsToEVal, hua]
+        | negative => simp [bitsToEVal, hua]
       | zero s => simp [hua, UnpackedFloat.compare] at hlt'
       | finite s m e hm => simp [hua, UnpackedFloat.compare] at hlt'
   | false =>
     cases h with
     | inr hbI =>
-      simp [hdec]; exact hbI
+      simp; exact hbI
     | inl haI =>
       have hlt : ¬ a < b := of_decide_eq_false hdec
       have hua : unpackBits a.toBits = .infinity .negative := unpackBits_eq_negInf haI
@@ -464,7 +464,7 @@ theorem fmin_negInf {a b : Float}
         | positive =>
           have hs : compare Sign.negative Sign.positive = .lt := rfl
           simp [UnpackedFloat.lt, hub, UnpackedFloat.compare, hs] at hlt'
-        | negative => simp [hdec, bitsToEVal, hub]
+        | negative => simp [bitsToEVal, hub]
       | zero s => simp [UnpackedFloat.lt, hub, UnpackedFloat.compare] at hlt'
       | finite s m e hm => simp [UnpackedFloat.lt, hub, UnpackedFloat.compare] at hlt'
 
@@ -477,7 +477,7 @@ theorem fmax_posInf {a b : Float}
   | true =>
     cases h with
     | inl haI =>
-      simp [hdec]; exact haI
+      simp; exact haI
     | inr hbI =>
       have hlt : b < a := of_decide_eq_true hdec
       have hub : unpackBits b.toBits = .infinity .positive := unpackBits_eq_posInf hbI
@@ -490,13 +490,13 @@ theorem fmax_posInf {a b : Float}
       | infinity s =>
         cases s with
         | negative => simp [hua, UnpackedFloat.compare] at hlt'
-        | positive => simp [hdec, bitsToEVal, hua]
+        | positive => simp [bitsToEVal, hua]
       | zero s => simp [hua, UnpackedFloat.compare] at hlt'
       | finite s m e hm => simp [hua, UnpackedFloat.compare] at hlt'
   | false =>
     cases h with
     | inr hbI =>
-      simp [hdec]; exact hbI
+      simp; exact hbI
     | inl haI =>
       have hgt : ¬ a > b := of_decide_eq_false hdec
       have hua : unpackBits a.toBits = .infinity .positive := unpackBits_eq_posInf haI
@@ -510,7 +510,7 @@ theorem fmax_posInf {a b : Float}
           rw [hub, hua] at hlt'
           have hs : compare Sign.negative Sign.positive = .lt := rfl
           simp [UnpackedFloat.lt, UnpackedFloat.compare, hs] at hlt'
-        | positive => simp [hdec, bitsToEVal, hub]
+        | positive => simp [bitsToEVal, hub]
       | zero s =>
         rw [hub, hua] at hlt'
         simp [UnpackedFloat.lt, UnpackedFloat.compare] at hlt'
@@ -866,7 +866,7 @@ theorem bitsToRat?_of_memIv_lo {x : Rat} {I : Interval64}
   cases ev with
   | rat q =>
     refine ⟨q, ?_⟩
-    simpa [bitsToRat?_eq_bitsToEVal, hev]
+    simp [bitsToRat?_eq_bitsToEVal, hev]
   | negInf =>
     have hunp := unpackBits_eq_negInf hev
     have : I.lo.isInf = true := by
@@ -884,7 +884,7 @@ theorem bitsToRat?_of_memIv_hi {x : Rat} {I : Interval64}
   cases ev with
   | rat q =>
     refine ⟨q, ?_⟩
-    simpa [bitsToRat?_eq_bitsToEVal, hev]
+    simp [bitsToRat?_eq_bitsToEVal, hev]
   | posInf =>
     have hunp := unpackBits_eq_posInf hev
     have : I.hi.isInf = true := by

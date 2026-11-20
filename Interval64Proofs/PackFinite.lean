@@ -23,7 +23,7 @@ open Float.Model.UnpackedFloat
 /-! ### Biased exponent of a canonical normal -/
 
 theorem biased_int_eq {e : Int}
-    (hle : spec64.minExponent ≤ e) (hlt : e < overflowExponent) :
+    (hle : spec64.minExponent ≤ e) (_hlt : e < overflowExponent) :
     (e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit : Int) =
       ((e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat : Int) := by
   rw [exponentBias_spec64, mantissaBitsWithoutImplicit_spec64]
@@ -48,7 +48,7 @@ theorem biased_bounds {e : Int}
     simp [overflowExponent] at hlt
     omega
   have hcast : (e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit : Int) = e + 1075 := by
-    simp [exponentBias_spec64, mantissaBitsWithoutImplicit_spec64]
+    simp [exponentBias_spec64]
     omega
   constructor
   · have : (0 : Int) < ((e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat : Int) := by
@@ -75,7 +75,7 @@ theorem overflow_of_ge {e : Int} (hov : overflowExponent ≤ e) :
     2 ^ spec64.exponentBits ≤
       (e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat + 1 := by
   have hpos : (0 : Int) ≤ e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit := by
-    simp [overflowExponent, exponentBias_spec64, mantissaBitsWithoutImplicit_spec64] at hov
+    simp [overflowExponent] at hov
     omega
   have heq : ((e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat : Int) =
       e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit :=
@@ -85,9 +85,9 @@ theorem overflow_of_ge {e : Int} (hov : overflowExponent ≤ e) :
     omega
   have : (2047 : Int) ≤ ((e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat : Int) := by
     rw [heq]
-    simp [exponentBias_spec64, mantissaBitsWithoutImplicit_spec64]
+    simp [exponentBias_spec64]
     omega
-  simp [exponentBits_spec64]
+  simp
   have : 2047 ≤ (e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat :=
     Int.ofNat_le.mp this
   omega
@@ -190,7 +190,7 @@ theorem unpack_pack_normal (s : Sign) {m : Nat} {e : Int} (h : 0 < m)
     simp only [exponentBits_spec64, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt11]
     have heq := biased_int_eq hle hlt
     rw [← heq]
-    simp [exponentBias_spec64, mantissaBitsWithoutImplicit_spec64]
+    simp [exponentBias_spec64]
     omega
   exact finite_congr s _ h hmant hexp
 
@@ -211,8 +211,7 @@ theorem not_overflow_of_subnormal {m : Nat} {e : Int} (hs : IsSubnormal m e) :
         (e + spec64.exponentBias + spec64.mantissaBitsWithoutImplicit).toNat + 1) := by
   have ⟨he, _, _⟩ := hs
   rw [he]
-  simp [minExponent_spec64, exponentBias_spec64, mantissaBitsWithoutImplicit_spec64,
-    exponentBits_pow]
+  simp [minExponent_spec64, exponentBias_spec64]
 
 theorem pack_subnormal_eq (s : Sign) {m : Nat} {e : Int} (h : 0 < m) (hs : IsSubnormal m e) :
     UnpackedFloat.pack spec64 (.finite s m e h) =
@@ -237,7 +236,7 @@ theorem unpack_pack_subnormal (s : Sign) {m : Nat} {e : Int} (h : 0 < m)
   have hmnz : BitVec.ofNat spec64.mantissaBitsWithoutImplicit m ≠ 0#_ := by
     intro heq
     have ht := congrArg BitVec.toNat heq
-    simp [mantissaBitsWithoutImplicit_spec64, BitVec.toNat_ofNat, BitVec.toNat_zero] at ht
+    simp [mantissaBitsWithoutImplicit_spec64, BitVec.toNat_ofNat] at ht
     rw [Nat.mod_eq_of_lt hhi] at ht
     exact Nat.ne_of_gt hm ht
   simp only [hmnz, ↓reduceDIte]
@@ -245,7 +244,7 @@ theorem unpack_pack_subnormal (s : Sign) {m : Nat} {e : Int} (h : 0 < m)
     simp [mantissaBitsWithoutImplicit_spec64, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hhi]
   have hexp : ((0#_ : BitVec spec64.exponentBits).toNat : Int) -
       (spec64.exponentBias + spec64.mantissaBitsWithoutImplicit) + 1 = e := by
-    simp [exponentBits_spec64, exponentBias_spec64, mantissaBitsWithoutImplicit_spec64, he,
+    simp [exponentBits_spec64, exponentBias_spec64, he,
       minExponent_spec64]
   exact finite_congr s _ h hmant hexp
 

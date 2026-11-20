@@ -85,7 +85,7 @@ theorem mul_encloses_lo {a b : UInt64} {qa qb : Rat}
     · rcases hzb with ⟨s2, hu2, rfl⟩
       rw [hu1, hu2]
       simp only [mulU]
-      exact loEncloses_packDirected_zero_val _ _ _ (by simp [loEncloses?, loEncloses, Rat.zero_mul])
+      exact loEncloses_packDirected_zero_val _ _ _ (by simp [loEncloses?, loEncloses])
     · rcases hfb with ⟨s2, m2, e2, h2, hu2, rfl, _⟩
       rw [hu1, hu2]
       simp only [mulU]
@@ -121,7 +121,7 @@ theorem mul_encloses_hi {a b : UInt64} {qa qb : Rat}
     · rcases hzb with ⟨s2, hu2, rfl⟩
       rw [hu1, hu2]
       simp only [mulU]
-      exact hiEncloses_packDirected_zero_val _ _ _ (by simp [hiEncloses?, hiEncloses, Rat.zero_mul])
+      exact hiEncloses_packDirected_zero_val _ _ _ (by simp [hiEncloses?, hiEncloses])
     · rcases hfb with ⟨s2, m2, e2, h2, hu2, rfl, _⟩
       rw [hu1, hu2]
       simp only [mulU]

@@ -104,11 +104,11 @@ theorem signedOf_div (s₁ s₂ : Sign) (a b : Rat) :
   · have h : (Sign.negative / Sign.negative : Sign) = .positive := rfl
     simp [signedOf, h, neg_div, div_neg, Rat.neg_neg]
   · have h : (Sign.negative / Sign.positive : Sign) = .negative := rfl
-    simp [signedOf, h, neg_div, div_neg, Rat.neg_neg]
+    simp [signedOf, h, neg_div]
   · have h : (Sign.positive / Sign.negative : Sign) = .negative := rfl
-    simp [signedOf, h, neg_div, div_neg, Rat.neg_neg]
+    simp [signedOf, h, div_neg]
   · have h : (Sign.positive / Sign.positive : Sign) = .positive := rfl
-    simp [signedOf, h, neg_div, div_neg, Rat.neg_neg]
+    simp [signedOf, h]
 
 theorem mag_ne_zero {m : Nat} {e : Int} (h : 0 < m) : mag m e ≠ 0 := by
   intro hz
@@ -116,7 +116,7 @@ theorem mag_ne_zero {m : Nat} {e : Int} (h : 0 < m) : mag m e ≠ 0 := by
   rw [hz] at hp
   exact Rat.lt_irrefl hp
 
-theorem mag_div (m₁ : Nat) (e₁ : Int) (m₂ : Nat) (e₂ : Int) (h₂ : 0 < m₂) :
+theorem mag_div (m₁ : Nat) (e₁ : Int) (m₂ : Nat) (e₂ : Int) (_h₂ : 0 < m₂) :
     mag m₁ e₁ / mag m₂ e₂ = (m₁ : Rat) / (m₂ : Rat) * pow2 (e₁ - e₂) := by
   unfold mag
   have : (m₁ : Rat) * pow2 e₁ / ((m₂ : Rat) * pow2 e₂) =
@@ -132,7 +132,7 @@ theorem mag_div (m₁ : Nat) (e₁ : Int) (m₂ : Nat) (e₂ : Int) (h₂ : 0 < 
               Rat.mul_assoc]
   rw [this, pow2_sub]
 
-theorem signedVal_div (s₁ s₂ : Sign) (m₁ m₂ : Nat) (e₁ e₂ : Int) (h₂ : 0 < m₂) :
+theorem signedVal_div (s₁ s₂ : Sign) (m₁ m₂ : Nat) (e₁ e₂ : Int) (_h₂ : 0 < m₂) :
     signedVal s₁ m₁ e₁ / signedVal s₂ m₂ e₂ =
       signedOf (s₁ / s₂) (mag m₁ e₁ / mag m₂ e₂) := by
   rw [signedVal_signedOf, signedVal_signedOf]
@@ -286,11 +286,11 @@ theorem canonical_mantissa_lt {m : Nat} {e : Int} (h : IsCanonicalFinite m e) :
 theorem firstRoundedAcc_norm_inexact (s : Sign) (m : Nat) (e : Int)
     (o : Ordering) (up : Bool)
     (h : e ≤ spec64.minExponent ∨ 2 ^ 52 ≤ m)
-    (h0 : (firstRoundedAcc s m e (.inexact o) up).1 ≠ 0) :
+    (_h0 : (firstRoundedAcc s m e (.inexact o) up).1 ≠ 0) :
     (firstRoundedAcc s m e (.inexact o) up).2 = spec64.minExponent ∨
       2 ^ 52 ≤ (firstRoundedAcc s m e (.inexact o) up).1 := by
-  unfold firstRoundedAcc at h0 ⊢
-  dsimp at h0 ⊢
+  unfold firstRoundedAcc at _h0 ⊢
+  dsimp at _h0 ⊢
   let k := (spec64.targetExponent (totalExponent m e) - e).toNat
   have hmnt :
       (shiftToTargetExponent spec64 m e (.inexact o)).1.mantissa = m >>> k := by
@@ -617,7 +617,7 @@ theorem mag_div_nonneg (m₁ : Nat) (e₁ : Int) (m₂ : Nat) (e₂ : Int) (h₂
   exact Rat.mul_nonneg (mag_nonneg m₁ e₁)
     (Rat.le_of_lt (Rat.inv_pos.mpr (mag_pos h₂)))
 
-theorem signedMag_signedOf (s : Sign) {r : Rat} (h : 0 ≤ r) :
+theorem signedMag_signedOf (s : Sign) {r : Rat} (_h : 0 ≤ r) :
     signedMag s (signedOf s r) = r := by
   cases s <;> simp [signedMag, signedOf, Rat.neg_neg]
 
@@ -900,7 +900,7 @@ theorem div_rep_not_subnormal {m₁ m₂ : Nat} {e₁ e₂ : Int}
 
 theorem div_rep_te_le_exp {m₁ m₂ : Nat} {e₁ e₂ : Int}
     {m' : Nat} {e' : Int}
-    (h₁ : 0 < m₁) (hs : m₁ < 2 ^ 53) (h₂ : 0 < m₂) (h' : 0 < m')
+    (h₁ : 0 < m₁) (hs : m₁ < 2 ^ 53) (h₂ : 0 < m₂) (_h' : 0 < m')
     (hc : IsCanonicalFinite m' e')
     (hv : mag m₁ e₁ / mag m₂ e₂ = mag m' e') :
     (divCore spec64 m₁ e₁ m₂ e₂).2.1 ≤ e' := by
@@ -1278,7 +1278,7 @@ theorem inv_le_inv_of_neg {a b : Rat} (hb : b < 0) (h : a ≤ b) : b⁻¹ ≤ a�
   simpa [Rat.neg_neg] using this
 
 theorem inv_bounds {y blo bhi : Rat}
-    (hyl : blo ≤ y) (hyh : y ≤ bhi) (hy0 : y ≠ 0)
+    (hyl : blo ≤ y) (hyh : y ≤ bhi) (_hy0 : y ≠ 0)
     (hs : 0 < blo ∨ bhi < 0) :
     bhi⁻¹ ≤ y⁻¹ ∧ y⁻¹ ≤ blo⁻¹ := by
   cases hs with

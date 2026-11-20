@@ -261,9 +261,9 @@ theorem firstRounded_mantissa_normal {s : Sign} {m : Nat} {e : Int} {up : Bool}
         (decreaseExponent m e (spec64.targetExponent (totalExponent m e))).1
         (decreaseExponent m e (spec64.targetExponent (totalExponent m e))).2
         Accuracy.exact).1.accuracy with
-    | exact => simp [hacc]
+    | exact => simp
     | inexact o =>
-      simp [roundMantissaDirected_inexact, hacc]
+      simp [roundMantissaDirected_inexact]
       split <;> simp
   exact Nat.le_trans hlo hge
 
@@ -310,14 +310,14 @@ theorem roundDirected_zero_or_shaped (s : Sign) (m : Nat) (e : Int) (up : Bool) 
       rw [h0, shiftToTargetExponent_exact_mantissa, shiftAmount_of_short he (by decide),
         Nat.shiftRight_zero]
     dsimp
-    rw [dif_pos hshift0]
+    rw [dite_eq_left hshift0]
     refine Or.inl ⟨s, rfl⟩
   · have hne :
         (shiftToTargetExponent spec64 (firstRounded s m e up).1
           (firstRounded s m e up).2 Accuracy.exact).1.mantissa ≠ 0 :=
       shiftToTarget_short_ne_zero he hle h0
     dsimp
-    rw [dif_neg hne]
+    rw [dite_eq_right hne]
     refine Or.inr ?_
     refine ⟨(shiftToTargetExponent spec64 (firstRounded s m e up).1
         (firstRounded s m e up).2 Accuracy.exact).1.mantissa,
