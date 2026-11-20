@@ -1288,3 +1288,30 @@ uint64_t iv64_run_benches(void *u) {
   fflush(stdout);
   return (uint64_t)sink;
 }
+
+/* ---- Lean FFI debug wrappers (not used by C benches) ---- */
+static uint64_t iv64_debug_ops = 0;
+
+uint64_t iv64_debug_reset(uint64_t token) {
+  (void)token;
+  iv64_debug_ops = 0;
+  return 0;
+}
+
+uint64_t iv64_debug_count(uint64_t token) {
+  (void)token;
+  return iv64_debug_ops;
+}
+
+static inline void iv64_debug_inc(void) { iv64_debug_ops++; }
+
+double iv64_lean_add_down(double a, double b) { iv64_debug_inc(); return iv64_avx_add_down(a, b); }
+double iv64_lean_add_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_add_up(a, b); }
+double iv64_lean_sub_down(double a, double b) { iv64_debug_inc(); return iv64_avx_sub_down(a, b); }
+double iv64_lean_sub_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_sub_up(a, b); }
+double iv64_lean_mul_down(double a, double b) { iv64_debug_inc(); return iv64_avx_mul_down(a, b); }
+double iv64_lean_mul_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_mul_up(a, b); }
+double iv64_lean_div_down(double a, double b) { iv64_debug_inc(); return iv64_avx_div_down(a, b); }
+double iv64_lean_div_up  (double a, double b) { iv64_debug_inc(); return iv64_avx_div_up(a, b); }
+double iv64_lean_sqrt_down(double a) { iv64_debug_inc(); return iv64_avx_sqrt_down(a); }
+double iv64_lean_sqrt_up  (double a) { iv64_debug_inc(); return iv64_avx_sqrt_up(a); }

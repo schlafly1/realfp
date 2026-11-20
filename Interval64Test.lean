@@ -35,26 +35,30 @@ structure Fail where
   op : String
   a : Float
   b : Float
-  avx : Float
-  fe : Float
+  left : Float
+  right : Float
 
-def check2 (op : String) (a b avx fe : Float) (acc : Array Fail) : Array Fail :=
-  if sameBitsOrNaN avx fe then acc else acc.push { op, a, b, avx, fe }
-
-def checkBin (name : String) (avx fe : Float → Float → Float) (acc : Array Fail) : Array Fail :=
-  Id.run do
-    let mut acc := acc
-    for ha in specials do
-      for hb in specials do
-        let a := Float.ofBits ha
-        let b := Float.ofBits hb
-        acc := check2 s!"{name}.down" a b (avx a b) (fe a b) acc
-    return acc
-
--- The above only used one direction; do both in main.
+def check2 (op : String) (a b left right : Float) (acc : Array Fail) : Array Fail :=
+  if sameBitsOrNaN left right then acc else acc.push { op, a, b, left, right }
 
 def failToString (f : Fail) : String :=
-  s!"  {f.op} a={showF f.a} b={showF f.b} avx={showF f.avx} fe={showF f.fe}"
+  s!"  {f.op} a={showF f.a} b={showF f.b} left={showF f.left} right={showF f.right}"
+
+def xorshift (s : UInt64) : UInt64 :=
+  let z0 := s + 0x9e3779b97f4a7c15
+  let z1 := (z0 ^^^ (z0 >>> 30)) * 0xbf58476d1ce4e5b9
+  let z2 := (z1 ^^^ (z1 >>> 27)) * 0x94d049bb133111eb
+  z2 ^^^ (z2 >>> 31)
+
+/-- Mix in some random bit patterns, keeping a few "ordinary" finite values. -/
+def randomBits (seed : UInt64) (n : Nat) : Array UInt64 :=
+  Id.run do
+    let mut s := seed
+    let mut out := #[]
+    for _ in [0:n] do
+      s := xorshift s
+      out := out.push s
+    return out
 
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
@@ -99,12 +103,12 @@ def main : IO UInt32 := do
   let zDown := avxAddDown 1.0 (-1.0)
   let zUp   := avxAddUp   1.0 (-1.0)
   if zDown.toBits != 0x8000000000000000 then
-    fails := fails.push { op := "1+(-1) down should be -0", a := 1.0, b := -1.0, avx := zDown, fe := feAddDown 1.0 (-1.0) }
+    fails := fails.push { op := "1+(-1) down should be -0", a := 1.0, b := -1.0, left := zDown, right := feAddDown 1.0 (-1.0) }
   if zUp.toBits != 0 then
-    fails := fails.push { op := "1+(-1) up should be +0", a := 1.0, b := -1.0, avx := zUp, fe := feAddUp 1.0 (-1.0) }
+    fails := fails.push { op := "1+(-1) up should be +0", a := 1.0, b := -1.0, left := zUp, right := feAddUp 1.0 (-1.0) }
   let sm := avxSqrtDown (Float.ofBits 0x8000000000000000)
   if sm.toBits != 0x8000000000000000 then
-    fails := fails.push { op := "sqrt(-0) should be -0", a := Float.ofBits 0x8000000000000000, b := 0, avx := sm, fe := feSqrtDown (Float.ofBits 0x8000000000000000) }
+    fails := fails.push { op := "sqrt(-0) should be -0", a := Float.ofBits 0x8000000000000000, b := 0, left := sm, right := feSqrtDown (Float.ofBits 0x8000000000000000) }
 
   IO.println s!"Lean AVX vs FE specials: {fails.size} mismatches"
   for f in fails[:12] do
@@ -129,7 +133,6 @@ def main : IO UInt32 := do
   let ziv := Interval64.sqrt ⟨Float.ofBits 0x8000000000000000, 0.0⟩
   if !(ziv.lo == 0.0 && ziv.hi == 0.0 && ziv.lo.toBits == 0x8000000000000000 && ziv.hi.toBits == 0) then
     IO.println s!"note: sqrt[-0,+0] = lo={showF ziv.lo} hi={showF ziv.hi} (expected -0, +0)"
-    -- still accept if both are zero
     if !(ziv.lo == 0.0 && ziv.hi == 0.0) then ivFails := ivFails + 1
 
   -- Lean interval vs FE interval on a handful of finite intervals
@@ -163,12 +166,52 @@ def main : IO UInt32 := do
     IO.println "FAIL: 1/3 down should be < up"
     ivFails := ivFails + 1
 
-  let leanFails := fails.size + ivFails
-  -- Official gate: Lean AVX vs FE must be clean, and interval policy tests must pass.
-  -- The C report may include software-oracle mismatches (add/sub extreme exponents).
+  -------------------------------------------------------------------------
+  -- Differential: compiled C runtime (`addDown`, etc.) vs Lean software spec
+  -------------------------------------------------------------------------
+  IO.println "----- C runtime vs Lean Spec -----"
+  let mut specFails : Array Fail := #[]
+  for ha in specials do
+    for hb in specials do
+      let a := Float.ofBits ha
+      let b := Float.ofBits hb
+      specFails := check2 "spec add.down" a b (addDown a b) (addDownSpec a b) specFails
+      specFails := check2 "spec add.up"   a b (addUp a b)   (addUpSpec a b)   specFails
+      specFails := check2 "spec sub.down" a b (subDown a b) (subDownSpec a b) specFails
+      specFails := check2 "spec sub.up"   a b (subUp a b)   (subUpSpec a b)   specFails
+      specFails := check2 "spec mul.down" a b (mulDown a b) (mulDownSpec a b) specFails
+      specFails := check2 "spec mul.up"   a b (mulUp a b)   (mulUpSpec a b)   specFails
+      specFails := check2 "spec div.down" a b (divDown a b) (divDownSpec a b) specFails
+      specFails := check2 "spec div.up"   a b (divUp a b)   (divUpSpec a b)   specFails
+    let a := Float.ofBits ha
+    specFails := check2 "spec sqrt.down" a 0 (sqrtDown a) (sqrtDownSpec a) specFails
+    specFails := check2 "spec sqrt.up"   a 0 (sqrtUp a)   (sqrtUpSpec a)   specFails
+
+  -- Random bit patterns (including NaN / Inf / subnormals)
+  let rnd := randomBits 0xC0FFEE 64
+  for ha in rnd do
+    for hb in rnd[:8] do
+      let a := Float.ofBits ha
+      let b := Float.ofBits hb
+      specFails := check2 "specR add.down" a b (addDown a b) (addDownSpec a b) specFails
+      specFails := check2 "specR add.up"   a b (addUp a b)   (addUpSpec a b)   specFails
+      specFails := check2 "specR mul.down" a b (mulDown a b) (mulDownSpec a b) specFails
+      specFails := check2 "specR mul.up"   a b (mulUp a b)   (mulUpSpec a b)   specFails
+      specFails := check2 "specR div.down" a b (divDown a b) (divDownSpec a b) specFails
+      specFails := check2 "specR div.up"   a b (divUp a b)   (divUpSpec a b)   specFails
+    let a := Float.ofBits ha
+    specFails := check2 "specR sqrt.down" a 0 (sqrtDown a) (sqrtDownSpec a) specFails
+    specFails := check2 "specR sqrt.up"   a 0 (sqrtUp a)   (sqrtUpSpec a)   specFails
+
+  IO.println s!"C runtime vs Lean spec: {specFails.size} mismatches"
+  for f in specFails[:16] do
+    IO.println (failToString f)
+
+  let leanFails := fails.size + ivFails + specFails.size
   if leanFails == 0 then
-    IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED (AVX vs fesetround bit-identical on specials)"
+    IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
+    IO.println "  (AVX vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size}"
     return 1

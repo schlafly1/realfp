@@ -1,9 +1,13 @@
 /-
 A small Lean 4 library for binary64 interval arithmetic with hardware
-directed rounding. Scalar operations are `@[extern]` C kernels (AVX-512
-embedded rounding, plus a fesetround fallback). They do not go through
-Lean’s `Float.add` / `Float.mul` / etc.
+directed rounding. Each directed scalar operation has a computable Lean
+specification (software IEEE binary64 rounding) and an AVX-512 C runtime
+attached with `@[implemented_by]`. Interval operations are defined in Lean
+on top of those scalars, so they inherit both the spec and the fast path.
 -/
+import Interval64.Spec
 import Interval64.Directed
 import Interval64.Interval
 import Interval64.Widen
+import Interval64.Theorems
+import Interval64.NativeDecide

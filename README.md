@@ -1,24 +1,34 @@
 # Interval64
 
-A small Lean 4 (v4.36.0) prototype for **binary64 interval arithmetic** with
-**hardware directed rounding**. Transcendentals are out of scope.
+A small Lean 4 (v4.36.0) library for **binary64 interval arithmetic** with
+**hardware directed rounding**. Transcendentals are out of scope. The core
+has **no Mathlib / FloatLib dependency**.
 
-The core library has **no Mathlib / FloatLib dependency**. Directed operations
-are `@[extern]` C kernels; they do **not** call Lean’s `Float.add` (whose
-logical model is round-to-nearest-even).
+Each directed scalar operation (`+`, `-`, `*`, `/`, `sqrt`, down and up) has:
+
+- a **computable Lean specification** (`Interval64.Spec` / `addDownSpec`, …)
+  that the kernel can unfold — a software IEEE 754 binary64 implementation
+  built on Lean 4.36’s `Float.Model.UnpackedFloat`, with round-toward-±∞
+  (including IEEE 754-2019 §6.3 signed zeros and overflow to ±∞ vs ±MaxFinite);
+- an **AVX-512 C runtime** (`_mm_add_round_sd` and friends) attached with
+  `@[implemented_by]`. Compiled code, `#eval`, and `native_decide` use the
+  C kernel. The kernel itself sees the Lean body.
+
+Interval operations (`Interval64.add`, `mul`, …) are defined in Lean on top
+of those scalars, so they inherit both the spec and the fast path.
 
 ## Kernels
 
-- **AVX-512 embedded rounding** (`_mm_add_round_sd` and friends, with
-  `_MM_FROUND_TO_NEG_INF` / `_MM_FROUND_TO_POS_INF` and `_MM_FROUND_NO_EXC`).
-  These do not change MXCSR.
+- **AVX-512 embedded rounding** (does not change MXCSR).
 - **fesetround fallback** (save / compute / restore), compiled with
   `-frounding-math -ffp-contract=off -fno-math-errno`.
 - **RN + 1-ulp widening**, for speed comparison.
 - A **batched `FE_UPWARD`** interval kernel using `-up(-x)` for lower bounds.
 
 The C file is compiled with **gcc** (`cc`). The Lean 4.36 bundled clang on
-this box is missing `immintrin.h`.
+this box is missing `immintrin.h`. Lake packages the object as
+`extern_lib libleaninterval64` so downstream projects and
+`precompileModules` / `#eval` see the C symbols.
 
 ## Build and run
 
@@ -27,8 +37,12 @@ export PATH="$HOME/.elan/bin:$PATH"
 cd /workspace/interval64_avx512
 lake build
 lake exe interval64_tests
+lake exe interval64_native
 taskset -c 0 nice -n 19 lake exe interval64_bench
 ```
+
+A tiny downstream project lives at `/workspace/interval64_consumer`
+(`require interval64 from "../interval64_avx512"`).
 
 ## Interval policy
 
@@ -36,8 +50,24 @@ taskset -c 0 nice -n 19 lake exe interval64_bench
 - Division by an interval containing `0` → whole line `[-∞, +∞]`.
 - `sqrt` of `hi < 0` → invalid; `lo < 0 ≤ hi` clips to `[+0, hi]`; `sqrt(-0) = -0`.
 
-## Trust
+## Proofs and trust
 
-Compiled AVX-512 / `fesetround` / libm `sqrt` under the flags above, plus the
-CPU’s IEEE directed rounding. Not kernel-checked. Official tests compare the
-two hardware paths bit-for-bit (all NaNs equal, signed zeros distinguished).
+Theorems in `Interval64.Theorems` are about the **Lean spec** and are
+kernel-checked (`decide` / `rfl`); they introduce no extra axioms. They
+cover signed-zero rules, exact cases such as `1+1` and `1+2^{-53}`, NaN
+propagation lemmas, and a concrete rational enclosure for `1+2^{-53}`.
+
+A general theorem `round-down(a+b) ≤ a+b ≤ round-up(a+b)` for arbitrary
+finite inputs is **not** proved in this revision (no `sorry` is left in
+the tree). The compiled C path is a trust assumption, checked
+differentially against the Lean spec and against `fesetround`.
+
+`Interval64.NativeDecide.demoHi_le` (`demoHi ≤ 3.75` for
+`demoIv = [0.5, 1.5]`, `demoHi = (demoIv * demoIv + demoIv).hi`) is proved
+by `native_decide`. In Lean 4.36 this introduces a generated axiom
+`demoHi_le._native.native_decide.ax_1_1` (plus `propext`,
+`Classical.choice`, `Quot.sound`), rather than the older name
+`Lean.ofReduceBool`. A debug counter around that `native_decide` went
+from 0 to 10, i.e. the compiled predicate called the AVX-512 C kernels
+(8 directed muls + 2 directed adds). Runtime `addDown` is ~1.7 ns/op
+versus ~2.9 µs/op for the software `addDownSpec`.
