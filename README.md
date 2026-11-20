@@ -71,3 +71,23 @@ by `native_decide`. In Lean 4.36 this introduces a generated axiom
 from 0 to 10, i.e. the compiled predicate called the AVX-512 C kernels
 (8 directed muls + 2 directed adds). Runtime `addDown` is ~1.7 ns/op
 versus ~2.9 µs/op for the software `addDownSpec`.
+
+## Representability, `ofRat`, and tightness
+
+`Interval64/OfRat.lean` defines `Spec.Representable q` (some bit pattern has
+value `q`, decidable via `Spec.isRepresentable`), `Spec.ofRatDown` /
+`Spec.ofRatUp` (directed rounding of a rational, with IEEE overflow to `±inf`
+and `maxFinite`), and `Interval64.ofRat` / `ofRatInterval`.
+
+Proved (kernel-checked, axioms `propext`, `Classical.choice`, `Quot.sound` only):
+
+* `OfRat`: `ofRatDown q` is the greatest representable `≤ q` (`-inf` iff none),
+  `ofRatUp q` the least `≥ q`; `Representable q ↔ value (ofRatDown q) = q`.
+* `Tight`: `addDown/subDown/mulDown/divDown` (nonzero divisor) are the tight
+  roundings of the exact result, hence equal `ofRatDown` of it at value level;
+  same for `Up`. No representable value lies strictly inside the gap.
+* `TightSqrt`: `sqrtDown a` is the greatest representable `ρ ≥ 0` with
+  `ρ² ≤ qa`, `sqrtUp a` the least with `qa ≤ ρ²`.
+* `TightIv`, `TightSqrt`: for finite-endpoint intervals, `X+Y`, `X-Y`, `X*Y`,
+  `X/Y` (`0 ∉ Y`) and `sqrt X` (`hi ≥ 0`) have the greatest representable
+  lower bound and least representable upper bound of the exact range.

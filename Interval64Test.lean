@@ -203,11 +203,39 @@ def main : IO UInt32 := do
     nSqrt := nSqrt + 2
   IO.println s!"  random cases: add={nAdd} sub={nSub} mul={nMul} div={nDiv} sqrt={nSqrt}"
 
+  -- ofRat consistency: directed ops agree (by value) with ofRatDown/ofRatUp of the
+  -- exact rational result, and every finite float is representable.
+  let mut ratFails := 0
+  let mut nRat := 0
+  let mut r := (0xBADC0DE : UInt64)
+  for _ in [0:400] do
+    r := xorshift r; let a := Float.ofBits r
+    r := xorshift r; let b := Float.ofBits r
+    match Spec.bitsToRat? a.toBits, Spec.bitsToRat? b.toBits with
+    | some qa, some qb =>
+      nRat := nRat + 1
+      let v := fun (f : Float) => Spec.bitsToRat? f.toBits
+      let vb := fun (u : UInt64) => Spec.bitsToRat? u
+      if !(Spec.isRepresentable qa) then ratFails := ratFails + 1
+      if v (addDown a b) != vb (Spec.ofRatDown (qa + qb)) then ratFails := ratFails + 1
+      if v (addUp a b) != vb (Spec.ofRatUp (qa + qb)) then ratFails := ratFails + 1
+      if v (subDown a b) != vb (Spec.ofRatDown (qa - qb)) then ratFails := ratFails + 1
+      if v (subUp a b) != vb (Spec.ofRatUp (qa - qb)) then ratFails := ratFails + 1
+      if v (mulDown a b) != vb (Spec.ofRatDown (qa * qb)) then ratFails := ratFails + 1
+      if v (mulUp a b) != vb (Spec.ofRatUp (qa * qb)) then ratFails := ratFails + 1
+      if qb != 0 then
+        if v (divDown a b) != vb (Spec.ofRatDown (qa / qb)) then ratFails := ratFails + 1
+        if v (divUp a b) != vb (Spec.ofRatUp (qa / qb)) then ratFails := ratFails + 1
+    | _, _ => pure ()
+  if Spec.isRepresentable (1/10 : Rat) then ratFails := ratFails + 1
+  if !(Spec.isRepresentable (3/4 : Rat)) then ratFails := ratFails + 1
+  IO.println s!"ofRat vs directed ops (value level): {nRat} finite pairs, {ratFails} mismatches"
+
   IO.println s!"C runtime vs Lean spec: {specFails.size} mismatches"
   for f in specFails[:16] do
     IO.println (failToString f)
 
-  let leanFails := fails.size + ivFails + specFails.size
+  let leanFails := fails.size + ivFails + specFails.size + ratFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (AVX vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
