@@ -1,10 +1,13 @@
 /-
-Capstone: `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`, obtained from interval
-mul/add enclosure plus representable exactness of the upper corner
-`1.5 * 1.5 + 1.5`. The compiled hook `demoHi_le` (via `native_decide`)
-confirms the same floating-point upper bound.
+Capstone: `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`, obtained from the reusable
+`MemIv` / `hi_le_of_native` bridge. Membership of `x` in `demoIv` is lifted
+through the Lean `Interval64` `mul` and `add` by `mul_mem_iv` and
+`add_mem_iv`; the only numeric fact in `sq_add_le` is the compiled check
+`demoHi_le` (`native_decide`). The earlier exactness-based proof is kept
+as `sq_add_le_of_exact`.
 -/
 import Interval64Proofs.Mul
+import Interval64Proofs.IntervalMem
 import Interval64.NativeDecide
 
 namespace Interval64Proofs.Capstone
@@ -17,6 +20,8 @@ open Interval64Proofs.PackFinite
 open Interval64Proofs.AddBits
 open Interval64Proofs.ExactAdd
 open Interval64Proofs.Mul
+open Interval64Proofs.FloatBits
+open Interval64Proofs.IntervalMem
 open Interval64.NativeDecide
 open Float.Model
 open Float.Model.UnpackedFloat
@@ -246,13 +251,48 @@ theorem mem_of_bounds {x : Rat} {lo hi : UInt64} {q r : Rat}
   · simp [hiEncloses?, hiEncloses, hr]
     exact hge
 
-/-- The compiled interval evaluation `demoHi ≤ 3.75`, invoked so its
-    `native_decide` axiom is part of the capstone record. -/
+theorem half_toBits : (0.5 : Float).toBits = bitsHalf := by decide
+theorem threeHalves_toBits : (1.5 : Float).toBits = bitsThreeHalves := by decide
+theorem fifteenQuarters_toBits : (3.75 : Float).toBits = bitsFifteenQuarters := by decide
+
+theorem bitsToRat?_float_half :
+    bitsToRat? (0.5 : Float).toBits = some ((1 : Rat) / 2) := by
+  rw [half_toBits, bitsToRat?_half]
+
+theorem bitsToRat?_float_threeHalves :
+    bitsToRat? (1.5 : Float).toBits = some ((3 : Rat) / 2) := by
+  rw [threeHalves_toBits, bitsToRat?_threeHalves]
+
+theorem bitsToRat?_float_fifteenQuarters :
+    bitsToRat? (3.75 : Float).toBits = some ((15 : Rat) / 4) := by
+  rw [fifteenQuarters_toBits, bitsToRat?_fifteenQuarters]
+
+theorem mem_demoIv {x : Rat}
+    (hlo : (1 : Rat) / 2 ≤ x) (hhi : x ≤ (3 : Rat) / 2) :
+    MemIv x demoIv :=
+  mem_of_bounds bitsToRat?_float_half bitsToRat?_float_threeHalves hlo hhi
+
+/-- The compiled interval evaluation `demoHi ≤ 3.75`. -/
 theorem demoHi_le' : demoHi ≤ 3.75 :=
   demoHi_le
 
-/-- `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`. -/
+/-- `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`, from `demoHi_le` plus the
+    reusable `MemIv` bridge. The only numeric fact is `native_decide`. -/
 theorem sq_add_le {x : Rat}
+    (hlo : (1 : Rat) / 2 ≤ x) (hhi : x ≤ (3 : Rat) / 2) :
+    x * x + x ≤ (15 : Rat) / 4 := by
+  have hx : MemIv x demoIv := mem_demoIv hlo hhi
+  have hsq : MemIv (x * x) (demoIv * demoIv) :=
+    mul_mem_iv hx hx
+      ⟨_, bitsToRat?_float_half⟩ ⟨_, bitsToRat?_float_threeHalves⟩
+      ⟨_, bitsToRat?_float_half⟩ ⟨_, bitsToRat?_float_threeHalves⟩
+  have hadd : MemIv (x * x + x) (demoIv * demoIv + demoIv) :=
+    add_mem_iv hsq hx
+  exact hi_le_of_native hadd demoHi_le bitsToRat?_float_fifteenQuarters
+
+/-- Previous capstone, derived by exactness of the representable corners
+    rather than from `demoHi_le`. -/
+theorem sq_add_le_of_exact {x : Rat}
     (hlo : (1 : Rat) / 2 ≤ x) (hhi : x ≤ (3 : Rat) / 2) :
     x * x + x ≤ (15 : Rat) / 4 := by
   have hx : Mem x bitsHalf bitsThreeHalves :=

@@ -42,10 +42,10 @@ def ofBounds (lo hi : Float) : Interval64 :=
   else if decide (hi < lo) then ⟨hi, lo⟩
   else ⟨lo, hi⟩
 
-private def fmin (x y : Float) : Float := if decide (x < y) then x else y
-private def fmax (x y : Float) : Float := if decide (x > y) then x else y
+def fmin (x y : Float) : Float := if decide (x < y) then x else y
+def fmax (x y : Float) : Float := if decide (x > y) then x else y
 
-private def anyNan (a b : Interval64) : Bool :=
+def anyNan (a b : Interval64) : Bool :=
   a.lo.isNaN || a.hi.isNaN || b.lo.isNaN || b.hi.isNaN
 
 /-- AVX-512 directed interval addition. -/
@@ -57,7 +57,7 @@ def sub (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
   else ⟨subDown a.lo b.hi, subUp a.hi b.lo⟩
 
-private def accCorner (x y : Float) (lo hi : Float) (got : Bool) : Float × Float × Bool :=
+def accCorner (x y : Float) (lo hi : Float) (got : Bool) : Float × Float × Bool :=
   if (x == 0 && y.isInf) || (y == 0 && x.isInf) then
     (lo, hi, got)
   else
