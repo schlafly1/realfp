@@ -33,4 +33,7 @@ import Interval64Proofs
 #print axioms Interval64Proofs.Mul.mul_mem_nonpos_nonneg
 #print axioms Interval64Proofs.Mul.mul_exact
 #print axioms Interval64Proofs.Mul.mul_exact_int
+#print axioms Interval64Proofs.Capstone.sq_add_le
+#print axioms Interval64Proofs.Capstone.demoHi_le'
+#print axioms Interval64.NativeDecide.demoHi_le
 
