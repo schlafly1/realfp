@@ -41,4 +41,9 @@ import Interval64Proofs
 #print axioms Interval64Proofs.Capstone.sq_add_le_of_exact
 #print axioms Interval64Proofs.Capstone.demoHi_le'
 #print axioms Interval64.NativeDecide.demoHi_le
+#print axioms Interval64Proofs.Sub.sub_encloses
+#print axioms Interval64Proofs.Sub.sub_exact
+#print axioms Interval64Proofs.Sub.sub_exact_int
+#print axioms Interval64Proofs.Sub.sub_mem_iv
+#print axioms Interval64Proofs.Sub.not_memIv_invalid
 
