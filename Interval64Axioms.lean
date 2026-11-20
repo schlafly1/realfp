@@ -46,4 +46,10 @@ import Interval64Proofs
 #print axioms Interval64Proofs.Sub.sub_exact_int
 #print axioms Interval64Proofs.Sub.sub_mem_iv
 #print axioms Interval64Proofs.Sub.not_memIv_invalid
+#print axioms Interval64Proofs.RoundInexact.roundDirected_lo_acc
+#print axioms Interval64Proofs.RoundInexact.roundDirected_hi_acc
+#print axioms Interval64Proofs.Div.memIv_whole
+#print axioms Interval64Proofs.Div.mag_div_bracket
+#print axioms Interval64Proofs.Div.firstRoundedAcc_norm_of_enough
+#print axioms Interval64Proofs.IntervalMem.mul_mem_iv_of_finite
 

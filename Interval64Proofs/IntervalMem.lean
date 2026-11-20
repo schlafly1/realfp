@@ -857,4 +857,52 @@ theorem mul_mem_iv {x y : Rat} {X Y : Interval64}
             simp [hiEncloses?, hiEncloses]
             exact this
 
+
+/-- A finite (non-Inf, non-NaN) lower endpoint of a member interval has a rational value. -/
+theorem bitsToRat?_of_memIv_lo {x : Rat} {I : Interval64}
+    (hx : MemIv x I) (hinf : I.lo.isInf = false) :
+    ∃ q, bitsToRat? I.lo.toBits = some q := by
+  rcases bitsToEVal_some_of_loEncloses hx.1 with ⟨ev, hev⟩
+  cases ev with
+  | rat q =>
+    refine ⟨q, ?_⟩
+    simpa [bitsToRat?_eq_bitsToEVal, hev]
+  | negInf =>
+    have hunp := unpackBits_eq_negInf hev
+    have : I.lo.isInf = true := by
+      rw [float_isInf, hunp]
+      simp [UnpackedFloat.isInf]
+    simp [this] at hinf
+  | posInf =>
+    have := hx.1
+    simp [loEncloses?, loEncloses, hev] at this
+
+theorem bitsToRat?_of_memIv_hi {x : Rat} {I : Interval64}
+    (hx : MemIv x I) (hinf : I.hi.isInf = false) :
+    ∃ q, bitsToRat? I.hi.toBits = some q := by
+  rcases bitsToEVal_some_of_hiEncloses hx.2 with ⟨ev, hev⟩
+  cases ev with
+  | rat q =>
+    refine ⟨q, ?_⟩
+    simpa [bitsToRat?_eq_bitsToEVal, hev]
+  | posInf =>
+    have hunp := unpackBits_eq_posInf hev
+    have : I.hi.isInf = true := by
+      rw [float_isInf, hunp]
+      simp [UnpackedFloat.isInf]
+    simp [this] at hinf
+  | negInf =>
+    have := hx.2
+    simp [hiEncloses?, hiEncloses, hev] at this
+
+/-- `mul_mem_iv` with the finite-endpoint hypotheses phrased as `isInf = false`. -/
+theorem mul_mem_iv_of_finite {x y : Rat} {X Y : Interval64}
+    (hx : MemIv x X) (hy : MemIv y Y)
+    (hXlo : X.lo.isInf = false) (hXhi : X.hi.isInf = false)
+    (hYlo : Y.lo.isInf = false) (hYhi : Y.hi.isInf = false) :
+    MemIv (x * y) (X * Y) :=
+  mul_mem_iv hx hy
+    (bitsToRat?_of_memIv_lo hx hXlo) (bitsToRat?_of_memIv_hi hx hXhi)
+    (bitsToRat?_of_memIv_lo hy hYlo) (bitsToRat?_of_memIv_hi hy hYhi)
+
 end Interval64Proofs.IntervalMem
