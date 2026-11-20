@@ -54,5 +54,5 @@ echo "== 6. lake lean Examples.lean"
 lake lean Examples.lean
 echo "== 7. proofs + axiom report"
 lake build Interval64Proofs
-lake exe interval64_axioms | grep -c 'depends on axioms' | sed 's/^/theorems checked by #print axioms: /'
+scripts/check_axioms.sh   # counts #print axioms results, fails on sorryAx / unexpected axioms
 echo "== ALL DONE ($ARCH)"

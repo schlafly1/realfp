@@ -58,13 +58,15 @@ error, and step one ulp when needed. They never touch the FPCR on the main path.
 
 | op | RN result | exact error term |
 |----|-----------|------------------|
-| `a+b`, `a-b` | `s = a+b` | Fast2Sum (larger magnitude first): `y - (s - x)` |
+| `a+b`, `a-b` | `s = a+b` | branch-free TwoSum (operands below `2^1021`; larger ones use Fast2Sum on a cold path) |
 | `a*b` | `p = a*b` | `fma(a, b, -p)` |
 | `a/b` | `q = a/b` | `r = fma(-q, b, a)`; `a/b - q = r/b`, so `sign(r)·sign(b)` |
 | `sqrt a` | `s = sqrt(a)` | `fma(-s, s, a)` |
 
 If the exact value is above `r`, round-up returns `nextUp(r)`; if below,
 round-down returns `nextDown(r)`; otherwise `r` (branch-free on the bits).
+The hot path of each op is a single well-predicted range check on the operands or
+result; NaN/inf/zero/tiny/huge cases go to out-of-line cold functions.
 Special cases, all bit-identical to the Lean spec / AVX-512:
 
 - **Overflow:** if RN gives `±inf` from finite operands, the exact value is
@@ -94,7 +96,8 @@ near-overflow, small integers, near-exact quotients and squares, specials):
 - `--gen FILE N` / `--check FILE`: AVX-512 expected outputs, checked by an
   aarch64 build under `qemu-aarch64` (`scripts/test_arm64_qemu.sh`);
 - `--vs-fe N`: RN+err vs a `fesetround` (FPCR) reference, for real arm64 hardware;
-- `--bench`: micro-benchmark.
+- `--bench`: micro-benchmark, on normal-range operands and on the mixed test-generator
+  operands (which hit the slow and overflow paths often), reported separately.
 
 `lake build -R -Kbackend=rnerr` builds the arm64 backend on x86_64, so the
 Lean-side tests (`lake exe interval64_tests`, C runtime vs Lean spec) can run
@@ -106,8 +109,13 @@ against it; `lake build -R` switches back.
 sudo apt install -y build-essential git curl
 git clone https://github.com/schlafly1/realfp && cd realfp
 scripts/test_arm64.sh        # C tests + bench, installs elan if needed,
-                             # lake build, interval64_tests, Examples.lean, proofs
+                             # lake build, interval64_tests, Examples.lean, proofs,
+                             # and scripts/check_axioms.sh
 ```
+
+`scripts/check_axioms.sh` runs every `#print axioms` in `Interval64Axioms.lean`,
+checks the count, and fails on `sorryAx` or any axiom other than `propext`,
+`Classical.choice`, `Quot.sound` and the generated `native_decide` axioms.
 
 ## Interval policy
 

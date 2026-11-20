@@ -235,24 +235,26 @@ static double now_s(void) {
 }
 
 typedef double (*bin_t)(double, double);
-static double rn_add_up(double a, double b) { return iv64r_add(a, b, 1); }
-static double rn_mul_up(double a, double b) { return iv64r_mul(a, b, 1); }
-static double rn_div_up(double a, double b) { return iv64r_div(a, b, 1); }
-static double rn_sqrt_up(double a, double b) { (void)b; return iv64r_sqrt(a, 1); }
-static double fe_add_up(double a, double b) { return fe(OP_ADD, 1, a, b); }
-static double fe_mul_up(double a, double b) { return fe(OP_MUL, 1, a, b); }
-static double fe_div_up(double a, double b) { return fe(OP_DIV, 1, a, b); }
-static double fe_sqrt_up(double a, double b) { return fe(OP_SQRT, 1, a, b); }
-static double rn_plain_add(double a, double b) { return a + b; }
+static inline double rn_add_up(double a, double b) { return iv64r_add(a, b, 1); }
+static inline double rn_mul_up(double a, double b) { return iv64r_mul(a, b, 1); }
+static inline double rn_div_up(double a, double b) { return iv64r_div(a, b, 1); }
+static inline double rn_sqrt_up(double a, double b) { (void)b; return iv64r_sqrt(a, 1); }
+static inline double fe_add_up(double a, double b) { return fe(OP_ADD, 1, a, b); }
+static inline double fe_mul_up(double a, double b) { return fe(OP_MUL, 1, a, b); }
+static inline double fe_div_up(double a, double b) { return fe(OP_DIV, 1, a, b); }
+static inline double fe_sqrt_up(double a, double b) { return fe(OP_SQRT, 1, a, b); }
+static inline double rn_plain_add(double a, double b) { return a + b; }
 #if HAVE_AVX
-static double avx_add_up(double a, double b) { return avx(OP_ADD, 1, a, b); }
-static double avx_mul_up(double a, double b) { return avx(OP_MUL, 1, a, b); }
-static double avx_div_up(double a, double b) { return avx(OP_DIV, 1, a, b); }
-static double avx_sqrt_up(double a, double b) { return avx(OP_SQRT, 1, a, b); }
+static inline double avx_add_up(double a, double b) { return avx(OP_ADD, 1, a, b); }
+static inline double avx_mul_up(double a, double b) { return avx(OP_MUL, 1, a, b); }
+static inline double avx_div_up(double a, double b) { return avx(OP_DIV, 1, a, b); }
+static inline double avx_sqrt_up(double a, double b) { return avx(OP_SQRT, 1, a, b); }
 #endif
 
-/* throughput over independent random normal inputs; ns/op */
-static double bench(bin_t f, const double *xa, const double *xb, size_t n, int reps) {
+/* Throughput over independent inputs; ns/op, best of reps. always_inline so each
+   call site with a constant kernel is specialized (no indirect call in the loop). */
+static inline __attribute__((always_inline))
+double bench(bin_t f, const double *xa, const double *xb, size_t n, int reps) {
   volatile double sink = 0;
   double best = 1e30;
   for (int r = 0; r < reps; r++) {
@@ -264,6 +266,36 @@ static double bench(bin_t f, const double *xa, const double *xb, size_t n, int r
   }
   (void)sink;
   return best;
+}
+
+static void bench_table(const char *title, const double *xa, const double *xb, size_t n) {
+  printf("%s\n", title);
+  printf("  plain RN add (no rounding control) %6.2f\n", bench(rn_plain_add, xa, xb, n, 5));
+  printf("  op      rn+err   fesetround");
+#if HAVE_AVX
+  printf("   avx512");
+#endif
+  printf("\n");
+#if HAVE_AVX
+#define ROW(nm, r, f, a) printf("  %-7s %7.2f   %9.2f   %6.2f\n", nm, bench(r, xa, xb, n, 5), bench(f, xa, xb, n, 5), bench(a, xa, xb, n, 5))
+#else
+#define ROW(nm, r, f, a) printf("  %-7s %7.2f   %9.2f\n", nm, bench(r, xa, xb, n, 5), bench(f, xa, xb, n, 5))
+#endif
+  ROW("add_up", rn_add_up, fe_add_up, avx_add_up);
+  ROW("mul_up", rn_mul_up, fe_mul_up, avx_mul_up);
+  ROW("div_up", rn_div_up, fe_div_up, avx_div_up);
+  ROW("sqrt_up", rn_sqrt_up, fe_sqrt_up, avx_sqrt_up);
+#undef ROW
+}
+
+static void count_paths(const char *nm, const double *xa, const double *xb, size_t n) {
+  uint64_t s0 = n_slow, o0 = n_ovf;
+  volatile double t = 0;
+  for (size_t i = 0; i < n; i++)
+    t += rn_add_up(xa[i], xb[i]) + rn_mul_up(xa[i], xb[i]) + rn_div_up(xa[i], xb[i]) + rn_sqrt_up(xa[i], 0);
+  (void)t;
+  printf("  (%s set: fesetround slow paths %llu, overflow fixups %llu, over 4 x %zu ops)\n", nm,
+         (unsigned long long)(n_slow - s0), (unsigned long long)(n_ovf - o0), n);
 }
 
 int main(int argc, char **argv) {
@@ -340,30 +372,17 @@ int main(int argc, char **argv) {
     size_t n = argc > 2 ? strtoull(argv[2], 0, 0) : 1000000;
     double *xa = malloc(n * sizeof *xa), *xb = malloc(n * sizeof *xb);
     uint64_t s = 42;
-    for (size_t i = 0; i < n; i++) { xa[i] = rexp(&s, 1023 - 20, 1023 + 20); xb[i] = fabs(rexp(&s, 1023 - 20, 1023 + 20)); }
-    printf("micro-benchmark: %zu independent random normal inputs, best of 5, ns/op\n", n);
-    printf("  plain RN add         %6.2f\n", bench(rn_plain_add, xa, xb, n, 5));
-    printf("  op      rn+err   fesetround");
-#if HAVE_AVX
-    printf("   avx512");
-#endif
-    printf("\n");
-    struct { const char *nm; bin_t r, f; bin_t a; } rows[] = {
-#if HAVE_AVX
-      {"add_up", rn_add_up, fe_add_up, avx_add_up}, {"mul_up", rn_mul_up, fe_mul_up, avx_mul_up},
-      {"div_up", rn_div_up, fe_div_up, avx_div_up}, {"sqrt_up", rn_sqrt_up, fe_sqrt_up, avx_sqrt_up},
-#else
-      {"add_up", rn_add_up, fe_add_up, 0}, {"mul_up", rn_mul_up, fe_mul_up, 0},
-      {"div_up", rn_div_up, fe_div_up, 0}, {"sqrt_up", rn_sqrt_up, fe_sqrt_up, 0},
-#endif
-    };
-    for (int i = 0; i < 4; i++) {
-      printf("  %-7s %7.2f   %9.2f", rows[i].nm, bench(rows[i].r, xa, xb, n, 5), bench(rows[i].f, xa, xb, n, 5));
-#if HAVE_AVX
-      printf("   %6.2f", bench(rows[i].a, xa, xb, n, 5));
-#endif
-      printf("\n");
+    printf("micro-benchmark, ns/op (throughput), best of 5, %zu independent inputs\n", n);
+    /* normal range: |x| in [2^-20, 2^21), random sign (a > 0 so sqrt is meaningful) */
+    for (size_t i = 0; i < n; i++) {
+      xa[i] = fabs(rexp(&s, 1023 - 20, 1023 + 20)); xb[i] = rexp(&s, 1023 - 20, 1023 + 20);
     }
+    bench_table("[normal] random normal-range operands", xa, xb, n);
+    count_paths("normal", xa, xb, n);
+    s = 4242;
+    for (size_t i = 0; i < n; i++) gen_pair(&s, &xa[i], &xb[i]);
+    bench_table("[mixed] test-generator operands (specials, subnormal, huge, NaN, cancellation, ...)", xa, xb, n);
+    count_paths("mixed", xa, xb, n);
     free(xa); free(xb);
     return 0;
   }
