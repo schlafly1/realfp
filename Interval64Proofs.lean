@@ -3,3 +3,4 @@ import Interval64Proofs.RoundInexact
 import Interval64Proofs.Div
 import Interval64Proofs.IntervalMem
 import Interval64Proofs.Capstone
+import Interval64Proofs.Sqrt

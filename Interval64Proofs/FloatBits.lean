@@ -123,6 +123,16 @@ theorem divUp_toBits (a b : Float) :
       packBits (unpackBits (Spec.divUp a.toBits b.toBits)) := by
   simp only [Directed.divUp, divUpSpec, toBits_ofBits]
 
+theorem sqrtDown_toBits (a : Float) :
+    (Directed.sqrtDown a).toBits =
+      packBits (unpackBits (Spec.sqrtDown a.toBits)) := by
+  simp only [Directed.sqrtDown, sqrtDownSpec, toBits_ofBits]
+
+theorem sqrtUp_toBits (a : Float) :
+    (Directed.sqrtUp a).toBits =
+      packBits (unpackBits (Spec.sqrtUp a.toBits)) := by
+  simp only [Directed.sqrtUp, sqrtUpSpec, toBits_ofBits]
+
 /-! ### Comparing finite floats by rational value -/
 
 theorem mag_pow53_succ (e : Int) :
