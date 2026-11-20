@@ -46,3 +46,10 @@ lean_exe interval64_bench where
 
 lean_exe interval64_native where
   root := `Interval64Native
+
+/-- Enclosure theorems about the Lean spec. Separate from the runtime library
+    so the core stays light (and Mathlib-free). -/
+lean_lib Interval64Proofs
+
+lean_exe interval64_axioms where
+  root := `Interval64Axioms
