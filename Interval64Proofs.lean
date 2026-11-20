@@ -4,3 +4,6 @@ import Interval64Proofs.Div
 import Interval64Proofs.IntervalMem
 import Interval64Proofs.Capstone
 import Interval64Proofs.Sqrt
+import Interval64Proofs.Grid
+import Interval64Proofs.RoundOpt
+import Interval64Proofs.OfRat
