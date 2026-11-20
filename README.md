@@ -164,3 +164,57 @@ Proved (kernel-checked, axioms `propext`, `Classical.choice`, `Quot.sound` only)
 * `TightIv`, `TightSqrt`: for finite-endpoint intervals, `X+Y`, `X-Y`, `X*Y`,
   `X/Y` (`0 ∉ Y`) and `sqrt X` (`hi ≥ 0`) have the greatest representable
   lower bound and least representable upper bound of the exact range.
+
+## Mathlib layer (optional): theorems over `ℝ`
+
+The core stays Mathlib-free. `RealFPMathlib/` is a **separate Lake package**
+that requires the core by path (`require interval64 from ".."`) and Mathlib,
+and restates the core theorems over Mathlib's real numbers. Users who only
+want fast intervals never build or download Mathlib.
+
+**Toolchain pinning.** Mathlib must be built for exactly the same Lean as the
+core. `RealFPMathlib/lean-toolchain` is `leanprover/lean4:v4.36.0` (same as
+the root) and the lakefile pins Mathlib tag `v4.36.0`. When you upgrade Lean,
+bump the root `lean-toolchain`, `RealFPMathlib/lean-toolchain` and the Mathlib
+tag together, then `lake update` in `RealFPMathlib/`.
+
+```bash
+cd RealFPMathlib
+lake exe cache get        # prebuilt Mathlib oleans (~5 GB, a few minutes); never build Mathlib
+lake build                # core (C kernels too) + the Mathlib layer
+lake lean Examples.lean   # runnable examples (#eval uses the C kernels)
+scripts/check_axioms.sh   # axiom report for every theorem of the layer
+```
+
+Use it from your own Mathlib project (same Lean and Mathlib versions) with
+`require realfp_mathlib from "path/to/realfp/RealFPMathlib"` and
+`import RealFPMathlib`. (A git requirement with subdirectory,
+`... from git "https://github.com/schlafly1/realfp" @ "main" / "RealFPMathlib"`,
+should also work but has not been tested.)
+
+**What it provides** (namespace `RealFP`; files in `RealFPMathlib/RealFPMathlib/`):
+
+* `Basic`: `Float.toReal? : Float → Option ℝ` (exact value, `none` for ±∞/NaN),
+  `Float.toReal` (total, junk `0`), `Interval64.toSet : Interval64 → Set ℝ`
+  (extended-real reading: a `-∞`/`+∞` end gives an unbounded set, NaN gives `∅`;
+  `toSet_eq_Icc` for finite endpoints), `RepresentableR`, `IsRoundDownR`,
+  `IsRoundUpR` with transfer lemmas from the rational versions.
+* `Mem` (enclosure for real inputs):
+  `add_mem_toSet`, `sub_mem_toSet` (`x ∈ X.toSet → y ∈ Y.toSet → x + y ∈ (X + Y).toSet`,
+  infinite endpoints allowed); `mul_mem_toSet`, `div_mem_toSet` (`y ≠ 0`),
+  finite endpoints; `sqrt_mem_toSet` (`Real.sqrt x ∈ (sqrt X).toSet` for `0 ≤ x`).
+* `Tight`: `addDown_isRoundDownR` … `divUp_isRoundUpR`, `sqrtDown_isRoundDownR`,
+  `sqrtUp_isRoundUpR`: the directed result is the greatest representable real
+  `≤` (least `≥`) the exact real result, so `IsRoundDownR.no_between`: no
+  representable real lies strictly between. Interval level: `add/sub/mul/div_iv_optimalR`
+  (`div` needs `containsZero Y = false`), `add/sub_iv_tightR`, `sqrt_iv_tightR`,
+  `sqrt_iv_optimalR`; `ofRatDown_isRoundDownR`, `mem_toSet_ofRatInterval`.
+* `Demo` (not imported by `RealFPMathlib`): `sq_add_le : ∀ x ∈ Set.Icc (1/10 : ℝ) (3/10), x * x + x ≤ 13/32`,
+  `sqrt_two_bounds : 1.41421356 < √2 < 1.41421357`, `sqrt_le_on : ∀ x ∈ [2,3], √x ≤ 111/64`.
+
+**Trust.** Everything in `Basic`/`Mem`/`Tight` uses only `propext`,
+`Classical.choice`, `Quot.sound`. Only the `Demo` theorems use `native_decide`
+(one generated axiom each, and the compiled C kernels are trusted).
+`scripts/check_axioms.sh` enforces this. Mathlib itself does not accept
+`native_decide`, so proofs that use it are fine in your projects but cannot be
+upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.

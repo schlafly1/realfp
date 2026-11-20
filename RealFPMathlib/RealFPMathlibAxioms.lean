@@ -1,0 +1,82 @@
+/-
+Print the axioms used by every theorem of the Mathlib layer.
+Run with: `scripts/check_axioms.sh` (from RealFPMathlib/) or `lake lean RealFPMathlibAxioms.lean`.
+Only `RealFP.Demo.*` may use `native_decide` (the script enforces this).
+-/
+import RealFPMathlib
+import RealFPMathlib.Demo
+
+#print axioms RealFP.loR_rat
+#print axioms RealFP.hiR_rat
+#print axioms RealFP.loR_cast
+#print axioms RealFP.hiR_cast
+#print axioms RealFP.loR_mono
+#print axioms RealFP.hiR_mono
+#print axioms RealFP.mem_toSet
+#print axioms RealFP.cast_mem_toSet_iff
+#print axioms RealFP.toReal?_eq_some
+#print axioms RealFP.toReal?_of_bitsToRat?
+#print axioms RealFP.toReal_of_bitsToRat?
+#print axioms RealFP.toSet_eq_Icc
+#print axioms RealFP.mem_toSet_of_between
+#print axioms RealFP.exists_rat_le_of_mem
+#print axioms RealFP.exists_rat_ge_of_mem
+#print axioms RealFP.mem_toSet_of_rat_bounds
+#print axioms RealFP.le_of_mem_toSet_of_hi_le
+#print axioms RealFP.representableR_iff_exists_float
+#print axioms RealFP.representableR_cast
+#print axioms RealFP.isRoundDownR_cast_iff
+#print axioms RealFP.isRoundUpR_cast_iff
+#print axioms RealFP.IsRoundDownR.no_between
+#print axioms RealFP.IsRoundUpR.no_between
+#print axioms RealFP.IsRoundDownR.le
+#print axioms RealFP.IsRoundUpR.ge
+#print axioms RealFP.add_mem_toSet
+#print axioms RealFP.sub_mem_toSet
+#print axioms RealFP.memIv_endpoints
+#print axioms RealFP.exists_corner_le
+#print axioms RealFP.exists_corner_ge
+#print axioms RealFP.mul_mem_toSet
+#print axioms RealFP.exists_rat_pos_le
+#print axioms RealFP.exists_rat_neg_ge
+#print axioms RealFP.div_le_div_pos
+#print axioms RealFP.div_le_div_neg
+#print axioms RealFP.div_mem_toSet
+#print axioms RealFP.sqrt_mem_toSet
+#print axioms RealFP.addDown_isRoundDownR
+#print axioms RealFP.addUp_isRoundUpR
+#print axioms RealFP.subDown_isRoundDownR
+#print axioms RealFP.subUp_isRoundUpR
+#print axioms RealFP.mulDown_isRoundDownR
+#print axioms RealFP.mulUp_isRoundUpR
+#print axioms RealFP.divDown_isRoundDownR
+#print axioms RealFP.divUp_isRoundUpR
+#print axioms RealFP.isRoundDownR_sqrt_of_isSqrtDown
+#print axioms RealFP.isRoundUpR_sqrt_of_isSqrtUp
+#print axioms RealFP.sqrtDown_isRoundDownR
+#print axioms RealFP.sqrtUp_isRoundUpR
+#print axioms RealFP.ofRatDown_isRoundDownR
+#print axioms RealFP.ofRatUp_isRoundUpR
+#print axioms RealFP.isRepresentable_iff_representableR
+#print axioms RealFP.mem_toSet_ofRat
+#print axioms RealFP.mem_toSet_ofRatInterval
+#print axioms RealFP.Icc_subset_toSet_ofRatInterval
+#print axioms RealFP.add_iv_tightR
+#print axioms RealFP.sub_iv_tightR
+#print axioms RealFP.optimalR_of_optimal
+#print axioms RealFP.add_iv_optimalR
+#print axioms RealFP.sub_iv_optimalR
+#print axioms RealFP.mul_iv_optimalR
+#print axioms RealFP.div_iv_optimalR
+#print axioms RealFP.sqrt_iv_tightR
+#print axioms RealFP.sqrt_iv_optimalR
+#print axioms RealFP.Demo.I_lo_fin
+#print axioms RealFP.Demo.I_hi_fin
+#print axioms RealFP.Demo.J_hi_le
+#print axioms RealFP.Demo.sq_add_le
+#print axioms RealFP.Demo.S_lo
+#print axioms RealFP.Demo.S_hi
+#print axioms RealFP.Demo.sqrt_two_mem
+#print axioms RealFP.Demo.sqrt_two_bounds
+#print axioms RealFP.Demo.K_hi_le
+#print axioms RealFP.Demo.sqrt_le_on
