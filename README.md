@@ -10,16 +10,22 @@ Each directed scalar operation (`+`, `-`, `*`, `/`, `sqrt`, down and up) has:
   that the kernel can unfold — a software IEEE 754 binary64 implementation
   built on Lean 4.36’s `Float.Model.UnpackedFloat`, with round-toward-±∞
   (including IEEE 754-2019 §6.3 signed zeros and overflow to ±∞ vs ±MaxFinite);
-- an **AVX-512 C runtime** (`_mm_add_round_sd` and friends) attached with
-  `@[implemented_by]`. Compiled code, `#eval`, and `native_decide` use the
-  C kernel. The kernel itself sees the Lean body.
+- a **C runtime** attached with `@[implemented_by]` (externs `iv64_dir_*`),
+  selected at build time by architecture:
+  - **x86_64:** AVX-512 embedded rounding (`_mm_add_round_sd` and friends);
+  - **aarch64 (arm64) and others:** round-to-nearest + exact error term
+    (see [arm64 backend](#arm64-aarch64-backend)).
+
+  Compiled code, `#eval`, and `native_decide` use the C kernel. The kernel
+  itself sees the Lean body. The spec and all theorems are the same on both.
 
 Interval operations (`Interval64.add`, `mul`, …) are defined in Lean on top
 of those scalars, so they inherit both the spec and the fast path.
 
 ## Kernels
 
-- **AVX-512 embedded rounding** (does not change MXCSR).
+- **AVX-512 embedded rounding** (does not change MXCSR; x86_64 backend).
+- **RN + exact error term** (`c/iv64_rnerr.h`; aarch64 backend, also built on x86).
 - **fesetround fallback** (save / compute / restore), compiled with
   `-frounding-math -ffp-contract=off -fno-math-errno`.
 - **RN + 1-ulp widening**, for speed comparison.
@@ -43,6 +49,65 @@ taskset -c 0 nice -n 19 lake exe interval64_bench
 
 A tiny downstream project lives at `/workspace/interval64_consumer`
 (`require interval64 from "../interval64_avx512"`).
+
+## arm64 (aarch64) backend
+
+ARM has no per-instruction rounding mode, so on aarch64 the kernels in
+`c/iv64_rnerr.h` compute the round-to-nearest result `r` plus the **exact**
+error, and step one ulp when needed. They never touch the FPCR on the main path.
+
+| op | RN result | exact error term |
+|----|-----------|------------------|
+| `a+b`, `a-b` | `s = a+b` | Fast2Sum (larger magnitude first): `y - (s - x)` |
+| `a*b` | `p = a*b` | `fma(a, b, -p)` |
+| `a/b` | `q = a/b` | `r = fma(-q, b, a)`; `a/b - q = r/b`, so `sign(r)·sign(b)` |
+| `sqrt a` | `s = sqrt(a)` | `fma(-s, s, a)` |
+
+If the exact value is above `r`, round-up returns `nextUp(r)`; if below,
+round-down returns `nextDown(r)`; otherwise `r` (branch-free on the bits).
+Special cases, all bit-identical to the Lean spec / AVX-512:
+
+- **Overflow:** if RN gives `±inf` from finite operands, the exact value is
+  beyond `maxFinite`, so the direction toward zero gives `±maxFinite`. If RN gives
+  `maxFinite` but the exact value is larger, `nextUp(maxFinite) = +inf`.
+- **Signed zero:** a sum that rounds to 0 is exact; round-down gives `-0`
+  unless both operands are `+0` (so `x + (-x) = -0` down, `+0` up). Zero
+  products/quotients with a zero (or infinite divisor) operand are exact, sign = xor.
+  `sqrt(-0) = -0`.
+- **Subnormals / underflow:** `+`/`-` are always exact in the subnormal range.
+  For `*` and `/`, the fma error term can itself underflow, so tiny results
+  (`|a*b| ≤ 2^-968`, or `/` with `|a| < 2^-968`, a subnormal divisor, or a
+  quotient below `2^-1022`) take a rare slow path: save / `fesetround` / compute
+  / restore. `sqrt` of `a < 2^-960` is scaled by `2^600` first (exact) and the
+  result by `2^-300`.
+- **NaN / inf operands:** returned from the RN operation (NaN payloads may
+  differ; all tests treat every NaN as equal).
+
+Assumptions: the thread's rounding mode is round-to-nearest (Lean never changes
+it), no flush-to-zero (Linux default), and correctly rounded hardware `fma`/`sqrt`.
+
+**Testing.** `tests/test_rnerr.c` is a standalone differential test (random
+bits, any-exponent values, cancellations, subnormal / tiny products and quotients,
+near-overflow, small integers, near-exact quotients and squares, specials):
+
+- `--vs-avx N`: RN+err vs AVX-512 in-process (x86_64);
+- `--gen FILE N` / `--check FILE`: AVX-512 expected outputs, checked by an
+  aarch64 build under `qemu-aarch64` (`scripts/test_arm64_qemu.sh`);
+- `--vs-fe N`: RN+err vs a `fesetround` (FPCR) reference, for real arm64 hardware;
+- `--bench`: micro-benchmark.
+
+`lake build -R -Kbackend=rnerr` builds the arm64 backend on x86_64, so the
+Lean-side tests (`lake exe interval64_tests`, C runtime vs Lean spec) can run
+against it; `lake build -R` switches back.
+
+**On a real arm64 box (Jetson Orin, DGX Spark, …):**
+
+```bash
+sudo apt install -y build-essential git curl
+git clone https://github.com/schlafly1/realfp && cd realfp
+scripts/test_arm64.sh        # C tests + bench, installs elan if needed,
+                             # lake build, interval64_tests, Examples.lean, proofs
+```
 
 ## Interval policy
 
