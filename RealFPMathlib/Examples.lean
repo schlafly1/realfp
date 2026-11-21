@@ -46,16 +46,12 @@ example (a : Float) (x : ℝ) (ha : a.toReal? = some x) (hx : 0 ≤ x) :
 #check @Demo.sqrt_two_bounds -- 1.41421356 < √2 < 1.41421357
 #check @Demo.sqrt_le_on      -- ∀ x ∈ [2, 3], √x ≤ 111/64
 
--- Your own: ∀ x ∈ [1, 2], x * x - x ≤ 2.
-def X12 : Interval64 := ofRatInterval 1 2
-theorem my_hi_le : (X12 * X12 - X12).hi ≤ 3.0 := by native_decide
-
-example (x : ℝ) (hx : x ∈ Set.Icc (1 : ℝ) 2) : x * x - x ≤ 3 := by
-  have hxI : x ∈ X12.toSet :=
-    mem_toSet_ofRatInterval (by push_cast; linarith [hx.1]) (by push_cast; linarith [hx.2])
-  have h := le_of_mem_toSet_of_hi_le (q := 3)
-    (sub_mem_toSet (mem_toSet_mul hxI hxI) hxI) my_hi_le (by decide +kernel)
-  exact_mod_cast h
+-- Your own, kernel-checked with the `interval` tactic (no `native_decide`):
+example (x : ℝ) (hx : x ∈ Set.Icc (1 : ℝ) 2) : x * x - x ≤ 3 := by interval
+example : ∀ x : ℝ, 0 ≤ x → x ≤ 1 → x * (1 - x) ≤ 1/4 + 1/100 := by interval
+example (x : ℝ) (h₀ : 1 ≤ x) (h₁ : x ≤ 2) : Real.exp x < 8 := by interval
+example (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) : x * y - x - y ≥ -1.01 := by
+  interval
 
 #print axioms Demo.sq_add_le
 
