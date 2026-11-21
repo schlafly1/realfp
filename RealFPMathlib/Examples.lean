@@ -11,6 +11,7 @@ import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Examples.Trig
+import RealFPMathlib.Examples.Conv
 
 open Interval64 Interval64.Directed Interval64.Spec RealFP
 
@@ -117,3 +118,15 @@ example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) :
     Real.sin x ∈ (Interval64.sin X).toSet := RealFP.Trig.sin_mem_toSet hx
 example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) :
     Real.cos x ∈ (Interval64.cos X).toSet := RealFP.Trig.cos_mem_toSet hx
+
+/-! ## 8. Conversions and `x ∈ X` -/
+-- Literals: `2 : Interval64` is `ofRat 2`; `0.1 : Interval64` encloses exactly 1/10.
+-- `x ∈ X` (x : ℝ) means `x ∈ X.toSet` (`RealFP.mem_iff`).
+example (x : ℝ) (hx : x ∈ (0.1 : Interval64)) : x ∈ (0.1 : Interval64).toSet := RealFP.mem_iff.mp hx
+example : (0.1 : ℝ) ∈ (0.1 : Interval64) := RealFP.ofScientific_mem 1 true 1
+example : (3 : ℝ) ∈ (3 : Interval64) := RealFP.ofNat_mem 3
+example (q : ℚ) : (q : ℝ) ∈ (q : Interval64) := RealFP.ratCoe_mem q
+example (X : Interval64) (x : ℝ) (hx : x ∈ X) : Real.sin x ∈ Interval64.sin X := RealFP.Iv.sin_mem hx
+
+-- `x² − 0.1·x + 2 ≤ 3` on `[0, 1]`, written with literals (decide +kernel endpoints):
+#check @RealFP.Examples.Conv.poly_le_three

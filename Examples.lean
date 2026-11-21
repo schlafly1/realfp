@@ -54,3 +54,14 @@ theorem sq_add_le' {x : Rat} (h1 : 1/10 ≤ x) (h2 : x ≤ 3/10) :
   exact hi_le_of_native (add_mem_iv hmul hx) J_hi_le (by decide +kernel)
 
 #print axioms sq_add_le'
+
+/-! ## Conversions (`Interval64.Conv`): literals, casts, `Float` points -/
+#eval (0.1 : Interval64)                  -- encloses exactly 1/10: two adjacent doubles
+#eval (2 : Interval64) * I + 0.5          -- numeric and decimal literals
+#eval I + (1/3 : Rat) + (7 : Nat) + (-2 : Int) + (0.25 : Float)  -- coercions
+#eval ((Float.inf : Float) : Interval64)  -- [inf, inf]: encloses no real (empty toSet)
+
+example : bitsToRat? (0.1 : Interval64).lo.toBits = some (7205759403792793 / 72057594037927936) := by
+  decide +kernel
+example : bitsToRat? (0.1 : Interval64).hi.toBits = some (3602879701896397 / 36028797018963968) := by
+  decide +kernel

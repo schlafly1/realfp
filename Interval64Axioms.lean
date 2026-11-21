@@ -3,6 +3,7 @@ Print the axioms used by the enclosure theorems.
 Run with: `lake build interval64_axioms` or `lake env lean Interval64Axioms.lean`.
 -/
 import Interval64Proofs
+import Interval64.Conv
 
 #print axioms Interval64Proofs.Add.addU_finite_lo
 #print axioms Interval64Proofs.Add.addU_finite_hi
@@ -112,3 +113,9 @@ import Interval64Proofs
 #print axioms Interval64Proofs.TightSqrt.sqrtUp_float_tight
 #print axioms Interval64Proofs.TightSqrt.sqrt_iv_tight
 #print axioms Interval64Proofs.TightSqrt.sqrt_iv_optimal
+#print axioms Interval64.ofNat_def
+#print axioms Interval64.natCast_def
+#print axioms Interval64.intCast_def
+#print axioms Interval64.ratCoe_def
+#print axioms Interval64.floatCoe_def
+#print axioms Interval64.ofScientific_def

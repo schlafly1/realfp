@@ -10,6 +10,7 @@ import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Trig
 import RealFPMathlib.Examples.Trig
+import RealFPMathlib.Examples.Conv
 
 #print axioms RealFP.loR_rat
 #print axioms RealFP.hiR_rat
@@ -225,3 +226,30 @@ import RealFPMathlib.Examples.Trig
 #print axioms RealFP.Examples.Trig.S_hi
 #print axioms RealFP.Examples.Trig.sin_mem_one_two
 #print axioms RealFP.Examples.Trig.sin_bounds_one_two
+#print axioms RealFP.mem_iff
+#print axioms RealFP.ratCoe_mem
+#print axioms RealFP.natCast_mem
+#print axioms RealFP.intCast_mem
+#print axioms RealFP.ofNat_mem
+#print axioms RealFP.zero_mem
+#print axioms RealFP.one_mem
+#print axioms RealFP.ofScientific_mem
+#print axioms RealFP.floatCoe_mem
+#print axioms RealFP.Iv.add_mem
+#print axioms RealFP.Iv.sub_mem
+#print axioms RealFP.Iv.mul_mem
+#print axioms RealFP.Iv.div_mem
+#print axioms RealFP.Iv.sqrt_mem
+#print axioms RealFP.Iv.exp_mem
+#print axioms RealFP.Iv.log_mem
+#print axioms RealFP.Iv.sin_mem
+#print axioms RealFP.Iv.cos_mem
+#print axioms RealFP.Examples.Conv.X_lo
+#print axioms RealFP.Examples.Conv.X_hi
+#print axioms RealFP.Examples.Conv.tenth_lo
+#print axioms RealFP.Examples.Conv.tenth_hi
+#print axioms RealFP.Examples.Conv.P_hi
+#print axioms RealFP.Examples.Conv.mem_X
+#print axioms RealFP.Examples.Conv.poly_mem
+#print axioms RealFP.Examples.Conv.poly_le_three
+#print axioms RealFP.Examples.Conv.half_mem

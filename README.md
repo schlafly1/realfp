@@ -245,6 +245,32 @@ Axioms: `propext`, `Classical.choice`, `Quot.sound`. Example
 (`RealFPMathlib/Examples/Trig.lean`, `decide +kernel`):
 `∀ x ∈ [1, 2], 0.84147098480789 < sin x ∧ sin x ≤ 1`.
 
+## Conversions and literals (`Interval64/Conv.lean`)
+
+No new runtime checks; existing operations are unchanged.
+
+| Syntax | Meaning |
+|---|---|
+| `(2 : Interval64)` (`OfNat`) | `ofRat 2`: exact if representable, else tightest outward enclosure |
+| `(0.1 : Interval64)` (`OfScientific`) | `ofRat (1/10)`, the *exact* decimal (two adjacent doubles), unlike `Float` `0.1` |
+| `(n : Interval64)`, `(z : Interval64)` for `n : Nat`, `z : Int` | `NatCast` / `IntCast` → `ofNat n`, `ofInt z` (= `ofRat`) |
+| `(q : Interval64)` for `q : Rat` | `Coe` → `ofRat q` (core Lean has no `RatCast`) |
+| `(f : Interval64)` for `f : Float` | `Coe` → `point f = ⟨f, f⟩`; NaN → invalid, `±∞` → `⟨±∞, ±∞⟩` (encloses no real: empty `toSet`) |
+
+`X + 2`, `X * 0.1`, `X + q`, `X + n`, `X + z`, `X + f` elaborate via `binop%`.
+In compiled code a literal such as `0.1` inside a definition is a closed term,
+computed once (lazily) by the generated C. `decide +kernel` evaluates literals
+(e.g. the endpoints of `(0.1 : Interval64)`).
+
+Mathlib layer (`RealFPMathlib/Conv.lean`): `Membership ℝ Interval64` with
+`x ∈ X ↔ x ∈ X.toSet` (`RealFP.mem_iff`, simp); `ratCoe_mem`, `natCast_mem`,
+`intCast_mem`, `ofNat_mem`, `zero_mem`, `one_mem`, `ofScientific_mem`
+(`(0.1 : ℝ) ∈ (0.1 : Interval64)`), `floatCoe_mem`
+(`f.toReal? = some r → r ∈ (f : Interval64)`); and `RealFP.Iv.{add,sub,mul,div,sqrt,exp,log,sin,cos}_mem`,
+the enclosure theorems stated with `∈` (the `*_mem_toSet` names still work).
+Example (`RealFPMathlib/Examples/Conv.lean`):
+`∀ x ∈ [0, 1], x * x - 0.1 * x + 2 ≤ 3` from one evaluation of `X * X - 0.1 * X + 2`.
+
 ## Interval policy
 
 - NaN endpoint → invalid `[NaN, NaN]`.
