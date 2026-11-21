@@ -2,6 +2,7 @@
 Real enclosures for the directed `tan` of `Interval64.Tan` and the interval `tan`.
 -/
 import RealFPMathlib.Hyp
+import Interval64.Tan
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.ArctanDeriv
 import Mathlib.Analysis.Real.Pi.Irrational
 
