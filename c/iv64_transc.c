@@ -22,6 +22,15 @@ double cr_sin(double);
 double cr_cos(double);
 double cr_atan(double);
 double cr_atan2(double, double);
+double cr_tan(double);
+double cr_asin(double);
+double cr_acos(double);
+double cr_sinh(double);
+double cr_cosh(double);
+double cr_tanh(double);
+double cr_log2(double);
+double cr_log10(double);
+double cr_pow(double, double);
 
 #if defined(__x86_64__)
 #include <immintrin.h>
@@ -93,6 +102,46 @@ IV64_DIR(iv64_dir_atan_up,   cr_atan, 1)
 IV64_DIR2(iv64_dir_atan2_down, cr_atan2, 0)
 IV64_DIR2(iv64_dir_atan2_up,   cr_atan2, 1)
 
+/* tan and pow read the rounding mode with fegetround() in their rare slow paths; on x86_64
+   glibc that reads the x87 control word, so these use fesetround (MXCSR and x87). */
+#define IV64_DIR_FE(name, fn, up)                                \
+  double name(double x) {                                        \
+    int m = fegetround();                                        \
+    fesetround(up ? FE_UPWARD : FE_DOWNWARD);                    \
+    double r = fn(x);                                            \
+    __asm__ __volatile__("" : "+" IV64_BARRIER_REG(r) :: "memory"); \
+    fesetround(m);                                               \
+    return r;                                                    \
+  }
+#define IV64_DIR2_FE(name, fn, up)                               \
+  double name(double y, double x) {                              \
+    int m = fegetround();                                        \
+    fesetround(up ? FE_UPWARD : FE_DOWNWARD);                    \
+    double r = fn(y, x);                                         \
+    __asm__ __volatile__("" : "+" IV64_BARRIER_REG(r) :: "memory"); \
+    fesetround(m);                                               \
+    return r;                                                    \
+  }
+
+IV64_DIR_FE(iv64_dir_tan_down, cr_tan, 0)
+IV64_DIR_FE(iv64_dir_tan_up,   cr_tan, 1)
+IV64_DIR2_FE(iv64_dir_pow_down, cr_pow, 0)
+IV64_DIR2_FE(iv64_dir_pow_up,   cr_pow, 1)
+IV64_DIR(iv64_dir_asin_down, cr_asin, 0)
+IV64_DIR(iv64_dir_asin_up,   cr_asin, 1)
+IV64_DIR(iv64_dir_acos_down, cr_acos, 0)
+IV64_DIR(iv64_dir_acos_up,   cr_acos, 1)
+IV64_DIR(iv64_dir_sinh_down, cr_sinh, 0)
+IV64_DIR(iv64_dir_sinh_up,   cr_sinh, 1)
+IV64_DIR(iv64_dir_cosh_down, cr_cosh, 0)
+IV64_DIR(iv64_dir_cosh_up,   cr_cosh, 1)
+IV64_DIR(iv64_dir_tanh_down, cr_tanh, 0)
+IV64_DIR(iv64_dir_tanh_up,   cr_tanh, 1)
+IV64_DIR(iv64_dir_log2_down, cr_log2, 0)
+IV64_DIR(iv64_dir_log2_up,   cr_log2, 1)
+IV64_DIR(iv64_dir_log10_down, cr_log10, 0)
+IV64_DIR(iv64_dir_log10_up,   cr_log10, 1)
+
 /* Round-to-nearest CORE-MATH (for benchmarks / comparison). */
 double iv64_cr_exp(double x) { return cr_exp(x); }
 double iv64_cr_log(double x) { return cr_log(x); }
@@ -100,3 +149,12 @@ double iv64_cr_sin(double x) { return cr_sin(x); }
 double iv64_cr_cos(double x) { return cr_cos(x); }
 double iv64_cr_atan(double x) { return cr_atan(x); }
 double iv64_cr_atan2(double y, double x) { return cr_atan2(y, x); }
+double iv64_cr_tan(double x) { return cr_tan(x); }
+double iv64_cr_asin(double x) { return cr_asin(x); }
+double iv64_cr_acos(double x) { return cr_acos(x); }
+double iv64_cr_sinh(double x) { return cr_sinh(x); }
+double iv64_cr_cosh(double x) { return cr_cosh(x); }
+double iv64_cr_tanh(double x) { return cr_tanh(x); }
+double iv64_cr_log2(double x) { return cr_log2(x); }
+double iv64_cr_log10(double x) { return cr_log10(x); }
+double iv64_cr_pow(double x, double y) { return cr_pow(x, y); }

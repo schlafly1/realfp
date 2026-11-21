@@ -245,6 +245,61 @@ Axioms: `propext`, `Classical.choice`, `Quot.sound`. Example
 (`RealFPMathlib/Examples/Trig.lean`, `decide +kernel`):
 `∀ x ∈ [1, 2], 0.84147098480789 < sin x ∧ sin x ≤ 1`.
 
+## `atan`, `atan2`, `π` (`Interval64/InvTrig.lean`)
+
+`Directed.atanDown/atanUp`, `Directed.atan2Down/atan2Up` (C argument order `atan2 y x`) are
+correctly rounded toward −∞ / +∞; `Interval64.atan`, `Interval64.atan2`, and the constants
+`Interval64.pi = [π↓, π↑]` (`0x400921FB54442D18`, `…19`), `halfPi`, `negHalfPi`, `argHull = [-π↓, π↑]`.
+
+**Runtime (C).** CORE-MATH `cr_atan`, `cr_atan2` (`c/coremath/atan.c`, `atan2.c`, `tint.h`;
+MIT, unmodified, same upstream commit) under RD/RU exactly as for `exp` (MXCSR / FPCR.RMode).
+Cost (x86_64, direct C): atan RN 7.5 ns, RD/RU 12.7/13.4 ns; atan2 RN 10.3 ns, RD/RU 16.2/17.8 ns.
+
+**Specification (Lean, Mathlib-free).** `atanBounds q p`: an unverified candidate (≤ 12
+half-angle steps with rounded square roots, then the Taylor series) is widened to `[a, b]` and
+*certified* with the existing `sin`/`cos` enclosures (`trigBounds`): `|a|, |b| ≤ 1`,
+`sin a ≤ q·cos a`, `q·cos b ≤ sin b` ⇒ `a ≤ atan q ≤ b`; relative precision for small `q`;
+for tiny `q` (`q² ≤ 2^-(p+10)`) the bounds `q - q³/3 ≤ atan q ≤ q - q³/3 + q⁵/5`;
+`atan q = π/2 - atan (1/q)` for `q > 1`, odd symmetry. `atan2Bounds y x p`: `atan (y/x)`
+(`x > 0`), `atan (y/x) ± π` (`x < 0`), `±π/2` (`x = 0`). Special values follow C99 Annex F
+(signed zeros: `atan2 (±0, -0) = ±π`, `atan2 (±0, +0) = ±0`, `atan2 (±∞, ±∞) = ±π/4, ±3π/4`, …).
+Ziv loop as for `exp`.
+
+**`atan2` and `Complex.arg`.** Over the reals `atan2 y x` is `Complex.arg (x + y i)` (range
+`(-π, π]`, `arg 0 = 0`, `arg` of a negative real `= π`). The IEEE signed-zero results
+(`atan2 (-0, x<0) = -π`, `atan2 (±0, -0) = ±π`) do not match `arg` at those points, so the
+pointwise theorems assume `y ≠ 0 ∨ x > 0`. The interval version never relies on those:
+`X > 0`: `atan (Y / X)`; `Y > 0`: `π/2 - atan (X / Y)`; `Y < 0`: `-π/2 - atan (X / Y)`;
+otherwise the box meets the branch cut (`y = 0, x ≤ 0`) or the origin and the result is the hull
+`[-π, π]`. (It uses the interval `div` + `atan`, so it can be ~1 ulp wider than evaluating the
+pointwise `atan2Down/Up` at the corners.)
+
+**Proofs (`RealFPMathlib/InvTrig.lean`).** `atanCheck_spec`, `arctan_series_bounds`,
+`atanBounds_spec`, `piMul_spec`, `arg_right`, `arg_upper`, `arg_lower`, `atan2Bounds_spec`,
+`atanDown_loR`, `atanUp_hiR` (any input, extended reals), `atan2Down_loR`, `atan2Up_hiR`
+(finite inputs, `y ≠ 0 ∨ x > 0`), and
+
+```lean
+theorem pi_mem_toSet : Real.pi ∈ Interval64.pi.toSet
+theorem atan_mem_toSet (hx : x ∈ X.toSet) : Real.arctan x ∈ (Interval64.atan X).toSet
+theorem atan2_mem_toSet (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
+    Complex.arg ((x : ℂ) + (y : ℂ) * Complex.I) ∈ (Interval64.atan2 Y X).toSet
+```
+
+**Tests.** `lake exe interval64_tests`: atan 10098 and atan2 13490 C-vs-spec checks (specials,
+random, the mpmath oracle inputs), 0 mismatches, 0 fallback hits; `tests/func_oracle.txt`
+(`scripts/gen_func_oracle.py`, mpmath 2500 bits, including 1500+1500 CORE-MATH worst cases from
+`atan.wc`/`atan2.wc`): 6194 inputs, 0 C mismatches on x86_64 and under `qemu-aarch64`
+(`tests/test_func.c`, run by `scripts/test_arm64.sh` / `test_arm64_qemu.sh`); 74564 interval
+sample points.
+
+**Tactic.** `interval` understands `Real.pi`, `Real.arctan`, and
+`Complex.arg (↑x + ↑y * Complex.I)` (as `IExpr.pi/atan/atan2`; kernel path `KI.atan`, `atan2K`,
+`evalK_toI` extended). `atan` has a derivative (`1/(1+a²)·a'`), `atan2` none (no
+monotonicity/centred certificates through `atan2`; plain bisection). Kernel evaluation of
+`atan` is costly (the spec runs `sin`/`cos` certificates): tests `f01`–`f08`, e.g.
+`x - x^3/3 ≤ arctan x` on `[0,1]` (touching, 24 boxes, ~50 s).
+
 ## Conversions and literals (`Interval64/Conv.lean`)
 
 No new runtime checks; existing operations are unchanged.
@@ -444,7 +499,7 @@ example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
 * **Goals**: `f ≤ c`, `f < c`, `c ≤ f`, `c < f`, `≥`, `>`, conjunctions, `f ∈ Set.Icc a b`;
   `f ≤ g` / `f < g` with no numeral side becomes `f - g ≤ 0`. Binders are introduced.
 * **Terms**: `+ - * / ⁻¹`, `Real.sqrt`, `|·|`, `^ n` (numeral `n : ℕ`), `Real.exp`, `Real.log`,
-  `Real.sin`, `Real.cos`, rational numerals (anything `norm_num` evaluates to a rational,
+  `Real.sin`, `Real.cos`, `Real.arctan`, `Real.pi`, `Complex.arg (↑x + ↑y * Complex.I)`, rational numerals (anything `norm_num` evaluates to a rational,
   e.g. `0.1`, `1/3`), any number of real variables.
 * **Variables** need numeral bounds `a ≤ x`, `x ≤ b` (strict ones are weakened, `∧` and
   `Set.Icc`/`Ioo`/… hypotheses are split) in the context.

@@ -9,12 +9,30 @@
 double iv64_dir_atan_down(double), iv64_dir_atan_up(double), iv64_cr_atan(double);
 double iv64_dir_atan2_down(double, double), iv64_dir_atan2_up(double, double);
 double iv64_cr_atan2(double, double);
+double iv64_dir_tan_down(double), iv64_dir_tan_up(double);
+double iv64_dir_asin_down(double), iv64_dir_asin_up(double);
+double iv64_dir_acos_down(double), iv64_dir_acos_up(double);
+double iv64_dir_sinh_down(double), iv64_dir_sinh_up(double);
+double iv64_dir_cosh_down(double), iv64_dir_cosh_up(double);
+double iv64_dir_tanh_down(double), iv64_dir_tanh_up(double);
+double iv64_dir_log2_down(double), iv64_dir_log2_up(double);
+double iv64_dir_log10_down(double), iv64_dir_log10_up(double);
+double iv64_dir_pow_down(double, double), iv64_dir_pow_up(double, double);
 
 typedef struct { const char *name; int nargs; double (*d1)(double), (*u1)(double);
                  double (*d2)(double, double), (*u2)(double, double); } fn_t;
 static const fn_t FNS[] = {
   {"atan", 1, iv64_dir_atan_down, iv64_dir_atan_up, 0, 0},
   {"atan2", 2, 0, 0, iv64_dir_atan2_down, iv64_dir_atan2_up},
+  {"tan", 1, iv64_dir_tan_down, iv64_dir_tan_up, 0, 0},
+  {"asin", 1, iv64_dir_asin_down, iv64_dir_asin_up, 0, 0},
+  {"acos", 1, iv64_dir_acos_down, iv64_dir_acos_up, 0, 0},
+  {"sinh", 1, iv64_dir_sinh_down, iv64_dir_sinh_up, 0, 0},
+  {"cosh", 1, iv64_dir_cosh_down, iv64_dir_cosh_up, 0, 0},
+  {"tanh", 1, iv64_dir_tanh_down, iv64_dir_tanh_up, 0, 0},
+  {"log2", 1, iv64_dir_log2_down, iv64_dir_log2_up, 0, 0},
+  {"log10", 1, iv64_dir_log10_down, iv64_dir_log10_up, 0, 0},
+  {"pow", 2, 0, 0, iv64_dir_pow_down, iv64_dir_pow_up},
 };
 
 static uint64_t bits(double x) { uint64_t u; memcpy(&u, &x, 8); return u; }
@@ -31,6 +49,7 @@ int main(int argc, char **argv) {
   FILE *f = fopen(path, "r");
   if (!f) { perror(path); return 2; }
   char line[256], tok[5][32];
+  setvbuf(stdout, 0, _IONBF, 0);
   long n = 0, bad = 0, per[sizeof FNS / sizeof FNS[0]] = {0};
   while (fgets(line, sizeof line, f)) {
     if (line[0] == '#') continue;

@@ -57,6 +57,15 @@ target cm_sin.o pkg : FilePath := transcObj pkg "coremath/sin.c" "cm_sin.o"
 target cm_cos.o pkg : FilePath := transcObj pkg "coremath/cos.c" "cm_cos.o"
 target cm_atan.o pkg : FilePath := transcObj pkg "coremath/atan.c" "cm_atan.o"
 target cm_atan2.o pkg : FilePath := transcObj pkg "coremath/atan2.c" "cm_atan2.o"
+target cm_tan.o pkg : FilePath := transcObj pkg "coremath/tan.c" "cm_tan.o"
+target cm_asin.o pkg : FilePath := transcObj pkg "coremath/asin.c" "cm_asin.o"
+target cm_acos.o pkg : FilePath := transcObj pkg "coremath/acos.c" "cm_acos.o"
+target cm_sinh.o pkg : FilePath := transcObj pkg "coremath/sinh.c" "cm_sinh.o"
+target cm_cosh.o pkg : FilePath := transcObj pkg "coremath/cosh.c" "cm_cosh.o"
+target cm_tanh.o pkg : FilePath := transcObj pkg "coremath/tanh.c" "cm_tanh.o"
+target cm_log2.o pkg : FilePath := transcObj pkg "coremath/log2.c" "cm_log2.o"
+target cm_log10.o pkg : FilePath := transcObj pkg "coremath/log10/log10.c" "cm_log10.o"
+target cm_pow.o pkg : FilePath := transcObj pkg "coremath/pow/pow.c" "cm_pow.o"
 target iv64_transc.o pkg : FilePath := transcObj pkg "iv64_transc.c" "iv64_transc.o"
 
 /-- Static library of the C kernels. Lake links this into executables and
@@ -68,6 +77,8 @@ extern_lib libleaninterval64 pkg := do
   let oFile ← interval64.o.fetch
   let objs := #[oFile, ← cm_exp.o.fetch, ← cm_log.o.fetch, ← cm_sin.o.fetch, ← cm_cos.o.fetch,
     ← cm_atan.o.fetch, ← cm_atan2.o.fetch,
+    ← cm_tan.o.fetch, ← cm_asin.o.fetch, ← cm_acos.o.fetch, ← cm_sinh.o.fetch, ← cm_cosh.o.fetch,
+    ← cm_tanh.o.fetch, ← cm_log2.o.fetch, ← cm_log10.o.fetch, ← cm_pow.o.fetch,
     ← iv64_transc.o.fetch]
   let name := nameToStaticLib "leaninterval64"
   buildStaticLib ((pkg : Package).staticLibDir / name) objs
