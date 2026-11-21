@@ -30,6 +30,10 @@ inductive IExpr where
   | log (a : IExpr)
   | sin (a : IExpr)
   | cos (a : IExpr)
+  | pi
+  | atan (a : IExpr)
+  /-- `atan2 y x = Complex.arg (x + y i)`. -/
+  | atan2 (y x : IExpr)
   deriving Repr, Inhabited
 
 /-! ### `Interval64` semantics -/
@@ -43,6 +47,14 @@ def sqrtI (X : Interval64) : Interval64 :=
 /-- `log X` if `X > 0`, else the whole line. -/
 def logI (X : Interval64) : Interval64 :=
   if decide (0 < X.lo) then Interval64.log X else whole
+
+/-- `atan2` for the tactic, with `Y / X` as `Y * inv X` (as `IExpr.div`); see `Interval64.atan2`. -/
+def atan2I (y x : Interval64) : Interval64 :=
+  if anyNan y x then invalid
+  else if decide (0 < x.lo) then Interval64.atan (y * inv x)
+  else if decide (0 < y.lo) then halfPi - Interval64.atan (x * inv y)
+  else if decide (y.hi < 0) then negHalfPi - Interval64.atan (x * inv y)
+  else argHull
 
 def evalI (env : List Interval64) : IExpr → Interval64
   | .var i => env.getD i zeroI
@@ -60,6 +72,9 @@ def evalI (env : List Interval64) : IExpr → Interval64
   | .log a => logI (evalI env a)
   | .sin a => Interval64.sin (evalI env a)
   | .cos a => Interval64.cos (evalI env a)
+  | .pi => Interval64.pi
+  | .atan a => Interval64.atan (evalI env a)
+  | .atan2 a b => atan2I (evalI env a) (evalI env b)
 
 /-! ### Kernel semantics -/
 
@@ -68,6 +83,13 @@ def zeroK : KI := ⟨0, 0⟩
 def sqrtK (X : KI) : KI := bif lt X.lo 0 then KI.hull zeroK (KI.sqrt X) else KI.sqrt X
 
 def logK (X : KI) : KI := bif lt 0 X.lo then KI.log X else KI.whole
+
+def atan2K (y x : KI) : KI :=
+  bif KI.anyNan y x then KI.invalid
+  else bif lt 0 x.lo then KI.atan (KI.mul y (KI.inv x))
+  else bif lt 0 y.lo then KI.sub KI.halfPi (KI.atan (KI.mul x (KI.inv y)))
+  else bif lt y.hi 0 then KI.sub KI.negHalfPi (KI.atan (KI.mul x (KI.inv y)))
+  else KI.argHull
 
 def evalK (env : List KI) : IExpr → KI
   | .var i => env.getD i zeroK
@@ -85,6 +107,9 @@ def evalK (env : List KI) : IExpr → KI
   | .log a => logK (evalK env a)
   | .sin a => KI.sin (evalK env a)
   | .cos a => KI.cos (evalK env a)
+  | .pi => KI.pi
+  | .atan a => KI.atan (evalK env a)
+  | .atan2 a b => atan2K (evalK env a) (evalK env b)
 
 /-! ### Goal predicates on the enclosure `F` of the expression -/
 

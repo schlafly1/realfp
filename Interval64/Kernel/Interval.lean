@@ -9,6 +9,7 @@ which are much slower in the kernel. Runtime code never calls these functions.
 import Interval64.Kernel.Nat
 import Interval64.Transc
 import Interval64.Trig
+import Interval64.InvTrig
 import Interval64.OfRat
 
 namespace Interval64.KF
@@ -155,6 +156,15 @@ def cos (a : KI) : KI :=
        if Trig.avoids x y 0 then fmax (Trig.cosUpBits (UInt64.ofNat a.lo)).toNat
           (Trig.cosUpBits (UInt64.ofNat a.hi)).toNat else plusOne⟩
     | _, _ => ⟨minusOne, plusOne⟩
+
+def atan (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid
+  else ⟨(InvTrig.atanDownBits (UInt64.ofNat a.lo)).toNat, (InvTrig.atanUpBits (UInt64.ofNat a.hi)).toNat⟩
+
+def pi : KI := ⟨InvTrig.piDownBits.toNat, InvTrig.piUpBits.toNat⟩
+def halfPi : KI := ⟨InvTrig.halfPiDownBits.toNat, InvTrig.halfPiUpBits.toNat⟩
+def negHalfPi : KI := ⟨InvTrig.negHalfPiDownBits.toNat, InvTrig.negHalfPiUpBits.toNat⟩
+def argHull : KI := ⟨InvTrig.negPiDownBits.toNat, InvTrig.piUpBits.toNat⟩
 
 end KI
 

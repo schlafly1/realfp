@@ -50,6 +50,61 @@ theorem logK_toI {X : KI} (h : WF X) : toI (logK X) = logI (toI X) ∧ WF (logK 
   · exact ⟨toI_whole, wf_whole⟩
   · exact log_toI h
 
+theorem atan_toI {a : KI} (ha : WF a) : toI (KI.atan a) = Interval64.atan (toI a) ∧ WF (KI.atan a) := by
+  unfold Interval64.atan KI.atan
+  simp only [toI, isNaN_toF ha.1, isNaN_toF ha.2]
+  cases h : (isNaN a.lo || isNaN a.hi)
+  · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+    simp only [Bool.or_eq_false_iff] at h
+    refine ⟨?_, UInt64.toNat_lt _, UInt64.toNat_lt _⟩
+    simp only [Directed.atanDown, Directed.atanUp, Directed.atanDownSpec, Directed.atanUpSpec,
+      toBits_toF_of_not_nan ha.1 h.1, toBits_toF_of_not_nan ha.2 h.2, toF_ofBits]
+  · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
+
+theorem const_toI (l h : UInt64) : toI ⟨l.toNat, h.toNat⟩ = ⟨Float.ofBits l, Float.ofBits h⟩ ∧
+    WF ⟨l.toNat, h.toNat⟩ := by
+  refine ⟨?_, UInt64.toNat_lt _, UInt64.toNat_lt _⟩
+  simp only [toI, toF_ofBits]
+
+theorem pi_toI : toI KI.pi = Interval64.pi ∧ WF KI.pi := const_toI _ _
+theorem halfPi_toI : toI KI.halfPi = halfPi ∧ WF KI.halfPi := const_toI _ _
+theorem negHalfPi_toI : toI KI.negHalfPi = negHalfPi ∧ WF KI.negHalfPi := const_toI _ _
+theorem argHull_toI : toI KI.argHull = argHull ∧ WF KI.argHull := const_toI _ _
+
+theorem atan2K_toI {y x : KI} (hy : WF y) (hx : WF x) :
+    toI (atan2K y x) = atan2I (toI y) (toI x) ∧ WF (atan2K y x) := by
+  unfold atan2K atan2I
+  rw [anyNan_toI hy hx]
+  have e1 : decide (0 < (toI x).lo) = lt 0 x.lo := by
+    show decide (0 < toF x.lo) = _; rw [← toF_zero, lt_toF zero_lt hx.1]
+  have e2 : decide (0 < (toI y).lo) = lt 0 y.lo := by
+    show decide (0 < toF y.lo) = _; rw [← toF_zero, lt_toF zero_lt hy.1]
+  have e3 : decide ((toI y).hi < 0) = lt y.hi 0 := by
+    show decide (toF y.hi < 0) = _; rw [← toF_zero, lt_toF hy.2 zero_lt]
+  rw [e1, e2, e3]
+  have hyx := mul_wf hy (inv_wf hx)
+  have hxy := mul_wf hx (inv_wf hy)
+  cases KI.anyNan y x
+  · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+    cases lt 0 x.lo
+    · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+      cases lt 0 y.lo
+      · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+        cases lt y.hi 0
+        · exact argHull_toI
+        · simp only [Bool.cond_true, ite_true]
+          refine ⟨?_, sub_wf negHalfPi_toI.2 (atan_toI hxy).2⟩
+          rw [sub_toI negHalfPi_toI.2 (atan_toI hxy).2, negHalfPi_toI.1, (atan_toI hxy).1,
+            mul_toI hx (inv_wf hy), inv_toI hy]
+      · simp only [Bool.cond_true, ite_true]
+        refine ⟨?_, sub_wf halfPi_toI.2 (atan_toI hxy).2⟩
+        rw [sub_toI halfPi_toI.2 (atan_toI hxy).2, halfPi_toI.1, (atan_toI hxy).1,
+          mul_toI hx (inv_wf hy), inv_toI hy]
+    · simp only [Bool.cond_true, ite_true]
+      refine ⟨?_, (atan_toI hyx).2⟩
+      rw [(atan_toI hyx).1, mul_toI hy (inv_wf hx), inv_toI hx]
+  · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
+
 theorem evalK_toI {env : List KI} (h : ∀ X ∈ env, WF X) :
     ∀ e : IExpr, toI (evalK env e) = evalI (env.map toI) e ∧ WF (evalK env e) := by
   intro e
@@ -86,6 +141,12 @@ theorem evalK_toI {env : List KI} (h : ∀ X ∈ env, WF X) :
     exact ⟨by simp only [evalK, evalI]; rw [(sin_toI iha.2).1, iha.1], (sin_toI iha.2).2⟩
   | cos a iha =>
     exact ⟨by simp only [evalK, evalI]; rw [(cos_toI iha.2).1, iha.1], (cos_toI iha.2).2⟩
+  | pi => exact pi_toI
+  | atan a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(atan_toI iha.2).1, iha.1], (atan_toI iha.2).2⟩
+  | atan2 a b iha ihb =>
+    exact ⟨by simp only [evalK, evalI]; rw [(atan2K_toI iha.2 ihb.2).1, iha.1, ihb.1],
+      (atan2K_toI iha.2 ihb.2).2⟩
 
 theorem boxes_wf (bs : List (Rat × Rat)) : ∀ X ∈ boxes bs, WF X := by
   induction bs with

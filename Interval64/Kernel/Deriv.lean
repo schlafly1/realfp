@@ -34,6 +34,9 @@ def IExpr.diff (i : Nat) : IExpr → IExpr
   | .log a => .div (a.diff i) a
   | .sin a => .mul (.cos a) (a.diff i)
   | .cos a => .neg (.mul (.sin a) (a.diff i))
+  | .pi => .rat 0
+  | .atan a => .div (a.diff i) (.add (.rat 1) (.pow a 2))
+  | .atan2 _ _ => .rat 0
 
 /-! ### Light algebraic simplification (exact rational constant folding)
 
@@ -90,6 +93,7 @@ def IExpr.dsimp : IExpr → IExpr
   | .log a => .log a.dsimp
   | .sin a => .sin a.dsimp
   | .cos a => .cos a.dsimp
+  | .atan a => .atan a.dsimp
   | e => e
 
 /-- Simplified partial derivative (used by the checker). -/
@@ -116,6 +120,9 @@ def domOK (env : List KI) : IExpr → Bool
   | .log a => domOK env a && posK (evalK env a)
   | .sin a => domOK env a
   | .cos a => domOK env a
+  | .pi => true
+  | .atan a => domOK env a
+  | .atan2 _ _ => false
 
 /-- Finite float bit pattern. -/
 def finK (p : Nat) : Bool := !isNaN p && !isInf p && Nat.blt p (2 ^ 64)
