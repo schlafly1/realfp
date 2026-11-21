@@ -18,6 +18,7 @@ import Interval64.Transc
 import Interval64.Trig
 import Interval64.InvTrig
 import Interval64.Hyp
+import Interval64.Tan
 import Interval64.Ops
 import Interval64.Kernel.Nat
 import Interval64.Kernel.Interval
