@@ -57,6 +57,19 @@ theorem t30 (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) :
 theorem t32 : 1.414 < Real.sqrt 2 := by interval
 theorem t33 : Real.exp 1 ≤ 2.7183 ∧ 2.7182 ≤ Real.exp 1 := by interval
 
+-- touching bounds (derivatives: monotonicity, higher-order signs)
+theorem d01 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : 1 + x ≤ Real.exp x := by interval
+theorem d02 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 2) : Real.sin x ≤ x := by interval
+theorem d03 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x ^ 3 / 6 ≤ Real.sin x := by interval
+theorem d04 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.sin x ≤ x + 1/1000 := by interval
+theorem d05 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : 1 - x ^ 2 / 2 ≤ Real.cos x := by interval
+theorem d06 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.log (1 + x) ≤ x := by interval
+theorem d07 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : 1 + x + x ^ 2 / 2 ≤ Real.exp x := by interval
+theorem d08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 4) : Real.sqrt x ≤ (x + 1) / 2 := by interval
+theorem d10 (x : ℝ) (h0 : -1/10 ≤ x) (h1 : x ≤ 1/10) : 0.985 ≤ Real.exp x - x := by interval
+theorem d09 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.sin x ≤ x + 1/1000 := by
+  interval (deriv := false)
+
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
   interval (depth := 30) (maxBoxes := 100000)

@@ -455,21 +455,25 @@ partial def intervalCore (cfg : Cfg) : TacticM Unit := do
     proveCmp cfg true a b
   | _ => throwError "interval: unsupported goal {t}"
 
-syntax (name := intervalTac) "interval" ("(" &"depth" " := " num ")")?
-  ("(" &"maxBoxes" " := " num ")")? ("(" &"chunk" " := " num ")")?
-  ("(" &"deriv" " := " ident ")")? ("(" &"order" " := " num ")")? : tactic
+declare_syntax_cat intervalOpt
+syntax "(" ident " := " num ")" : intervalOpt
+syntax "(" ident " := " ident ")" : intervalOpt
+/-- `interval` with options in any order: `(depth := n)`, `(maxBoxes := n)`, `(chunk := n)`,
+    `(deriv := false)`, `(order := n)`. -/
+syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
 
 @[tactic intervalTac] def evalInterval : Tactic := fun stx => do
   let mut cfg : Cfg := {}
-  if let some d := stx[1].getOptional? then cfg := { cfg with depth := d[3].isNatLit?.getD cfg.depth }
-  if let some b := stx[2].getOptional? then
-    cfg := { cfg with maxBoxes := b[3].isNatLit?.getD cfg.maxBoxes }
-  if let some b := stx[3].getOptional? then
-    cfg := { cfg with chunk := b[3].isNatLit?.getD cfg.chunk }
-  if let some b := stx[4].getOptional? then
-    cfg := { cfg with deriv := b[3].getId != `false }
-  if let some b := stx[5].getOptional? then
-    cfg := { cfg with order := b[3].isNatLit?.getD cfg.order }
+  for o in stx[1].getArgs do
+    let k := o[1].getId
+    let v := o[3]
+    let n := v.isNatLit?
+    if k == `depth then cfg := { cfg with depth := n.getD cfg.depth }
+    else if k == `maxBoxes then cfg := { cfg with maxBoxes := n.getD cfg.maxBoxes }
+    else if k == `chunk then cfg := { cfg with chunk := n.getD cfg.chunk }
+    else if k == `order then cfg := { cfg with order := n.getD cfg.order }
+    else if k == `deriv then cfg := { cfg with deriv := v.getId != `false }
+    else throwErrorAt o "interval: unknown option {k}"
   evalTactic (← `(tactic| intros))
   evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
     ge_iff_le, gt_iff_lt] at *))

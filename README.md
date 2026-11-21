@@ -457,9 +457,49 @@ example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
 * **Trust**: standard axioms only (`propext`, `Classical.choice`, `Quot.sound`).
 * **Cost**: a few ms of kernel time per box for polynomial terms (2306 boxes, 2 variables: ~10 s), much more with
   transcendental functions (see table); trace with `set_option trace.interval true`.
-* **Limits**: no dependency-problem reduction (centred forms/Taylor), so bounds that are
-  tight at a point need a margin; `log` of an interval not strictly positive gives `whole`;
+* **Limits**: `log` of an interval not strictly positive gives `whole`;
   `sqrt` of a partly negative interval is hulled with `0` (matches `Real.sqrt`).
+
+### Derivative certificates (`Interval64/Kernel/Deriv.lean`, `RealFPMathlib/IntervalDeriv.lean`)
+
+Bounds that are *touching* (equality at a point of the box) are provable:
+
+```lean
+example (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : 1 + x ≤ Real.exp x := by interval
+example (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 2) : Real.sin x ≤ x := by interval
+example (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x^3/6 ≤ Real.sin x := by interval
+```
+
+* `IExpr.diff i`: symbolic partial derivative (all operations except `|·|`);
+  `IExpr.deriv i := (diff i).dsimp` folds rational constants *exactly* (so e.g. `36·(1/36)`
+  is `1`, not an interval of width 1 ulp). The derivative enclosure is the interval
+  evaluation of `deriv` (the same interval operations as forward-mode AD, without sharing).
+  `hasDerivAt_denote`: `HasDerivAt (fun t => e.denote (xs.set i t)) ((e.diff i).denote xs) _`
+  wherever `Dom` holds (denominators ≠ 0, `sqrt`/`log` arguments > 0); `domOK_sound`
+  checks `Dom` on a box.
+* Certificates (`DCert`): `leaf`, `split`, `mono i inc dc c` (the sign of ∂f/∂xᵢ on the box is
+  proved by the nested certificate `dc`, by any of these methods, i.e. higher derivatives;
+  then `f` is only checked on the face `xᵢ = hi` or `lo`), `center i m` (centred form
+  `f(m) + f′(X)·(X − m)` intersected with the naive enclosure). Soundness: `checkD_sound`
+  (mean value theorem), `proveD_le/lt/ge/gt`, `checkD_split_of`.
+* Search: leaf → monotone in a variable with a visible derivative sign → centred form at
+  the split midpoint → monotone with the sign proved recursively up to `order`
+  derivatives → bisection.
+* Options: `(deriv := false)` (plain bisection, as before), `(order := n)` (default 3).
+  Options can be given in any order.
+* Box counts on the 33 earlier tests (deriv off → on), all others unchanged at 1–2:
+
+  | test | off | on | | test | off | on |
+  |---|---|---|---|---|---|---|
+  | t02 | 18 | 4 | | t13 | 57 | 9 |
+  | t05 | 294 | 17 | | t18 | 58 | 4 |
+  | t06 | 402 | 17 | | t19 | 2 | 1 |
+  | t08 | 86 | 4 | | t23 | 37 | 2 |
+  | t09 | 280 | 28 | | t28 | 2306 | 3 |
+  | t10 | 12 | 8 | | t31 | 64 | 4 |
+  | t12 | 6 | 2 | | **total (33)** | **3645** | **126** |
+
+  Per test 2.5–3.7 s including ~2 s Lean startup (before: up to 12.6 s).
 * Tests: `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`.
 
 ## Representability, `ofRat`, and tightness

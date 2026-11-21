@@ -13,4 +13,5 @@ import RealFPMathlib.Corners
 import RealFPMathlib.Unbounded
 import RealFPMathlib.Ops
 import RealFPMathlib.IntervalSound
+import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.IntervalTactic
