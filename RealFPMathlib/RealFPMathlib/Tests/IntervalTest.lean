@@ -83,6 +83,17 @@ theorem f07 (x y : ℝ) (hx : -2 ≤ x) (hx' : x ≤ 2) (hy : -1 ≤ y) (hy' : y
     Complex.arg (↑x + ↑y * Complex.I) ≤ 3.1416 := by interval
 theorem f08 : 4 * Real.arctan (1/5) - Real.arctan (1/239) < Real.pi / 4 + 1/10^10 := by interval
 
+-- sinh, cosh, tanh, log2, log10
+theorem h01 : 1.1752 < Real.sinh 1 ∧ Real.sinh 1 < 1.1753 := by interval
+theorem h02 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : 1 ≤ Real.cosh x := by interval
+theorem h03 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.tanh x ≤ x := by interval
+theorem h04 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 2) : x ≤ Real.sinh x := by interval
+theorem h05 (x : ℝ) (h0 : -2 ≤ x) (h1 : x ≤ 2) : Real.cosh x ^ 2 - Real.sinh x ^ 2 ≤ 1 + 1/10^6 := by
+  interval
+theorem h06 : Real.logb 2 1024 = 10 ∨ 9.99999 < Real.logb 2 1024 := by right; interval
+theorem h07 : 0.30102 < Real.logb 10 2 ∧ Real.logb 10 2 < 0.30103 := by interval
+theorem h08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 8) : Real.logb 2 x ≤ x - 1 := by interval
+
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
   interval (depth := 30) (maxBoxes := 100000)

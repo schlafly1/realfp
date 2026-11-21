@@ -54,6 +54,11 @@ def Dom (xs : List ℝ) : IExpr → Prop
   | .pi => True
   | .atan a => Dom xs a
   | .atan2 _ _ => False
+  | .sinh a => Dom xs a
+  | .cosh a => Dom xs a
+  | .tanh a => Dom xs a
+  | .log2 a => Dom xs a ∧ 0 < a.denote xs
+  | .log10 a => Dom xs a ∧ 0 < a.denote xs
 
 theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     ∀ e : IExpr, Dom xs e →
@@ -143,6 +148,43 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     show _ = (a.diff i).denote xs / (((1 : ℚ) : ℝ) + a.denote xs ^ 2)
     push_cast; ring
   | atan2 a b _ _ => intro h; exact h.elim
+  | sinh a iha =>
+    intro h
+    have := (iha h).sinh
+    simp only [hs] at this
+    exact this
+  | cosh a iha =>
+    intro h
+    have := (iha h).cosh
+    simp only [hs] at this
+    exact this
+  | tanh a iha =>
+    intro h
+    have hc : Real.cosh (a.denote xs) ≠ 0 := (Real.cosh_pos _).ne'
+    have := (iha h).sinh.div (iha h).cosh (by rw [hs]; exact hc)
+    simp only [hs] at this
+    convert this using 1
+    · funext t; simp [IExpr.denote, Real.tanh_eq_sinh_div_cosh]
+    · show (a.diff i).denote xs / Real.cosh (a.denote xs) ^ 2 = _
+      have h1 := Real.cosh_sq_sub_sinh_sq (a.denote xs)
+      congr 1
+      linear_combination (-(a.diff i).denote xs) * h1
+  | log2 a iha =>
+    intro h
+    have := ((iha h.1).log (by rw [hs]; exact h.2.ne')).div_const (Real.log 2)
+    simp only [hs] at this
+    convert this using 1
+    · funext t; simp [IExpr.denote, Real.logb]
+    · show (a.diff i).denote xs / a.denote xs / Real.log ((2 : ℚ) : ℝ) = _
+      push_cast; rfl
+  | log10 a iha =>
+    intro h
+    have := ((iha h.1).log (by rw [hs]; exact h.2.ne')).div_const (Real.log 10)
+    simp only [hs] at this
+    convert this using 1
+    · funext t; simp [IExpr.denote, Real.logb]
+    · show (a.diff i).denote xs / a.denote xs / Real.log ((10 : ℚ) : ℝ) = _
+      push_cast; rfl
 
 
 /-! ### Simplification preserves the denotation -/
@@ -275,6 +317,17 @@ theorem domOK_sound {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
   | pi => intro _; trivial
   | atan a iha => intro h; exact iha h
   | atan2 a b _ _ => intro h; simp [domOK] at h
+  | sinh a iha => intro h; exact iha h
+  | cosh a iha => intro h; exact iha h
+  | tanh a iha => intro h; exact iha h
+  | log2 a iha =>
+    intro h; simp only [domOK, Bool.and_eq_true] at h
+    have m := memK hw hxs a
+    exact ⟨iha h.1, pos_of_posK m.2 h.2 m.1⟩
+  | log10 a iha =>
+    intro h; simp only [domOK, Bool.and_eq_true] at h
+    have m := memK hw hxs a
+    exact ⟨iha h.1, pos_of_posK m.2 h.2 m.1⟩
 
 /-! ### Points, segments, intersection -/
 

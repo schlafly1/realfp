@@ -177,6 +177,11 @@ partial def iexprToExpr : IExpr → Expr
   | .pi => mkConst ``IExpr.pi
   | .atan a => mkApp (mkConst ``IExpr.atan) (iexprToExpr a)
   | .atan2 a b => mkApp2 (mkConst ``IExpr.atan2) (iexprToExpr a) (iexprToExpr b)
+  | .sinh a => mkApp (mkConst ``IExpr.sinh) (iexprToExpr a)
+  | .cosh a => mkApp (mkConst ``IExpr.cosh) (iexprToExpr a)
+  | .tanh a => mkApp (mkConst ``IExpr.tanh) (iexprToExpr a)
+  | .log2 a => mkApp (mkConst ``IExpr.log2) (iexprToExpr a)
+  | .log10 a => mkApp (mkConst ``IExpr.log10) (iexprToExpr a)
 
 partial def dcertToExpr : DCert → Expr
   | .leaf => mkConst ``DCert.leaf
@@ -228,6 +233,16 @@ partial def reify (vars : Array Expr) (e : Expr) : MetaM IExpr := do
   | (``Real.cos, #[a]) => return .cos (← r a)
   | (``Real.pi, #[]) => return .pi
   | (``Real.arctan, #[a]) => return .atan (← r a)
+  | (``Real.sinh, #[a]) => return .sinh (← r a)
+  | (``Real.cosh, #[a]) => return .cosh (← r a)
+  | (``Real.tanh, #[a]) => return .tanh (← r a)
+  | (``Real.logb, #[b, a]) =>
+    match ← r b with
+    | .rat q =>
+      if q == 2 then return .log2 (← r a)
+      else if q == 10 then return .log10 (← r a)
+      else throwError "interval: only `Real.logb 2` and `Real.logb 10` are supported: {e}"
+    | _ => throwError "interval: only `Real.logb 2` and `Real.logb 10` are supported: {e}"
   | (``Complex.arg, #[z]) =>
     -- `Complex.arg (↑x + ↑y * Complex.I)` is `atan2 y x`
     match z.getAppFnArgs with

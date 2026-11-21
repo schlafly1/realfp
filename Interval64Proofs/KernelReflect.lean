@@ -61,6 +61,93 @@ theorem atan_toI {a : KI} (ha : WF a) : toI (KI.atan a) = Interval64.atan (toI a
       toBits_toF_of_not_nan ha.1 h.1, toBits_toF_of_not_nan ha.2 h.2, toF_ofBits]
   · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
 
+theorem sinh_toI {a : KI} (ha : WF a) : toI (KI.sinh a) = Interval64.sinh (toI a) ∧ WF (KI.sinh a) := by
+  unfold Interval64.sinh KI.sinh
+  simp only [toI, isNaN_toF ha.1, isNaN_toF ha.2]
+  cases h : (isNaN a.lo || isNaN a.hi)
+  · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+    simp only [Bool.or_eq_false_iff] at h
+    refine ⟨?_, UInt64.toNat_lt _, UInt64.toNat_lt _⟩
+    simp only [Directed.sinhDown, Directed.sinhUp, Directed.sinhDownSpec, Directed.sinhUpSpec,
+      toBits_toF_of_not_nan ha.1 h.1, toBits_toF_of_not_nan ha.2 h.2, toF_ofBits]
+  · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
+
+theorem tanh_toI {a : KI} (ha : WF a) : toI (KI.tanh a) = Interval64.tanh (toI a) ∧ WF (KI.tanh a) := by
+  unfold Interval64.tanh KI.tanh
+  simp only [toI, isNaN_toF ha.1, isNaN_toF ha.2]
+  cases h : (isNaN a.lo || isNaN a.hi)
+  · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+    simp only [Bool.or_eq_false_iff] at h
+    refine ⟨?_, UInt64.toNat_lt _, UInt64.toNat_lt _⟩
+    simp only [Directed.tanhDown, Directed.tanhUp, Directed.tanhDownSpec, Directed.tanhUpSpec,
+      toBits_toF_of_not_nan ha.1 h.1, toBits_toF_of_not_nan ha.2 h.2, toF_ofBits]
+  · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
+
+theorem coshD_toF {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
+    Directed.coshDown (toF x) = toF (KI.coshD x) := by
+  simp only [KI.coshD, Directed.coshDown, Directed.coshDownSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
+
+theorem coshU_toF {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
+    Directed.coshUp (toF x) = toF (KI.coshU x) := by
+  simp only [KI.coshU, Directed.coshUp, Directed.coshUpSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
+
+theorem cosh_toI {a : KI} (ha : WF a) : toI (KI.cosh a) = Interval64.cosh (toI a) ∧ WF (KI.cosh a) := by
+  unfold Interval64.cosh KI.cosh
+  simp only [toI, isNaN_toF ha.1, isNaN_toF ha.2]
+  cases h : (isNaN a.lo || isNaN a.hi)
+  · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+    simp only [Bool.or_eq_false_iff] at h
+    have b1 : KI.coshD a.lo < 2 ^ 64 := UInt64.toNat_lt _
+    have b2 : KI.coshD a.hi < 2 ^ 64 := UInt64.toNat_lt _
+    have b3 : KI.coshU a.lo < 2 ^ 64 := UInt64.toNat_lt _
+    have b4 : KI.coshU a.hi < 2 ^ 64 := UInt64.toNat_lt _
+    have o1 : KI.oneDown < 2 ^ 64 := UInt64.toNat_lt _
+    simp only [← toF_zero, le_toF zero_lt ha.1, le_toF ha.2 zero_lt, coshD_toF ha.1 h.1,
+      coshD_toF ha.2 h.2, coshU_toF ha.1 h.1, coshU_toF ha.2 h.2, fmax_toF b3 b4]
+    cases le 0 a.lo
+    · cases le a.hi 0
+      · refine ⟨?_, o1, fmax_lt b3 b4⟩
+        simp only [Bool.cond_false, Bool.false_eq_true, ite_false, decide_false]
+        rw [KI.oneDown, toF_toNat]
+      · exact ⟨by simp, b2, b3⟩
+    · exact ⟨by simp, b1, b4⟩
+  · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
+
+theorem logBLo_toF (ten : Bool) {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
+    logBLo ten (toF x) = toF (KI.logBLo ten x) ∧ KI.logBLo ten x < 2 ^ 64 := by
+  unfold logBLo KI.logBLo
+  rw [toBits_toF_of_not_nan hx hn]
+  have hb : (Hyp.logBBitsD ten (UInt64.ofNat x) false).1.toNat < 2 ^ 64 := UInt64.toNat_lt _
+  generalize Spec.unpackBits (UInt64.ofNat x) = u
+  cases u
+  all_goals first | (rename_i s m e h; cases s) | (rename_i s; cases s) | skip
+  all_goals cases ten
+  all_goals simp [Directed.log2Down, Directed.log2DownSpec, Directed.log10Down,
+      Directed.log10DownSpec, Hyp.log2DownBits, Hyp.log10DownBits, toF_ofBits,
+      toBits_toF_of_not_nan hx hn, posInf_toNat, negInf_toNat, qNaN_toNat, hb]
+  all_goals decide
+
+theorem logB_toI (ten : Bool) {a : KI} (ha : WF a) :
+    toI (KI.logB ten a) = Interval64.logB ten (toI a) ∧ WF (KI.logB ten a) := by
+  unfold Interval64.logB KI.logB
+  simp only [toI, isNaN_toF ha.1, isNaN_toF ha.2]
+  cases h : (isNaN a.lo || isNaN a.hi)
+  · simp only [Bool.cond_false, Bool.false_eq_true, ite_false]
+    simp only [Bool.or_eq_false_iff] at h
+    rw [toBits_toF_of_not_nan ha.2 h.2]
+    have hl := logBLo_toF ten ha.1 h.1
+    have hb : (Hyp.logBBitsD ten (UInt64.ofNat a.hi) true).1.toNat < 2 ^ 64 := UInt64.toNat_lt _
+    generalize Spec.unpackBits (UInt64.ofNat a.hi) = u
+    cases u
+    all_goals first | (rename_i s m e h'; cases s) | (rename_i s; cases s) | skip
+    all_goals cases ten
+    all_goals simp [Directed.log2Up, Directed.log2UpSpec, Directed.log10Up, Directed.log10UpSpec,
+        Hyp.log2UpBits, Hyp.log10UpBits, toF_ofBits, toBits_toF_of_not_nan ha.2 h.2,
+        posInf_toNat, negInf_toNat, qNaN_toNat, hb, hl.1, hl.2, toI_invalid, toI, KI.invalid,
+        toF_qNaN, invalid, WF]
+    all_goals decide
+  · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
+
 theorem const_toI (l h : UInt64) : toI ⟨l.toNat, h.toNat⟩ = ⟨Float.ofBits l, Float.ofBits h⟩ ∧
     WF ⟨l.toNat, h.toNat⟩ := by
   refine ⟨?_, UInt64.toNat_lt _, UInt64.toNat_lt _⟩
@@ -70,6 +157,16 @@ theorem pi_toI : toI KI.pi = Interval64.pi ∧ WF KI.pi := const_toI _ _
 theorem halfPi_toI : toI KI.halfPi = halfPi ∧ WF KI.halfPi := const_toI _ _
 theorem negHalfPi_toI : toI KI.negHalfPi = negHalfPi ∧ WF KI.negHalfPi := const_toI _ _
 theorem argHull_toI : toI KI.argHull = argHull ∧ WF KI.argHull := const_toI _ _
+
+theorem logBK_toI (ten : Bool) {X : KI} (h : WF X) :
+    toI (logBK ten X) = logBI ten (toI X) ∧ WF (logBK ten X) := by
+  unfold logBK logBI
+  have e : decide (0 < (toI X).lo) = lt 0 X.lo := by
+    show decide (0 < toF X.lo) = _; rw [← toF_zero, lt_toF zero_lt h.1]
+  rw [e]
+  cases lt 0 X.lo
+  · exact ⟨toI_whole, wf_whole⟩
+  · exact logB_toI ten h
 
 theorem atan2K_toI {y x : KI} (hy : WF y) (hx : WF x) :
     toI (atan2K y x) = atan2I (toI y) (toI x) ∧ WF (atan2K y x) := by
@@ -147,6 +244,18 @@ theorem evalK_toI {env : List KI} (h : ∀ X ∈ env, WF X) :
   | atan2 a b iha ihb =>
     exact ⟨by simp only [evalK, evalI]; rw [(atan2K_toI iha.2 ihb.2).1, iha.1, ihb.1],
       (atan2K_toI iha.2 ihb.2).2⟩
+  | sinh a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(sinh_toI iha.2).1, iha.1], (sinh_toI iha.2).2⟩
+  | cosh a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(cosh_toI iha.2).1, iha.1], (cosh_toI iha.2).2⟩
+  | tanh a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(tanh_toI iha.2).1, iha.1], (tanh_toI iha.2).2⟩
+  | log2 a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(logBK_toI false iha.2).1, iha.1],
+      (logBK_toI false iha.2).2⟩
+  | log10 a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(logBK_toI true iha.2).1, iha.1],
+      (logBK_toI true iha.2).2⟩
 
 theorem boxes_wf (bs : List (Rat × Rat)) : ∀ X ∈ boxes bs, WF X := by
   induction bs with

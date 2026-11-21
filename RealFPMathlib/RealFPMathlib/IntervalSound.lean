@@ -15,6 +15,7 @@ import RealFPMathlib.Unbounded
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig
 import RealFPMathlib.InvTrig
+import RealFPMathlib.Hyp
 import Interval64Proofs.KernelReflect
 
 open Interval64 Interval64.Spec Interval64.KF
@@ -45,6 +46,11 @@ def _root_.Interval64.KF.IExpr.denote (xs : List ℝ) : IExpr → ℝ
   | .pi => Real.pi
   | .atan a => Real.arctan (a.denote xs)
   | .atan2 a b => Complex.arg (((b.denote xs : ℝ) : ℂ) + ((a.denote xs : ℝ) : ℂ) * Complex.I)
+  | .sinh a => Real.sinh (a.denote xs)
+  | .cosh a => Real.cosh (a.denote xs)
+  | .tanh a => Real.tanh (a.denote xs)
+  | .log2 a => Real.logb 2 (a.denote xs)
+  | .log10 a => Real.logb 10 (a.denote xs)
 
 theorem zero_mem_zeroI : (0 : ℝ) ∈ zeroI.toSet := by
   have h := mem_toSet_ofRat 0
@@ -97,6 +103,16 @@ theorem logI_mem {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) : Real.log x �
     rw [e0] at h1
     have := lt_of_lt_of_le h1 hl'
     exact log_mem_toSet hx (EReal.coe_lt_coe_iff.1 this)
+  · exact mem_toSet_whole _
+
+theorem logBI_mem (ten : Bool) {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.logb (RealFP.Hyp.baseR ten) x ∈ (logBI ten X).toSet := by
+  unfold logBI
+  split_ifs with hlt
+  · obtain ⟨⟨hl, hl'⟩, -⟩ := mem_toSet_iff_toE.1 hx
+    have h1 : (0 : Float) < X.lo := by simpa using hlt
+    rw [zero_lt_iff_toE hl] at h1
+    exact RealFP.Hyp.logB_mem_toSet ten hx (EReal.coe_pos.1 (lt_of_lt_of_le h1 hl'))
   · exact mem_toSet_whole _
 
 theorem atan2I_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
@@ -154,6 +170,15 @@ theorem eval_sound {xs : List ℝ} {env : List Interval64}
   | pi => exact pi_mem_toSet
   | atan a iha => exact atan_mem_toSet iha
   | atan2 a b iha ihb => exact atan2I_mem ihb iha
+  | sinh a iha => exact RealFP.Hyp.sinh_mem_toSet iha
+  | cosh a iha => exact RealFP.Hyp.cosh_mem_toSet iha
+  | tanh a iha => exact RealFP.Hyp.tanh_mem_toSet iha
+  | log2 a iha =>
+    have := logBI_mem false iha
+    simp only [RealFP.Hyp.baseR, Bool.false_eq_true, ↓reduceIte] at this; exact this
+  | log10 a iha =>
+    have := logBI_mem true iha
+    simp only [RealFP.Hyp.baseR, ↓reduceIte] at this; exact this
 
 /-! ### Bisection -/
 

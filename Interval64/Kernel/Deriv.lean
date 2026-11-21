@@ -37,6 +37,11 @@ def IExpr.diff (i : Nat) : IExpr → IExpr
   | .pi => .rat 0
   | .atan a => .div (a.diff i) (.add (.rat 1) (.pow a 2))
   | .atan2 _ _ => .rat 0
+  | .sinh a => .mul (.cosh a) (a.diff i)
+  | .cosh a => .mul (.sinh a) (a.diff i)
+  | .tanh a => .div (a.diff i) (.pow (.cosh a) 2)
+  | .log2 a => .div (.div (a.diff i) a) (.log (.rat 2))
+  | .log10 a => .div (.div (a.diff i) a) (.log (.rat 10))
 
 /-! ### Light algebraic simplification (exact rational constant folding)
 
@@ -94,6 +99,11 @@ def IExpr.dsimp : IExpr → IExpr
   | .sin a => .sin a.dsimp
   | .cos a => .cos a.dsimp
   | .atan a => .atan a.dsimp
+  | .sinh a => .sinh a.dsimp
+  | .cosh a => .cosh a.dsimp
+  | .tanh a => .tanh a.dsimp
+  | .log2 a => .log2 a.dsimp
+  | .log10 a => .log10 a.dsimp
   | e => e
 
 /-- Simplified partial derivative (used by the checker). -/
@@ -123,6 +133,11 @@ def domOK (env : List KI) : IExpr → Bool
   | .pi => true
   | .atan a => domOK env a
   | .atan2 _ _ => false
+  | .sinh a => domOK env a
+  | .cosh a => domOK env a
+  | .tanh a => domOK env a
+  | .log2 a => domOK env a && posK (evalK env a)
+  | .log10 a => domOK env a && posK (evalK env a)
 
 /-- Finite float bit pattern. -/
 def finK (p : Nat) : Bool := !isNaN p && !isInf p && Nat.blt p (2 ^ 64)

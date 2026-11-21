@@ -10,6 +10,7 @@ import Interval64.Kernel.Nat
 import Interval64.Transc
 import Interval64.Trig
 import Interval64.InvTrig
+import Interval64.Hyp
 import Interval64.OfRat
 
 namespace Interval64.KF
@@ -165,6 +166,40 @@ def pi : KI := ⟨InvTrig.piDownBits.toNat, InvTrig.piUpBits.toNat⟩
 def halfPi : KI := ⟨InvTrig.halfPiDownBits.toNat, InvTrig.halfPiUpBits.toNat⟩
 def negHalfPi : KI := ⟨InvTrig.negHalfPiDownBits.toNat, InvTrig.negHalfPiUpBits.toNat⟩
 def argHull : KI := ⟨InvTrig.negPiDownBits.toNat, InvTrig.piUpBits.toNat⟩
+
+def sinh (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid
+  else ⟨(Hyp.sinhDownBits (UInt64.ofNat a.lo)).toNat, (Hyp.sinhUpBits (UInt64.ofNat a.hi)).toNat⟩
+
+def tanh (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid
+  else ⟨(Hyp.tanhDownBits (UInt64.ofNat a.lo)).toNat, (Hyp.tanhUpBits (UInt64.ofNat a.hi)).toNat⟩
+
+def oneDown : Nat := (Spec.ofRatDown 1).toNat
+def coshD (x : Nat) : Nat := (Hyp.coshDownBits (UInt64.ofNat x)).toNat
+def coshU (x : Nat) : Nat := (Hyp.coshUpBits (UInt64.ofNat x)).toNat
+
+def cosh (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid
+  else bif le 0 a.lo then ⟨coshD a.lo, coshU a.hi⟩
+  else bif le a.hi 0 then ⟨coshD a.hi, coshU a.lo⟩
+  else ⟨oneDown, fmax (coshU a.lo) (coshU a.hi)⟩
+
+def logBLo (ten : Bool) (x : Nat) : Nat :=
+  match Spec.unpackBits (UInt64.ofNat x) with
+  | .finite .positive .. => (Hyp.logBBitsD ten (UInt64.ofNat x) false).1.toNat
+  | .infinity .positive => infBits
+  | .notANumber => qNaN
+  | _ => negInfBits
+
+def logB (ten : Bool) (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid
+  else
+    match Spec.unpackBits (UInt64.ofNat a.hi) with
+    | .finite .positive .. => ⟨logBLo ten a.lo, (Hyp.logBBitsD ten (UInt64.ofNat a.hi) true).1.toNat⟩
+    | .zero _ => ⟨logBLo ten a.lo, negInfBits⟩
+    | .infinity .positive => ⟨logBLo ten a.lo, infBits⟩
+    | _ => invalid
 
 end KI
 

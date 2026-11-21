@@ -34,6 +34,13 @@ inductive IExpr where
   | atan (a : IExpr)
   /-- `atan2 y x = Complex.arg (x + y i)`. -/
   | atan2 (y x : IExpr)
+  | sinh (a : IExpr)
+  | cosh (a : IExpr)
+  | tanh (a : IExpr)
+  /-- `Real.logb 2`. -/
+  | log2 (a : IExpr)
+  /-- `Real.logb 10`. -/
+  | log10 (a : IExpr)
   deriving Repr, Inhabited
 
 /-! ### `Interval64` semantics -/
@@ -47,6 +54,10 @@ def sqrtI (X : Interval64) : Interval64 :=
 /-- `log X` if `X > 0`, else the whole line. -/
 def logI (X : Interval64) : Interval64 :=
   if decide (0 < X.lo) then Interval64.log X else whole
+
+/-- `log2` / `log10` if `X > 0`, else the whole line (`Real.logb b x = log x / log b`). -/
+def logBI (ten : Bool) (X : Interval64) : Interval64 :=
+  if decide (0 < X.lo) then Interval64.logB ten X else whole
 
 /-- `atan2` for the tactic, with `Y / X` as `Y * inv X` (as `IExpr.div`); see `Interval64.atan2`. -/
 def atan2I (y x : Interval64) : Interval64 :=
@@ -75,6 +86,11 @@ def evalI (env : List Interval64) : IExpr → Interval64
   | .pi => Interval64.pi
   | .atan a => Interval64.atan (evalI env a)
   | .atan2 a b => atan2I (evalI env a) (evalI env b)
+  | .sinh a => Interval64.sinh (evalI env a)
+  | .cosh a => Interval64.cosh (evalI env a)
+  | .tanh a => Interval64.tanh (evalI env a)
+  | .log2 a => logBI false (evalI env a)
+  | .log10 a => logBI true (evalI env a)
 
 /-! ### Kernel semantics -/
 
@@ -83,6 +99,8 @@ def zeroK : KI := ⟨0, 0⟩
 def sqrtK (X : KI) : KI := bif lt X.lo 0 then KI.hull zeroK (KI.sqrt X) else KI.sqrt X
 
 def logK (X : KI) : KI := bif lt 0 X.lo then KI.log X else KI.whole
+
+def logBK (ten : Bool) (X : KI) : KI := bif lt 0 X.lo then KI.logB ten X else KI.whole
 
 def atan2K (y x : KI) : KI :=
   bif KI.anyNan y x then KI.invalid
@@ -110,6 +128,11 @@ def evalK (env : List KI) : IExpr → KI
   | .pi => KI.pi
   | .atan a => KI.atan (evalK env a)
   | .atan2 a b => atan2K (evalK env a) (evalK env b)
+  | .sinh a => KI.sinh (evalK env a)
+  | .cosh a => KI.cosh (evalK env a)
+  | .tanh a => KI.tanh (evalK env a)
+  | .log2 a => logBK false (evalK env a)
+  | .log10 a => logBK true (evalK env a)
 
 /-! ### Goal predicates on the enclosure `F` of the expression -/
 
