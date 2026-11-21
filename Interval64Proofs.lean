@@ -14,3 +14,4 @@ import Interval64Proofs.KernelEq
 import Interval64Proofs.KernelFloat
 import Interval64Proofs.KernelInterval
 import Interval64Proofs.KernelReflect
+import Interval64Proofs.KernelDemo

@@ -92,7 +92,7 @@ import RealFPMathlib.Examples.Ops
 #print axioms RealFP.Examples.Cubic.boxOK_sound
 #print axioms RealFP.Examples.Cubic.exists_box
 #print axioms RealFP.Examples.Cubic.allOK_sound
-#print axioms RealFP.Examples.Cubic.allOK_13
+#print axioms RealFP.Examples.Cubic.bound_box
 #print axioms RealFP.Examples.Cubic.c_val
 #print axioms RealFP.Examples.Cubic.c_le
 #print axioms RealFP.Examples.Cubic.f_sqrt_two
@@ -117,10 +117,6 @@ import RealFPMathlib.Examples.Ops
 #print axioms RealFP.Examples.Jacobian.s_sq
 #print axioms RealFP.Examples.Jacobian.solutions_026
 #print axioms RealFP.Examples.Jacobian.ncard_solutions_026
-#print axioms RealFP.Examples.Jacobian.S_lo
-#print axioms RealFP.Examples.Jacobian.S_hi
-#print axioms RealFP.Examples.Jacobian.Y_lo
-#print axioms RealFP.Examples.Jacobian.Y_hi
 #print axioms RealFP.Examples.Jacobian.s_mem
 #print axioms RealFP.Examples.Jacobian.y_mem
 #print axioms RealFP.Examples.Jacobian.s_bounds

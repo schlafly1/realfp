@@ -2,13 +2,14 @@
 Capstone: `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`, obtained from the reusable
 `MemIv` / `hi_le_of_native` bridge. Membership of `x` in `demoIv` is lifted
 through the Lean `Interval64` `mul` and `add` by `mul_mem_iv` and
-`add_mem_iv`; the only numeric fact in `sq_add_le` is the compiled check
-`demoHi_le` (`native_decide`). The earlier exactness-based proof is kept
+`add_mem_iv`; the only numeric fact in `sq_add_le` is `demoHi_le'`, now kernel-checked via the
+Nat mirror (`Interval64.KF.demoHi_le_kernel`); `demoHi_le` (`native_decide`) remains as a demo. The earlier exactness-based proof is kept
 as `sq_add_le_of_exact`.
 -/
 import Interval64Proofs.Mul
 import Interval64Proofs.IntervalMem
 import Interval64.NativeDecide
+import Interval64Proofs.KernelDemo
 
 namespace Interval64Proofs.Capstone
 
@@ -272,12 +273,13 @@ theorem mem_demoIv {x : Rat}
     MemIv x demoIv :=
   mem_of_bounds bitsToRat?_float_half bitsToRat?_float_threeHalves hlo hhi
 
-/-- The compiled interval evaluation `demoHi ≤ 3.75`. -/
+/-- `demoHi ≤ 3.75`, kernel-checked through the Nat mirror (`KernelDemo`); the
+    `native_decide` version `demoHi_le` stays in `Interval64.NativeDecide` as a demo. -/
 theorem demoHi_le' : demoHi ≤ 3.75 :=
-  demoHi_le
+  Interval64.KF.demoHi_le_kernel
 
-/-- `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`, from `demoHi_le` plus the
-    reusable `MemIv` bridge. The only numeric fact is `native_decide`. -/
+/-- `∀ x ∈ [1/2, 3/2], x*x + x ≤ 15/4`, from `demoHi_le'` plus the
+    reusable `MemIv` bridge. The only numeric fact is kernel-checked (`decide +kernel`). -/
 theorem sq_add_le {x : Rat}
     (hlo : (1 : Rat) / 2 ≤ x) (hhi : x ≤ (3 : Rat) / 2) :
     x * x + x ≤ (15 : Rat) / 4 := by
@@ -288,7 +290,7 @@ theorem sq_add_le {x : Rat}
       ⟨_, bitsToRat?_float_half⟩ ⟨_, bitsToRat?_float_threeHalves⟩
   have hadd : MemIv (x * x + x) (demoIv * demoIv + demoIv) :=
     add_mem_iv hsq hx
-  exact hi_le_of_native hadd demoHi_le bitsToRat?_float_fifteenQuarters
+  exact hi_le_of_native hadd demoHi_le' bitsToRat?_float_fifteenQuarters
 
 /-- Previous capstone, derived by exactness of the representable corners
     rather than from `demoHi_le`. -/

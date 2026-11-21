@@ -15,10 +15,13 @@ Example 2: a polynomial map `F : ℝ³ → ℝ³` with constant Jacobian determi
 * `solutions_quarter`: exactly 3 solutions of `F = (-1/4, 0, 0)`.
 * `solutions_026`: exactly 3 solutions of `F = (-0.26, 0, 0)`:
   `(0, 0, -0.26)` and `(±s, ∓3/(2s), 169/25)` with `s = √(25/26)`.
-  `s_mem`, `y_mem` give Interval64 enclosures of `s` and `-3/(2s)`
-  (certified with `native_decide`), and `s_bounds`, `y_bounds` 10-digit bounds.
+  `s_mem`, `y_mem` give Interval64 enclosures of `s` and `-3/(2s)`, and
+  `s_bounds`, `y_bounds` 10-digit bounds (by the `interval` tactic: one kernel
+  evaluation, no `native_decide`).
 -/
-import RealFPMathlib.Demo
+import RealFPMathlib.Tight
+import RealFPMathlib.Unbounded
+import RealFPMathlib.IntervalTactic
 import Mathlib.Analysis.Calculus.Deriv.Add
 import Mathlib.Analysis.Calculus.Deriv.Mul
 import Mathlib.Analysis.Calculus.Deriv.Pow
@@ -221,15 +224,6 @@ def S : Interval64 := Interval64.sqrt (ofRat (25/26))
 /-- Interval for `-3/(2s) = (-3/2)/s`. -/
 def Y : Interval64 := ofRat (-3/2) / S
 
-theorem S_lo : bitsToRat? S.lo.toBits = some (4416142765648337 / 4503599627370496) := by
-  native_decide
-theorem S_hi : bitsToRat? S.hi.toBits = some (8832285531296675 / 9007199254740992) := by
-  native_decide
-theorem Y_lo : bitsToRat? Y.lo.toBits = some (-6889182714411407 / 4503599627370496) := by
-  native_decide
-theorem Y_hi : bitsToRat? Y.hi.toBits = some (-6889182714411405 / 4503599627370496) := by
-  native_decide
-
 theorem s_mem : s ∈ S.toSet := by
   have h : (((25/26 : ℚ)) : ℝ) ∈ (ofRat (25/26)).toSet := mem_toSet_ofRat _
   have := mem_toSet_sqrt h (by norm_num)
@@ -244,17 +238,9 @@ theorem y_mem : -3 / (2 * s) ∈ Y.toSet := by
   rw [e]; exact this
 
 theorem s_bounds : (0.9805806756 : ℝ) < s ∧ s < 0.9805806757 := by
-  have h := s_mem
-  rw [toSet_eq_Icc S_lo S_hi] at h
-  obtain ⟨h1, h2⟩ := h
-  push_cast at h1 h2
-  constructor <;> linarith
+  unfold s; interval
 
 theorem y_bounds : (-1.5297058541 : ℝ) < -3 / (2 * s) ∧ -3 / (2 * s) < -1.5297058540 := by
-  have h := y_mem
-  rw [toSet_eq_Icc Y_lo Y_hi] at h
-  obtain ⟨h1, h2⟩ := h
-  push_cast at h1 h2
-  constructor <;> linarith
+  unfold s; interval
 
 end RealFP.Examples.Jacobian

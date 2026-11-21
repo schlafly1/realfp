@@ -36,14 +36,22 @@ example : Representable (3/4) := by decide +kernel
 example : ¬ Representable (1/10) := by decide +kernel
 
 /-! ## 4. A real proof: ∀ x ∈ [1/10, 3/10], x*x + x ≤ 13/32.
-   The only numeric fact is checked by `native_decide` (compiled C code). -/
+   The only numeric fact is kernel-checked via the Nat mirror `KI` (`decide +kernel`). -/
 def I : Interval64 := ofRatInterval (1/10) (3/10)
 def J : Interval64 := I * I + I
 
 #eval J                                   -- about [0.11, 0.39]
 #eval exIv J
 
-theorem J_hi_le : J.hi ≤ 0.40625 := by native_decide
+-- Kernel-checked (no `native_decide`): rewrite `J` to the Nat mirror `KI` and compare bits.
+theorem J_hi_le : J.hi ≤ 0.40625 := by
+  open Interval64.KF in
+  have w := (ofRatInterval_toI (1/10) (3/10)).2
+  have wm := mul_wf w w
+  refine hi_le_of_KI (add_wf wm w) ?_ (n := 0x3FDA000000000000) (by decide) (by decide +kernel)
+    (by decide +kernel)
+  show ofRatInterval (1/10) (3/10) * ofRatInterval (1/10) (3/10) + ofRatInterval (1/10) (3/10) = _
+  rw [← (ofRatInterval_toI (1/10) (3/10)).1, ← mul_toI w w, ← add_toI wm w]
 
 theorem sq_add_le' {x : Rat} (h1 : 1/10 ≤ x) (h2 : x ≤ 3/10) :
     x * x + x ≤ 13/32 := by

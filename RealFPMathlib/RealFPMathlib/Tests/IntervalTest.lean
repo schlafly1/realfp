@@ -1,0 +1,60 @@
+/-
+Tests for the `interval` tactic (`RealFPMathlib.IntervalTactic`).
+Every proof is a single `decide +kernel` evaluation of the certificate checker
+(no `native_decide`; `RealFPMathlibAxioms.lean` checks the axioms).
+-/
+import RealFPMathlib.IntervalTactic
+
+set_option maxHeartbeats 0
+
+namespace RealFP.IntervalTests
+
+-- polynomials, one variable
+theorem t01 : ∀ x : ℝ, 0 ≤ x → x ≤ 1 → x * (1 - x) ≤ 1 := by interval
+theorem t02 : ∀ x : ℝ, 0 ≤ x → x ≤ 1 → x * (1 - x) ≤ 1/4 + 1/100 := by interval
+theorem t03 (x : ℝ) (hx : x ∈ Set.Icc (1 : ℝ) 2) : x * x - x ≤ 3 := by interval
+theorem t04 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x ^ 2 - 0.1 * x + 2 ≤ 3 := by interval
+theorem t05 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 5/2) : x * (6 - x * x) ≤ 5.6578 := by interval
+theorem t06 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 5/2) : 6 * x - x ^ 3 ≤ 5.6578 := by interval
+theorem t07 (x : ℝ) (h0 : -2 ≤ x) (h1 : x ≤ 2) : 0 ≤ x ^ 2 ∧ x ^ 2 ≤ 4 := by interval
+theorem t08 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 3) : x ^ 2 - 2 * x + 1 ≥ -0.01 := by interval
+theorem t09 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : x ^ 4 - x ^ 2 + 1/4 ≥ -0.001 := by interval
+theorem t10 (x : ℝ) (h0 : -3 ≤ x) (h1 : x ≤ 3) : x ^ 3 - 3 * x ∈ Set.Icc (-19 : ℝ) 19 := by
+  interval
+
+-- rational functions, sqrt, abs
+theorem t11 (x : ℝ) (h0 : 1/2 ≤ x) (h1 : x ≤ 3) : 1 / x ≤ 2 := by interval
+theorem t12 (x : ℝ) (h0 : 0 < x) (h1 : x < 1) : x / (x + 1) < 1/2 + 1/100 := by interval
+theorem t13 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 4) : Real.sqrt x ≤ (x + 1) / 2 + 1/100 := by interval
+theorem t14 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 3) : |x - 1| ≤ 2 := by interval
+theorem t15 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : 1.414 < Real.sqrt (x + 1) := by interval
+theorem t16 (x : ℝ) (h0 : -2 ≤ x) (h1 : x ≤ 2) : (x ^ 2 + 1)⁻¹ ≤ 1 := by interval
+
+-- exp / log / sin / cos
+theorem t17 (x : ℝ) (h₀ : 1 ≤ x) (h₁ : x ≤ 2) : Real.exp x < 8 := by interval
+theorem t18 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : Real.exp x - x ≥ 0.99 := by interval
+theorem t19 (x : ℝ) (h0 : 1/2 ≤ x) (h1 : x ≤ 2) : Real.log x < x := by interval
+theorem t20 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 3) : Real.sin x ≤ 1.01 := by interval
+theorem t21 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : 0.84 < Real.sin x := by interval
+theorem t22 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.cos x ≥ 0.5 := by interval
+theorem t23 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.sin x ≤ x + 1/1000 := by interval
+theorem t24 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.exp (Real.sin x) ≤ 2.32 := by interval
+theorem t25 (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 : ℝ) 1.1 := by
+  interval
+
+-- several variables
+theorem t26 (x y : ℝ) (hx : x ∈ Set.Icc (0:ℝ) 1) (hy : 0 ≤ y ∧ y ≤ 1) : x * y ≤ 1 := by interval
+theorem t27 (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) : x ^ 2 + y ^ 2 ≤ 2 := by
+  interval
+theorem t28 (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) : x * y - x - y ≥ -1.01 := by
+  interval
+theorem t29 (x y z : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) (hz : 0 ≤ z ∧ z ≤ 1) :
+    x * y + y * z + z * x ≤ 3 := by interval
+theorem t30 (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) :
+    Real.sin (x + y) ≤ x + y + 1/100 := by interval
+
+-- options
+theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
+  interval (depth := 30) (maxBoxes := 100000)
+
+end RealFP.IntervalTests

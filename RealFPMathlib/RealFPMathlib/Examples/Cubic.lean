@@ -2,17 +2,17 @@
 Example 1: `f(x) = 6x - x³` satisfies `f(x) ≤ f(√2) + 0.001` for all real `x ≥ 0`.
 
 Method:
-* `[0, 5/2]` is covered by `2^13 · 5/2 = 20480` boxes `[i/2^13, (i+1)/2^13]`.
-  On each box the interval extension `X * (6 - X * X)` of `f` is evaluated
-  with Interval64 (C kernels, via `native_decide`) and compared with a
-  constant `c = 5.6578`. A Bool checker (`allOK`) does this for every box, and
-  `allOK_sound` (proved from the lifted enclosure theorems) turns `true` into
-  the real bound `x * (6 - x * x) ≤ c` on `[0, 5/2]`.
+* On `[0, 5/2]`, `x * (6 - x * x) ≤ c` (`c = 5.6578` as a double) is proved by the
+  `interval` tactic (`bound_box`): bisection with Interval64 arithmetic, checked by one
+  `decide +kernel` call — no `native_decide`, standard axioms only.
+  (Earlier version: a fixed grid of `2^13 · 5/2 = 20480` boxes checked by `allOK` with
+  `native_decide`; `allOK` / `allOK_sound` are kept as the hand-written method.)
 * The tail `x ≥ 5/2` is algebra: `f(x) = x (6 - x²) ≤ 0`.
-* `c ≤ 4√2 + 1/1000 = f(√2) + 0.001` uses the Interval64 enclosure of `√2`
-  (`RealFP.Demo.sqrt_two_mem`, from `Interval64.sqrt`).
+* `c ≤ 4√2 + 1/1000 = f(√2) + 0.001` is also closed by `interval` (no variables).
 -/
-import RealFPMathlib.Demo
+import RealFPMathlib.Tight
+import RealFPMathlib.Unbounded
+import RealFPMathlib.IntervalTactic
 
 open Interval64 Interval64.Spec
 
@@ -69,17 +69,17 @@ theorem allOK_sound {c : Float} {q : ℚ} {k n : Nat} (h : allOK c k n = true) (
   obtain ⟨i, hi, hx⟩ := exists_box hn h0 h1
   exact boxOK_sound (List.all_eq_true.1 h i (List.mem_range.2 hi)) hc hx
 
-/-- The certified computation: 20480 boxes of width `2^-13` on `[0, 5/2]`. -/
-theorem allOK_13 : allOK 5.6578 13 20480 = true := by native_decide
+/-- The certified computation on `[0, 5/2]` (kernel-checked bisection certificate). -/
+theorem bound_box (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 5 / 2) :
+    x * (6 - x * x) ≤ ((3185058246467099 / 562949953421312 : ℚ) : ℝ) := by
+  push_cast; interval
 
 /-- Exact value of the double `5.6578`. -/
 theorem c_val : bitsToRat? (5.6578 : Float).toBits = some (3185058246467099 / 562949953421312) := by
   decide +kernel
 
 theorem c_le : ((3185058246467099 / 562949953421312 : ℚ) : ℝ) ≤ 4 * Real.sqrt 2 + 1 / 1000 := by
-  have h := RealFP.Demo.sqrt_two_mem.1
-  push_cast
-  linarith
+  push_cast; interval
 
 /-- `f(√2) = 4√2`. -/
 theorem f_sqrt_two : 6 * Real.sqrt 2 - Real.sqrt 2 ^ 3 = 4 * Real.sqrt 2 := by
@@ -93,7 +93,7 @@ theorem cubic_bound (x : ℝ) (hx : 0 ≤ x) :
   rw [f_sqrt_two]
   have hc := c_le
   rcases le_or_gt x (5 / 2) with h | h
-  · have hb := allOK_sound allOK_13 (by norm_num) c_val hx (by norm_num; linarith)
+  · have hb := bound_box x hx h
     have : 6 * x - x ^ 3 = x * (6 - x * x) := by ring
     rw [this]; norm_num at hc hb ⊢; linarith
   · have hs : 0 ≤ Real.sqrt 2 := Real.sqrt_nonneg 2
