@@ -7,6 +7,7 @@ import RealFPMathlib
 import RealFPMathlib.Demo
 import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.Jacobian
+import RealFPMathlib.Examples.Transc
 
 #print axioms RealFP.loR_rat
 #print axioms RealFP.hiR_rat
@@ -118,3 +119,57 @@ import RealFPMathlib.Examples.Jacobian
 #print axioms RealFP.Examples.Jacobian.y_mem
 #print axioms RealFP.Examples.Jacobian.s_bounds
 #print axioms RealFP.Examples.Jacobian.y_bounds
+#print axioms RealFP.Transc.fact_eq
+#print axioms RealFP.Transc.floorP_le
+#print axioms RealFP.Transc.le_ceilP
+#print axioms RealFP.Transc.ratAbs'_eq
+#print axioms RealFP.Transc.pow2_cast
+#print axioms RealFP.Transc.expTaylor_eq
+#print axioms RealFP.Transc.expSmall_spec
+#print axioms RealFP.Transc.sqIter_spec
+#print axioms RealFP.Transc.expTerms_pos
+#print axioms RealFP.Transc.lt_two_pow_expShift
+#print axioms RealFP.Transc.expPosBounds_spec
+#print axioms RealFP.Transc.expBounds_spec
+#print axioms RealFP.Transc.logSeries_eq
+#print axioms RealFP.Transc.log_one_sub_bounds
+#print axioms RealFP.Transc.ln2Bounds_spec
+#print axioms RealFP.Transc.logBounds_spec
+#print axioms RealFP.Transc.ziv_eq
+#print axioms RealFP.Transc.zivDown_loR
+#print axioms RealFP.Transc.zivUp_hiR
+#print axioms RealFP.Transc.ofRatDown_loR
+#print axioms RealFP.Transc.ofRatUp_hiR
+#print axioms RealFP.Transc.bitsToEVal_posInf
+#print axioms RealFP.Transc.bitsToEVal_negInf
+#print axioms RealFP.Transc.loR_ofBits
+#print axioms RealFP.Transc.hiR_ofBits
+#print axioms RealFP.Transc.two_pow_eq_exp
+#print axioms RealFP.Transc.expOvfBound_le_exp
+#print axioms RealFP.Transc.exp_le_expUnfBound
+#print axioms RealFP.Transc.expRat_down
+#print axioms RealFP.Transc.expRat_up
+#print axioms RealFP.Transc.logRat_down
+#print axioms RealFP.Transc.logRat_up
+#print axioms RealFP.Transc.bitsToEVal_of_finite
+#print axioms RealFP.Transc.bitsToRat?_of_finite
+#print axioms RealFP.Transc.isNaN_false_of_loR
+#print axioms RealFP.Transc.isNaN_false_of_hiR
+#print axioms RealFP.Transc.expDownBits_loR
+#print axioms RealFP.Transc.expUpBits_hiR
+#print axioms RealFP.Transc.expDown_loR
+#print axioms RealFP.Transc.expUp_hiR
+#print axioms RealFP.Transc.negInf_loR
+#print axioms RealFP.Transc.posInf_hiR
+#print axioms RealFP.Transc.logLo_loR
+#print axioms RealFP.Transc.logUp_hiR
+#print axioms RealFP.Transc.exp_mem_toSet
+#print axioms RealFP.Transc.log_mem_toSet
+#print axioms RealFP.Examples.Transc.E_lo
+#print axioms RealFP.Examples.Transc.E_hi
+#print axioms RealFP.Examples.Transc.exp_one_mem
+#print axioms RealFP.Examples.Transc.exp_one_bounds
+#print axioms RealFP.Examples.Transc.L_lo
+#print axioms RealFP.Examples.Transc.L_hi
+#print axioms RealFP.Examples.Transc.log_two_mem
+#print axioms RealFP.Examples.Transc.log_two_bounds

@@ -50,6 +50,100 @@ def xorshift (s : UInt64) : UInt64 :=
   let z2 := (z1 ^^^ (z1 >>> 27)) * 0x94d049bb133111eb
   z2 ^^^ (z2 >>> 31)
 
+
+/-! ## Transcendentals: C (CORE-MATH under RD/RU) vs Lean Ziv spec -/
+
+structure ZivStats where
+  n : Nat := 0
+  /-- `steps[k]` = number of results whose Ziv loop converged at precision
+      `128 * 2^k` (constant-result special cases are counted at `k = 0`). -/
+  steps : Array Nat := #[0, 0, 0, 0, 0]
+  fallbacks : Nat := 0
+  fails : Array String := #[]
+
+def checkT (name : String) (impl : Float → Float) (specD : UInt64 → UInt64 × Nat × Bool)
+    (x : Float) (st : ZivStats) : ZivStats :=
+  let (b, k, ok) := specD x.toBits
+  let sp := Float.ofBits b
+  let c := impl x
+  let st := { st with n := st.n + 1 }
+  let st := if ok then { st with steps := st.steps.modify k (· + 1) }
+    else { st with fallbacks := st.fallbacks + 1 }
+  if sameBitsOrNaN c sp then st
+  else { st with fails := st.fails.push s!"{name} x={showF x} C={showF c} spec={showF sp}" }
+
+def checkExp (x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT "exp.down" expDown (fun b => Transc.expBitsD b false) x st
+  checkT "exp.up" expUp (fun b => Transc.expBitsD b true) x st
+
+def checkLog (x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT "log.down" logDown (fun b => Transc.logBitsD b false) x st
+  checkT "log.up" logUp (fun b => Transc.logBitsD b true) x st
+
+def hexVal (s : String) : UInt64 :=
+  s.foldl (fun acc c =>
+    let d : UInt64 := if '0' ≤ c && c ≤ '9' then (c.toNat - 48).toUInt64
+      else if 'a' ≤ c && c ≤ 'f' then (c.toNat - 87).toUInt64
+      else if 'A' ≤ c && c ≤ 'F' then (c.toNat - 55).toUInt64 else 0
+    acc * 16 + d) 0
+
+/-- Float in `[0, 1)` from random bits. -/
+def unitF (u : UInt64) : Float := Float.ofNat (u >>> 11).toNat / 9007199254740992.0
+
+def transcTests : IO Nat := do
+  let t0 ← IO.monoMsNow
+  let extra : Array Float := #[709.78, 709.7827128933840, 709.79, 710.0, 710.5, -745.13,
+    -745.1332191019411, -745.14, -746.0, -746.5, 1.0e-300, 0.5, 1.5, 0.75, 2.0, 10.0, 1.0e10,
+    1.0e-10, Float.ofBits 0x3FEFFFFFFFFFFFFF, Float.ofBits 0x3FF0000000000001,
+    0.6931471805599453, 2.718281828459045]
+  let mut e : ZivStats := {}
+  let mut l : ZivStats := {}
+  for hb in specials do
+    e := checkExp (Float.ofBits hb) e; l := checkLog (Float.ofBits hb) l
+  for x in extra do
+    e := checkExp x e; l := checkLog x l
+    e := checkExp (-x) e; l := checkLog (-x) l
+  let mut s : UInt64 := 0x5EED
+  for _ in [0:2000] do
+    s := xorshift s; let x := Float.ofBits s
+    e := checkExp x e; l := checkLog x l; l := checkLog x.abs l
+    s := xorshift s; e := checkExp (unitF s * 1500.0 - 750.0) e
+    s := xorshift s
+    let y := (unitF s * 2.0 - 1.0) * Float.exp2 (Float.ofNat ((s % 64).toNat)) / 1.0e9
+    e := checkExp y e
+    s := xorshift s; l := checkLog (unitF s * 4.0) l
+    s := xorshift s; l := checkLog (1.0 + (unitF s - 0.5) * 1.0e-6) l
+  -- CORE-MATH hard-to-round cases
+  let hard ← (do let c ← IO.FS.readFile "tests/transc_hard.txt"; pure (c.splitOn "\n"))
+  let mut nHard := 0
+  for line in hard do
+    match line.splitOn " " with
+    | [fn, hx] =>
+      let x := Float.ofBits (hexVal hx)
+      if fn == "exp" then
+        e := checkExp x e; nHard := nHard + 1
+      else if fn == "log" then
+        l := checkLog x l; nHard := nHard + 1
+    | _ => pure ()
+  let t1 ← IO.monoMsNow
+  IO.println s!"exp: {e.n} checks (down+up); Ziv converged at step k (prec 128*2^k): {e.steps}; fallback hits: {e.fallbacks}; mismatches: {e.fails.size}"
+  IO.println s!"log: {l.n} checks (down+up); Ziv converged at step k (prec 128*2^k): {l.steps}; fallback hits: {l.fallbacks}; mismatches: {l.fails.size}"
+  IO.println s!"  (includes {nHard} CORE-MATH hard-to-round inputs; {t1 - t0} ms)"
+  for f in (e.fails ++ l.fails)[:16] do IO.println s!"  {f}"
+  -- interval policies
+  let mut ivF := 0
+  let ie := Interval64.exp ⟨-1.0, 1.0⟩
+  if !(ie.lo.toBits == (expDown (-1.0)).toBits && ie.hi.toBits == (expUp 1.0).toBits) then ivF := ivF + 1
+  if !(decide (ie.lo < 0.36788) && decide (0.36787 < ie.lo) && decide (2.71828 < ie.hi) && decide (ie.hi < 2.71829)) then ivF := ivF + 1
+  let il := Interval64.log ⟨-1.0, 2.0⟩
+  if !(il.lo.isInf && decide (il.lo < 0) && il.hi.toBits == (logUp 2.0).toBits) then ivF := ivF + 1
+  if !(isInvalid (Interval64.log ⟨-2.0, -1.0⟩)) then ivF := ivF + 1
+  let iz := Interval64.log ⟨0.0, 0.0⟩
+  if !(iz.lo.isInf && iz.hi.isInf && decide (iz.hi < 0)) then ivF := ivF + 1
+  if !(isInvalid (Interval64.exp ⟨Float.nan, 1.0⟩)) then ivF := ivF + 1
+  IO.println s!"exp/log interval policy failures: {ivF}"
+  return e.fails.size + l.fails.size + e.fallbacks + l.fallbacks + ivF
+
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
   IO.println s!"C backend: {backendName}"
@@ -236,11 +330,13 @@ def main : IO UInt32 := do
   for f in specFails[:16] do
     IO.println (failToString f)
 
-  let leanFails := fails.size + ivFails + specFails.size + ratFails
+  IO.println "----- exp / log -----"
+  let transcFails ← transcTests
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails}"
     return 1

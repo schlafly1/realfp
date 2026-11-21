@@ -12,3 +12,4 @@ import Interval64.Widen
 import Interval64.Theorems
 import Interval64.NativeDecide
 import Interval64.OfRat
+import Interval64.Transc

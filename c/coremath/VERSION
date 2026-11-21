@@ -1,0 +1,1 @@
+CORE-MATH https://gitlab.inria.fr/core-math/core-math commit 567e1efc10401e672029eeab01a295471324ad3a (2026-11-19); files unmodified: src/binary64/{exp/exp.c,log/log.c,log/dint.h,sin/sin.c,cos/cos.c}

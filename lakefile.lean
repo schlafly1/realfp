@@ -38,6 +38,25 @@ target interval64.o pkg : FilePath := do
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval64.h"))
     return h1.mix h2)
 
+/-- Flags for the CORE-MATH objects (correctly rounded in the current rounding
+    mode; must not be contracted or constant-folded across mode switches). -/
+def coreMathArgs : Array String :=
+  #["-fPIC", "-O2", "-frounding-math", "-ffp-contract=off", "-fno-math-errno"] ++
+    (if isX86_64 then #["-mfma"] else #[])
+
+/-- Compile one C file of the transcendental part (CORE-MATH or its wrapper). -/
+def transcObj (pkg : Package) (src : String) (obj : String) : FetchM (Job FilePath) := do
+  let oFile := pkg.buildDir / "c" / obj
+  let srcJob ← inputTextFile <| pkg.dir / "c" / src
+  buildO oFile srcJob #["-I", (← getLeanIncludeDir).toString] coreMathArgs "cc"
+    (extraDepTrace := computeTrace (TextFilePath.mk (pkg.dir / "c" / "coremath" / "dint.h")))
+
+target cm_exp.o pkg : FilePath := transcObj pkg "coremath/exp.c" "cm_exp.o"
+target cm_log.o pkg : FilePath := transcObj pkg "coremath/log.c" "cm_log.o"
+target cm_sin.o pkg : FilePath := transcObj pkg "coremath/sin.c" "cm_sin.o"
+target cm_cos.o pkg : FilePath := transcObj pkg "coremath/cos.c" "cm_cos.o"
+target iv64_transc.o pkg : FilePath := transcObj pkg "iv64_transc.c" "iv64_transc.o"
+
 /-- Static library of the C kernels. Lake links this into executables and
     dependents, and builds a shared object for `precompileModules` / `#eval`.
     (`extern_lib` is deprecated in Lake 4.36 but is still the supported way to
@@ -45,8 +64,10 @@ target interval64.o pkg : FilePath := do
     per-module dynlibs.) -/
 extern_lib libleaninterval64 pkg := do
   let oFile ← interval64.o.fetch
+  let objs := #[oFile, ← cm_exp.o.fetch, ← cm_log.o.fetch, ← cm_sin.o.fetch, ← cm_cos.o.fetch,
+    ← iv64_transc.o.fetch]
   let name := nameToStaticLib "leaninterval64"
-  buildStaticLib ((pkg : Package).staticLibDir / name) #[oFile]
+  buildStaticLib ((pkg : Package).staticLibDir / name) objs
 
 @[default_target]
 lean_lib Interval64

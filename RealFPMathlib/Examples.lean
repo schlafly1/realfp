@@ -9,6 +9,7 @@ import RealFPMathlib
 import RealFPMathlib.Demo
 import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.Jacobian
+import RealFPMathlib.Examples.Transc
 
 open Interval64 Interval64.Directed Interval64.Spec RealFP
 
@@ -83,3 +84,20 @@ open RealFP.Examples.Jacobian in
    Yb + three * X * (u * u) * Z + three * X * (Yb * Yb) * w,
    ofRat 2 * X - three * (X * X) * Yb - X * X * X * Z)
 
+
+/-! ## 6. exp / log: CORE-MATH under RD/RU at runtime, rational Ziv spec for proofs -/
+#eval Interval64.exp (ofRat 1)        -- ≈ [2.718282, 2.718282] (adjacent doubles)
+#eval Interval64.log (ofRat 2)        -- ≈ [0.693147, 0.693147] (adjacent doubles)
+#eval Interval64.log ⟨-1.0, 2.0⟩      -- lower end -inf (lo ≤ 0 policy)
+#eval Interval64.exp ⟨-1000.0, 1000.0⟩ -- [0, inf]
+
+-- `e` and `log 2` between adjacent doubles, proved by kernel evaluation of the
+-- Lean spec (`decide +kernel`; no native_decide axiom):
+#check RealFP.Examples.Transc.exp_one_bounds
+#check RealFP.Examples.Transc.log_two_bounds
+
+-- Real enclosure for any interval (exp) / any positive member (log):
+example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) :
+    Real.exp x ∈ (Interval64.exp X).toSet := RealFP.Transc.exp_mem_toSet hx
+example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) (h0 : 0 < x) :
+    Real.log x ∈ (Interval64.log X).toSet := RealFP.Transc.log_mem_toSet hx h0

@@ -1,8 +1,9 @@
 # Interval64
 
 A small Lean 4 (v4.36.0) library for **binary64 interval arithmetic** with
-**hardware directed rounding**. Transcendentals are out of scope. The core
-has **no Mathlib / FloatLib dependency**.
+**hardware directed rounding**, including correctly rounded directed `exp`
+and `log` ([transcendentals](#transcendentals-exp-log)). The core has **no
+Mathlib / FloatLib dependency**.
 
 Each directed scalar operation (`+`, `-`, `*`, `/`, `sqrt`, down and up) has:
 
@@ -116,6 +117,79 @@ scripts/test_arm64.sh        # C tests + bench, installs elan if needed,
 `scripts/check_axioms.sh` runs every `#print axioms` in `Interval64Axioms.lean`,
 checks the count, and fails on `sorryAx` or any axiom other than `propext`,
 `Classical.choice`, `Quot.sound` and the generated `native_decide` axioms.
+
+## Transcendentals (`exp`, `log`)
+
+`Interval64.Directed.expDown/expUp/logDown/logUp` are correctly rounded toward
+−∞ / +∞; `Interval64.exp` and `Interval64.log` are the interval versions
+(`Interval64/Transc.lean`).
+
+**Runtime (C).** [CORE-MATH](https://core-math.gitlabpages.inria.fr/)
+(`c/coremath/`, **MIT license**, files unmodified, upstream commit in
+`c/coremath/VERSION`, license in `c/coremath/LICENSE` and in each file header).
+CORE-MATH's `cr_exp`/`cr_log`/`cr_sin`/`cr_cos` do not call `fegetround`; they
+are correctly rounded in whatever hardware rounding mode is active.
+`c/iv64_transc.c` sets RD or RU around one call (x86_64: MXCSR via
+`_mm_setcsr`; aarch64: FPCR.RMode via `msr fpcr`; otherwise `fesetround`) and
+restores the caller's mode. Each CORE-MATH file is its own translation unit,
+compiled with `-O2 -frounding-math -ffp-contract=off -fno-math-errno` (+`-mfma`
+on x86_64). Cost of the mode switch (x86_64, this box, direct C calls):
+exp RN 4.9 ns vs RD/RU 11–12 ns; log RN 6.9 ns vs RD/RU 9.6–9.8 ns. Through
+the Lean extern: exp RD/RU ≈ 18 ns, log ≈ 16 ns (RN CORE-MATH ≈ 10.6 ns, libm
+`Float.exp` ≈ 11.6 ns). `sin`/`cos` are vendored and exported
+(`iv64_dir_sin_*`, `iv64_dir_cos_*`) but have no Lean spec yet.
+
+**Specification (Lean, Mathlib-free).** Rational enclosures with explicit
+error terms, refined by a Ziv loop:
+
+- `expBounds q p`: `exp t` for `t ≥ 0` via `t = 2^s·r`, `r ≤ 2^-20`, Taylor
+  sum with the `Real.exp_bound` remainder, then `s` squarings rounded outward
+  to `2^-p`; `exp(-t) = 1/exp t`.
+- `logBounds q p`: `q = m·2^e` with `m ∈ [3/4, 3/2)`, `log m = log(1-y)` by
+  the series with remainder `|y|^(n+1)/(1-|y|)`, `log 2 = -log(1-1/2)` the same
+  way. If the reduction guard `|y| ≤ 1/2` ever failed, the crude valid bounds
+  `1-1/q ≤ log q ≤ q-1` are used.
+- `ziv`: precisions `128·2^k`, `k < 5` (`zivFuel`); stops when the rounded
+  lower and upper bounds agree (then the result is the correctly rounded
+  value). On fuel exhaustion it returns the rounding of the last valid
+  bound (still an enclosure, maybe 1 ulp loose); the tests count these
+  "fallback hits".
+- Special cases: `exp`: NaN→NaN, −∞→+0, +∞→+∞, ±0→1, `q > 710` → MaxFinite/+∞,
+  `q < −746` → +0 / min subnormal. `log`: NaN or `< 0` → NaN, ±0 → −∞,
+  1 → +0, +∞ → +∞.
+
+**Interval policy.** `exp`: invalid if an endpoint is NaN, else
+`[expDown lo, expUp hi]`. `log` (as `sqrt`): `hi < 0` → invalid; `lo ≤ 0` →
+lower end −∞; `log [0, 0] = [−∞, −∞]`.
+
+**Tests.** `lake exe interval64_tests` checks C vs the Lean spec bit-for-bit
+(down and up) on specials, 2000×7 random inputs and 4000 CORE-MATH
+hard-to-round cases (`tests/transc_hard.txt`, sampled from CORE-MATH's
+`exp.wc`/`log.wc`): 36272 checks, 0 mismatches, **0 fallback hits** (exp:
+14254 converged at 128 bits, 1882 at 256; log: all at 128), on both the
+AVX-512 and `-Kbackend=rnerr` builds. `tests/test_transc.c` checks the C kernels
+against an mpmath oracle (`tests/transc_oracle.txt`, 2500-bit mpmath,
+`scripts/gen_transc_oracle.py`): 6104 inputs × RD/RU, 0 mismatches on x86_64
+and under `qemu-aarch64`.
+
+**Proofs (`RealFPMathlib/RealFPMathlib/Transc.lean`).** `expBounds_spec`,
+`logBounds_spec` (rational bounds enclose `Real.exp`/`Real.log`),
+`expDown_loR`, `expUp_hiR`, `logLo_loR`, `logUp_hiR` (pointwise, any input),
+and the interval theorems
+
+```lean
+theorem exp_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.exp x ∈ (Interval64.exp X).toSet
+theorem log_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) (hx0 : 0 < x) :
+    Real.log x ∈ (Interval64.log X).toSet
+```
+
+Axioms: `propext`, `Classical.choice`, `Quot.sound` only. Enclosure is proved
+for the spec; *correct rounding* of the spec (and C = spec) is tested, not
+proved. `RealFPMathlib/Examples/Transc.lean` proves
+`2.718281828459045 < exp 1 < 2.7182818284590456` and
+`0.6931471805599452 < log 2 < 0.6931471805599455` with `decide +kernel` (the
+kernel runs the Lean spec; no `native_decide`).
 
 ## Interval policy
 

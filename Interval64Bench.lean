@@ -42,6 +42,37 @@ def kernel (t : Interval64 × Interval64 × Interval64 × Interval64 × Interval
   let (a0, a1, a2, b0, b1, b2) := t
   Interval64.dot3SqCmp a0 a1 a2 b0 b1 b2
 
+/-- ns per call of a scalar `Float → Float` over `xs` (summing results so the
+    calls are not dropped). -/
+def benchScalar (name : String) (f : Float → Float) (xs : Array Float) (reps : Nat) : IO Unit := do
+  let mut acc : Float := 0
+  for x in xs do acc := acc + f x  -- warmup
+  let t0 ← IO.monoNanosNow
+  for _ in [0:reps] do
+    for x in xs do acc := acc + f x
+  let t1 ← IO.monoNanosNow
+  let ns := (t1 - t0).toFloat / Float.ofNat (reps * xs.size)
+  IO.println s!"  {name}: {ns} ns/call  (sink={acc})"
+
+def transcBench : IO Unit := do
+  IO.println "----- exp / log (Lean extern call, CORE-MATH) -----"
+  let mut s : UInt64 := 0x1234
+  let mut ex : Array Float := #[]
+  let mut lx : Array Float := #[]
+  for _ in [0:4096] do
+    let (u, s1) := step s; s := s1
+    let t := Float.ofNat (u >>> 11).toNat / 9007199254740992.0
+    ex := ex.push (t * 40.0 - 20.0)
+    lx := lx.push (Float.exp2 (t * 60.0 - 30.0))
+  benchScalar "cr_exp  (RN, reference)" crExp ex 200
+  benchScalar "expDown (RD)" expDown ex 200
+  benchScalar "expUp   (RU)" expUp ex 200
+  benchScalar "cr_log  (RN, reference)" crLog lx 200
+  benchScalar "logDown (RD)" logDown lx 200
+  benchScalar "logUp   (RU)" logUp lx 200
+  benchScalar "Float.exp (libm RN)" Float.exp ex 200
+  benchScalar "Float.log (libm RN)" Float.log lx 200
+
 def main : IO Unit := do
   IO.println "Interval64 benches"
   IO.println s!"C backend: {backendName}  AVX-512F available: {avx512fAvailable}"
@@ -66,3 +97,4 @@ def main : IO Unit := do
   let t1 ← IO.monoNanosNow
   let ns := (t1 - t0).toFloat / (Float.ofNat (reps * n))
   IO.println s!"Lean Interval64 (AVX externs, allocated structs): {ns} ns/kernel  sink={acc}"
+  transcBench
