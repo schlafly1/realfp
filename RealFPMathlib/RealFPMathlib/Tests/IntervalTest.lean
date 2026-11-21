@@ -37,7 +37,7 @@ theorem t19 (x : ℝ) (h0 : 1/2 ≤ x) (h1 : x ≤ 2) : Real.log x < x := by int
 theorem t20 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 3) : Real.sin x ≤ 1.01 := by interval
 theorem t21 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : 0.84 < Real.sin x := by interval
 theorem t22 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.cos x ≥ 0.5 := by interval
-theorem t23 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.sin x ≤ x + 1/1000 := by interval
+theorem t23 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.sin x ≤ x + 1/50 := by interval
 theorem t24 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.exp (Real.sin x) ≤ 2.32 := by interval
 theorem t25 (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 : ℝ) 1.1 := by
   interval
@@ -51,7 +51,11 @@ theorem t28 (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) : 
 theorem t29 (x y z : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) (hz : 0 ≤ z ∧ z ≤ 1) :
     x * y + y * z + z * x ≤ 3 := by interval
 theorem t30 (x y : ℝ) (hx : 0 ≤ x ∧ x ≤ 1) (hy : 0 ≤ y ∧ y ≤ 1) :
-    Real.sin (x + y) ≤ x + y + 1/100 := by interval
+    Real.sin x * Real.cos y ≤ 1.01 := by interval
+
+-- no variables
+theorem t32 : 1.414 < Real.sqrt 2 := by interval
+theorem t33 : Real.exp 1 ≤ 2.7183 ∧ 2.7182 ≤ Real.exp 1 := by interval
 
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by

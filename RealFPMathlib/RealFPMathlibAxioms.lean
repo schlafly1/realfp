@@ -14,6 +14,7 @@ import RealFPMathlib.Examples.Conv
 import RealFPMathlib.Split
 import RealFPMathlib.Examples.Split
 import RealFPMathlib.Examples.Ops
+import RealFPMathlib.Tests.IntervalTest
 
 #print axioms RealFP.loR_rat
 #print axioms RealFP.hiR_rat
@@ -472,3 +473,63 @@ import RealFPMathlib.Examples.Ops
 #print axioms RealFP.Iv.mem_mul
 #print axioms RealFP.Iv.mem_div
 #print axioms RealFP.Iv.mem_sqrt
+#print axioms RealFP.zero_mem_zeroI
+#print axioms RealFP.getD_mem
+#print axioms RealFP.sqrtI_mem
+#print axioms RealFP.logI_mem
+#print axioms RealFP.eval_sound
+#print axioms RealFP.split_mem
+#print axioms RealFP.forall2_set
+#print axioms RealFP.getD_mem_toI
+#print axioms RealFP.forall2_map
+#print axioms RealFP.checkK_sound
+#print axioms RealFP.toE_ofRatDown_le
+#print axioms RealFP.le_toE_ofRatUp
+#print axioms RealFP.gLe_sound
+#print axioms RealFP.gLt_sound
+#print axioms RealFP.gGe_sound
+#print axioms RealFP.gGt_sound
+#print axioms RealFP.boxes_mem
+#print axioms RealFP.prove_le
+#print axioms RealFP.prove_lt
+#print axioms RealFP.prove_ge
+#print axioms RealFP.prove_gt
+#print axioms RealFP.IntervalTactic.inBoxes_cons
+#print axioms RealFP.IntervalTactic.checkK_split_of
+#print axioms RealFP.IntervalTactic.close_le
+#print axioms RealFP.IntervalTactic.close_lt
+#print axioms RealFP.IntervalTactic.le_of_sub
+#print axioms RealFP.IntervalTactic.lt_of_sub
+#print axioms RealFP.IntervalTests.t01
+#print axioms RealFP.IntervalTests.t02
+#print axioms RealFP.IntervalTests.t03
+#print axioms RealFP.IntervalTests.t04
+#print axioms RealFP.IntervalTests.t05
+#print axioms RealFP.IntervalTests.t06
+#print axioms RealFP.IntervalTests.t07
+#print axioms RealFP.IntervalTests.t08
+#print axioms RealFP.IntervalTests.t09
+#print axioms RealFP.IntervalTests.t10
+#print axioms RealFP.IntervalTests.t11
+#print axioms RealFP.IntervalTests.t12
+#print axioms RealFP.IntervalTests.t13
+#print axioms RealFP.IntervalTests.t14
+#print axioms RealFP.IntervalTests.t15
+#print axioms RealFP.IntervalTests.t16
+#print axioms RealFP.IntervalTests.t17
+#print axioms RealFP.IntervalTests.t18
+#print axioms RealFP.IntervalTests.t19
+#print axioms RealFP.IntervalTests.t20
+#print axioms RealFP.IntervalTests.t21
+#print axioms RealFP.IntervalTests.t22
+#print axioms RealFP.IntervalTests.t23
+#print axioms RealFP.IntervalTests.t24
+#print axioms RealFP.IntervalTests.t25
+#print axioms RealFP.IntervalTests.t26
+#print axioms RealFP.IntervalTests.t27
+#print axioms RealFP.IntervalTests.t28
+#print axioms RealFP.IntervalTests.t29
+#print axioms RealFP.IntervalTests.t30
+#print axioms RealFP.IntervalTests.t32
+#print axioms RealFP.IntervalTests.t33
+#print axioms RealFP.IntervalTests.t31

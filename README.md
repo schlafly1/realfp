@@ -396,6 +396,72 @@ from 0 to 10, i.e. the compiled predicate called the AVX-512 C kernels
 (8 directed muls + 2 directed adds). Runtime `addDown` is ~1.7 ns/op
 versus ~2.9 µs/op for the software `addDownSpec`.
 
+The capstone `Interval64Proofs.Capstone.sq_add_le` now uses the kernel-checked
+`demoHi_le'` (= `Interval64.KF.demoHi_le_kernel`, via the Nat mirror below); the
+`native_decide` theorem `demoHi_le` remains only as the native demo.
+
+## Kernel fast path (`Interval64/Kernel/`, `Interval64Proofs/Kernel*.lean`)
+
+`decide +kernel` on the Lean spec is slow (UInt64/Int/structure recursion; ~4 ms
+per directed op). A **Nat mirror** evaluates the same IEEE bit patterns with
+GMP-accelerated `Nat` operations, and is *proved equal* to the spec; runtime code,
+the spec and every existing theorem are unchanged.
+
+* `KF` (scalars, `Interval64/Kernel/Nat.lean`): `addDown … sqrtUp`, `lt/le/beq/cmp`.
+  `KernelEq`: `add_eq … sqrt_eq : (Spec.op a b up).toNat = KF.op a.toNat b.toNat up`,
+  `cmp_eq`. `KernelFloat`: the same at `Float` level via `toF n = Float.ofBits (UInt64.ofNat n)`
+  (`addDown_toF`, `lt_toF`, `le_toF`, `beq_toF`, `neg_toF`, …).
+* `KI` (intervals, `Interval64/Kernel/Interval.lean`): `add sub mul neg inv abs sqrt square
+  pown hull exp log sin cos ofRat ofRatInterval`; `KernelInterval`: `toI (KI.op a b) = op (toI a) (toI b)`.
+* Reflection (`Interval64/Kernel/Reflect.lean`): expression AST `IExpr`, Float evaluator
+  `evalI`, kernel evaluator `evalK`, `evalK_toI`, bisection certificates `Cert` and the
+  Bool checker `checkK`.
+
+Kernel time per operation (`decide +kernel`, x86-64, Lean 4.36):
+
+| op | spec (before) | KF / KI (after) |
+|---|---|---|
+| scalar `add/sub/mul/div/sqrt` (directed) | 3.5–4.5 ms | 0.16–0.31 ms |
+| `Float` `<` / `≤` | 2.5 ms | ~0.2 ms |
+| interval `+` / `*` / `inv` / `sqrt` / `square` | not measured (≥ 2 spec ops each) | 0.6 / 1.7 / 1.1 / 0.8 / 0.5 ms |
+| `ofRat` constant | 5–6 ms | 5–6 ms (Rat-based, cached per check) |
+| `exp` / `log` / `sin` / `cos` | 48 ms / 98 ms / 0.5 s / 0.37 s | same (spec is rational Ziv; gap) |
+
+## `interval` tactic (Mathlib layer, `RealFPMathlib/IntervalTactic.lean`)
+
+```lean
+import RealFPMathlib   -- or RealFPMathlib.IntervalTactic
+
+example : ∀ x : ℝ, 0 ≤ x → x ≤ 1 → x * (1 - x) ≤ 1/4 + 1/100 := by interval
+example (x : ℝ) (h₀ : 1 ≤ x) (h₁ : x ≤ 2) : Real.exp x < 8 := by interval
+example (x y : ℝ) (hx : x ∈ Set.Icc (0:ℝ) 1) (hy : 0 ≤ y ∧ y ≤ 1) : x * y - x - y ≥ -1.01 := by
+  interval
+example (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 : ℝ) 1.1 := by interval
+example : 1.414 < Real.sqrt 2 := by interval
+example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
+```
+
+* **Goals**: `f ≤ c`, `f < c`, `c ≤ f`, `c < f`, `≥`, `>`, conjunctions, `f ∈ Set.Icc a b`;
+  `f ≤ g` / `f < g` with no numeral side becomes `f - g ≤ 0`. Binders are introduced.
+* **Terms**: `+ - * / ⁻¹`, `Real.sqrt`, `|·|`, `^ n` (numeral `n : ℕ`), `Real.exp`, `Real.log`,
+  `Real.sin`, `Real.cos`, rational numerals (anything `norm_num` evaluates to a rational,
+  e.g. `0.1`, `1/3`), any number of real variables.
+* **Variables** need numeral bounds `a ≤ x`, `x ≤ b` (strict ones are weakened, `∧` and
+  `Set.Icc`/`Ioo`/… hypotheses are split) in the context.
+* **Method**: reify to `IExpr`; search a bisection certificate natively with the *same*
+  evaluator the kernel runs (`evalK`; splits the widest variable at its float midpoint,
+  up to `depth` levels / `maxBoxes` boxes); check it by `decide +kernel` on `checkK`
+  (subtrees of `chunk` boxes per call, glued by `checkK_split_of`, keeps kernel memory
+  bounded). Soundness once and for all: `RealFP.eval_sound` (`denote xs e ∈ evalI env e`),
+  `checkK_sound`, `prove_le/lt/ge/gt` (`RealFPMathlib/IntervalSound.lean`).
+* **Trust**: standard axioms only (`propext`, `Classical.choice`, `Quot.sound`).
+* **Cost**: about 1–3 ms of kernel time per box for polynomial terms, much more with
+  transcendental functions (see table); trace with `set_option trace.interval true`.
+* **Limits**: no dependency-problem reduction (centred forms/Taylor), so bounds that are
+  tight at a point need a margin; `log` of an interval not strictly positive gives `whole`;
+  `sqrt` of a partly negative interval is hulled with `0` (matches `Real.sqrt`).
+* Tests: `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`.
+
 ## Representability, `ofRat`, and tightness
 
 `Interval64/OfRat.lean` defines `Spec.Representable q` (some bit pattern has
@@ -472,7 +538,8 @@ should also work but has not been tested.)
   `sqrt_two_bounds : 1.41421356 < √2 < 1.41421357`, `sqrt_le_on : ∀ x ∈ [2,3], √x ≤ 111/64`.
 
 **Trust.** Everything outside `Demo`/`Examples` uses only `propext`,
-`Classical.choice`, `Quot.sound`. Only the `Demo` theorems use `native_decide`
+`Classical.choice`, `Quot.sound` (the `Examples` and the `interval` tests do too).
+Only the `Demo` theorems use `native_decide`
 (one generated axiom each, and the compiled C kernels are trusted).
 `scripts/check_axioms.sh` enforces this. Mathlib itself does not accept
 `native_decide`, so proofs that use it are fine in your projects but cannot be
@@ -481,17 +548,16 @@ upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.
 ### Worked examples (`RealFPMathlib/RealFPMathlib/Examples/`)
 
 * `Cubic.lean` — `cubic_bound : ∀ x : ℝ, 0 ≤ x → 6x - x³ ≤ (6√2 - √2³) + 0.001`.
-  `[0, 5/2]` is split into 20480 boxes of width `2^-13`; a Bool checker
-  (`allOK`, evaluated by `native_decide` with the C kernels, ~0.4 s) bounds
-  `X * (6 - X*X)` on each box, and `allOK_sound` turns that into the real bound.
-  `x ≥ 5/2` is algebra. (Width `2^-12` is too coarse for the 0.001 slack.)
+  On `[0, 5/2]` the bound `x * (6 - x*x) ≤ 5.6578` is closed by the `interval` tactic
+  (adaptive bisection, 294 boxes instead of the former fixed 20480-box grid; kernel-checked,
+  ~3 s, **no `native_decide`**); `c ≤ 4√2 + 0.001` is also `interval`. `x ≥ 5/2` is algebra.
+  The old hand-written grid checker `allOK` / `allOK_sound` is kept for reference.
 * `Jacobian.lean` — `F(x,y,z) = ((1+xy)³z + y²(1+xy)(4+3xy), y + 3x(1+xy)²z + 3xy²(4+3xy), 2x - 3x²y - x³z)`.
   Mathlib `HasDerivAt` partials, `jac_det : det = -2` everywhere, `F_not_injective`,
   `F_eq_iff` (all solutions of `F = (a,0,0)`, `a ≠ 0`), `solutions_quarter` /
   `ncard_solutions_quarter` (exactly the 3 given points), `solutions_026` /
   `ncard_solutions_026` (exactly 3 solutions: `(0,0,-0.26)`, `(±s, ∓3/(2s), 169/25)`,
-  `s = √(25/26)`), with Interval64 enclosures `s_bounds`, `y_bounds`.
-  The solution count is pure algebra (no `native_decide`); Interval64 is used
-  only for the numeric enclosures.
+  `s = √(25/26)`), with 10-digit enclosures `s_bounds`, `y_bounds` proved by `interval`.
+  Nothing in this file uses `native_decide` any more.
 * `Ops.lean` — `square` vs `*` on `[-1, 2]`, `pown`, and the other new operations,
   all by `decide +kernel`.
