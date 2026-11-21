@@ -11,6 +11,8 @@ import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Trig
 import RealFPMathlib.Examples.Trig
 import RealFPMathlib.Examples.Conv
+import RealFPMathlib.Split
+import RealFPMathlib.Examples.Split
 
 #print axioms RealFP.loR_rat
 #print axioms RealFP.hiR_rat
@@ -253,3 +255,30 @@ import RealFPMathlib.Examples.Conv
 #print axioms RealFP.Examples.Conv.poly_mem
 #print axioms RealFP.Examples.Conv.poly_le_three
 #print axioms RealFP.Examples.Conv.half_mem
+#print axioms RealFP.not_mem_invalid
+#print axioms RealFP.mem_whole
+#print axioms RealFP.mem_lowerRay
+#print axioms RealFP.mem_upperRay
+#print axioms RealFP.mem_toList
+#print axioms RealFP.mem_hull
+#print axioms RealFP.mem_coe
+#print axioms RealFP.divDown_loR
+#print axioms RealFP.divUp_hiR
+#print axioms RealFP.div_pp
+#print axioms RealFP.div_pn
+#print axioms RealFP.div_np
+#print axioms RealFP.div_nn
+#print axioms RealFP.divSplit_mem
+#print axioms RealFP.divSplit_hull_mem
+#print axioms RealFP.Examples.Split.split_hi
+#print axioms RealFP.Examples.Split.split_lo
+#print axioms RealFP.Examples.Split.N1_lo
+#print axioms RealFP.Examples.Split.N1_hi
+#print axioms RealFP.Examples.Split.N2_lo
+#print axioms RealFP.Examples.Split.N2_hi
+#print axioms RealFP.Examples.Split.fin
+#print axioms RealFP.Examples.Split.mem_ofRatInterval
+#print axioms RealFP.Examples.Split.step1
+#print axioms RealFP.Examples.Split.step2_pos
+#print axioms RealFP.Examples.Split.step2_neg
+#print axioms RealFP.Examples.Split.sqrt_two_roots

@@ -65,3 +65,12 @@ example : bitsToRat? (0.1 : Interval64).lo.toBits = some (7205759403792793 / 720
   decide +kernel
 example : bitsToRat? (0.1 : Interval64).hi.toBits = some (3602879701896397 / 36028797018963968) := by
   decide +kernel
+
+/-! ## Extended division (`Interval64.Split`) -/
+#eval divSplit 5 (ofRatInterval (-2) 3)                  -- [-inf, -2.5] ∪ [1.666667, inf]
+#eval divSplit 5 (ofRatInterval 0 3)                     -- one [1.666667, inf]
+#eval divSplit (ofRatInterval (-1) 1) (ofRatInterval (-2) 3)  -- one whole
+#eval divSplit 5 0                                       -- empty
+#eval (divSplit 5 (ofRatInterval 2 3) : Interval64)      -- same as 5 / [2, 3]
+example : bitsToRat? (divSplit 5 (ofRatInterval (-2) 3)).piece1.hi.toBits = some (-5/2) := by
+  decide +kernel

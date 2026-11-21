@@ -12,6 +12,7 @@ import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Examples.Trig
 import RealFPMathlib.Examples.Conv
+import RealFPMathlib.Examples.Split
 
 open Interval64 Interval64.Directed Interval64.Spec RealFP
 
@@ -130,3 +131,16 @@ example (X : Interval64) (x : ℝ) (hx : x ∈ X) : Real.sin x ∈ Interval64.si
 
 -- `x² − 0.1·x + 2 ≤ 3` on `[0, 1]`, written with literals (decide +kernel endpoints):
 #check @RealFP.Examples.Conv.poly_le_three
+
+/-! ## 9. Extended (split) division -/
+#eval divSplit 5 (ofRatInterval (-2) 3)    -- two (-2.5) 1.666667 : [-inf, -5/2] ∪ [5/3, +inf]
+#eval (divSplit 5 (ofRatInterval (-2) 3)).toList
+#eval (divSplit 5 (ofRatInterval (-2) 3) : Interval64)  -- hull (coercion): whole line
+
+example (A B : Interval64) (x y : ℝ) (hx : x ∈ A) (hy : y ∈ B) (hy0 : y ≠ 0)
+    (h1 : ∃ q, bitsToRat? A.lo.toBits = some q) (h2 : ∃ q, bitsToRat? A.hi.toBits = some q)
+    (h3 : ∃ q, bitsToRat? B.lo.toBits = some q) (h4 : ∃ q, bitsToRat? B.hi.toBits = some q) :
+    x / y ∈ divSplit A B := RealFP.divSplit_mem hx hy hy0 h1 h2 h3 h4
+
+-- Interval Newton with a split: both roots of x² = 2 in [-2, 2] located (decide +kernel):
+#check @RealFP.Examples.Split.sqrt_two_roots

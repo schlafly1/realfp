@@ -271,6 +271,52 @@ the enclosure theorems stated with `∈` (the `*_mem_toSet` names still work).
 Example (`RealFPMathlib/Examples/Conv.lean`):
 `∀ x ∈ [0, 1], x * x - 0.1 * x + 2 ≤ 3` from one evaluation of `X * X - 0.1 * X + 2`.
 
+## Extended (split) division (`Interval64/Split.lean`)
+
+`divSplit a b : Interval64Pair` encloses `{x / y | x ∈ a, y ∈ b, y ≠ 0}` as a union
+of at most two intervals (IEEE 1788 `mulRevToPair` style). `/` is unchanged.
+`Interval64Pair` is `empty | one I | two u l`, where `two u l` means
+`[-∞, u] ∪ [l, +∞]`. Only the existing directed `divDown`/`divUp` kernels and
+Float comparisons are used, with at most 2 directed divisions in the split cases.
+
+| `a` | `b` | `divSplit a b` |
+|---|---|---|
+| NaN endpoint | any | `one invalid` |
+| any | `0 ∉ b` | `one (a / b)` |
+| any | `[0, 0]` | `empty` |
+| `0 ∈ a` | `0 ∈ b ≠ [0, 0]` | `one whole` |
+| `a > 0` | `[0, d]` | `one [a.lo/d ↓, +∞]` |
+| `a > 0` | `[c, 0]` | `one [-∞, a.lo/c ↑]` |
+| `a > 0` | `c < 0 < d` | `two (a.lo/c ↑) (a.lo/d ↓)` |
+| `a < 0` | `[0, d]` | `one [-∞, a.hi/d ↑]` |
+| `a < 0` | `[c, 0]` | `one [a.hi/c ↓, +∞]` |
+| `a < 0` | `c < 0 < d` | `two (a.hi/d ↑) (a.hi/c ↓)` |
+
+Example: `divSplit 5 [-2, 3] = two (-2.5) (5/3 ↓)`, i.e. `[-∞, -5/2] ∪ [5/3, +∞]`.
+Helpers: `piece1`, `piece2` (absent piece = `invalid`, which contains no
+reals), `toList`, `foldl`, and `hull` (`invalid` / `I` / `whole`). There is also a
+coercion `Interval64Pair → Interval64` via `hull`, so
+`let y : Interval64 := divSplit a b` works.
+
+Proofs (`RealFPMathlib/Split.lean`): `Membership ℝ Interval64Pair`
+(`x ∈ P ↔ x ∈ P.piece1 ∨ x ∈ P.piece2`, `pair_mem_iff`; `mem_toList`),
+`mem_hull`/`mem_coe` (`x ∈ P → x ∈ P.hull`), and
+
+```lean
+theorem divSplit_mem {A B : Interval64} {x y : ℝ} (hx : x ∈ A) (hy : y ∈ B) (hy0 : y ≠ 0)
+    (hAlo : ∃ q, bitsToRat? A.lo.toBits = some q) (hAhi : ∃ q, bitsToRat? A.hi.toBits = some q)
+    (hBlo : ∃ q, bitsToRat? B.lo.toBits = some q) (hBhi : ∃ q, bitsToRat? B.hi.toBits = some q) :
+    x / y ∈ divSplit A B
+```
+
+(finite endpoints, as for `div_mem_toSet`), plus `divSplit_hull_mem`.
+Example (`RealFPMathlib/Examples/Split.lean`): interval Newton in slope form.
+Splitting `[-2, 2]` by `divSplit 2 [-2, 2]` and taking one Newton step per
+piece proves that every root of `x² = 2` in `[-2, 2]` lies in `±[1.3999, 1.4286]`
+(`sqrt_two_roots`; endpoints by `decide +kernel`). Tests: the case table, and
+89165 random points `x ∈ A`, `y ∈ B` whose exact rational quotient lies in a
+piece and in the hull (0 failures).
+
 ## Interval policy
 
 - NaN endpoint → invalid `[NaN, NaN]`.

@@ -212,6 +212,69 @@ def transcTests : IO Nat := do
   return e.fails.size + l.fails.size + sn.fails.size + cs.fails.size + e.fallbacks + l.fallbacks +
     sn.fallbacks + cs.fallbacks + ivF
 
+/-- Does `I` enclose the rational `q` (endpoints compared exactly)? -/
+def enclQ (I : Interval64) (q : Rat) : Bool :=
+  let loOk := match Spec.bitsToRat? I.lo.toBits with
+    | some l => decide (l ≤ q)
+    | none => I.lo.isInf && decide (I.lo < 0)
+  let hiOk := match Spec.bitsToRat? I.hi.toBits with
+    | some h => decide (q ≤ h)
+    | none => I.hi.isInf && decide (I.hi > 0)
+  loOk && hiOk
+
+/-- Extended division: case table and random sampling (exact rational quotients). -/
+def splitTests : IO Nat := do
+  let mut bad := 0
+  let r (x : Float) : Option Rat := Spec.bitsToRat? x.toBits
+  -- 5 / [-2, 3] = [-inf, -5/2] ∪ [5/3, +inf]
+  match divSplit 5 (ofRatInterval (-2) 3) with
+  | .two u l => if !(r u == some (-5/2) && l.toBits == (divDown 5.0 3.0).toBits) then bad := bad + 1
+  | _ => bad := bad + 1
+  match divSplit 5 (ofRatInterval 0 3) with
+  | .one I => if !(I.lo.toBits == (divDown 5.0 3.0).toBits && I.hi.isInf) then bad := bad + 1
+  | _ => bad := bad + 1
+  match divSplit 5 (ofRatInterval (-2) 0) with
+  | .one I => if !(r I.hi == some (-5/2) && I.lo.isInf) then bad := bad + 1
+  | _ => bad := bad + 1
+  match divSplit (ofRatInterval (-1) 1) (ofRatInterval (-2) 3) with
+  | .one I => if !(I.lo.isInf && I.hi.isInf && decide (I.lo < 0)) then bad := bad + 1
+  | _ => bad := bad + 1
+  match divSplit 5 0 with
+  | .empty => pure ()
+  | _ => bad := bad + 1
+  match divSplit 5 (ofRatInterval 2 3) with
+  | .one I => if !(I == (5 : Interval64) / ofRatInterval 2 3) then bad := bad + 1
+  | _ => bad := bad + 1
+  match divSplit ⟨Float.nan, 1.0⟩ (ofRatInterval (-2) 3) with
+  | .one I => if !(isInvalid I) then bad := bad + 1
+  | _ => bad := bad + 1
+  -- random: A, B with 0 sometimes inside / on an endpoint; points x ∈ A, y ∈ B \ {0}
+  let mut s : UInt64 := 0x5EED5EED
+  let mut pts := 0
+  for _ in [0:4000] do
+    s := xorshift s; let a0 := (unitF s * 2.0 - 1.0) * 10.0
+    s := xorshift s; let a1 := a0 + unitF s * 5.0
+    s := xorshift s; let k := s % 4
+    s := xorshift s; let b0 := if k == 0 then 0.0 else -(unitF s * 4.0)
+    s := xorshift s; let b1 := if k == 1 then 0.0 else unitF s * 4.0
+    let A : Interval64 := ⟨a0, a1⟩
+    let B : Interval64 := if k == 3 then ⟨b0 - 5.0, b0 - 1.0⟩ else ⟨b0, b1⟩
+    let P := divSplit A B
+    for i in [0:5] do
+      for j in [0:5] do
+        let x := A.lo + (A.hi - A.lo) * (Float.ofNat i / 4.0)
+        let y := B.lo + (B.hi - B.lo) * (Float.ofNat j / 4.0)
+        if !(decide (A.lo ≤ x) && decide (x ≤ A.hi) && decide (B.lo ≤ y) && decide (y ≤ B.hi)) then continue
+        match r x, r y with
+        | some qx, some qy =>
+          if qy == 0 then continue
+          pts := pts + 1
+          if !(P.toList.any (fun I => enclQ I (qx / qy))) then bad := bad + 1
+          if !(enclQ (P : Interval64) (qx / qy)) then bad := bad + 1
+        | _, _ => pure ()
+  IO.println s!"divSplit: case table + {pts} random quotient points (exact rationals) checked; failures: {bad}"
+  return bad
+
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
   IO.println s!"C backend: {backendName}"
@@ -400,11 +463,12 @@ def main : IO UInt32 := do
 
   IO.println "----- exp / log / sin / cos -----"
   let transcFails ← transcTests
-  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails
+  let splitFails ← splitTests
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + splitFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} split={splitFails}"
     return 1
