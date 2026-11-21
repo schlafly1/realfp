@@ -116,21 +116,34 @@ def atanBitsD (b : UInt64) (up : Bool) : UInt64 × Nat × Bool :=
     | some q => rndD (atanBounds q) up
     | none => (qNaN, 0, true)
 
-/-- `true` for `-0`, `-∞`, negative finite (sign bit set, not NaN). -/
-def signBit (b : UInt64) : Bool := b >>> 63 == 1
+/-- `±1` for the sign of an unpacked float. -/
+def sgnQ : Sign → Rat
+  | .positive => 1
+  | .negative => -1
+
+/-- Bits of a signed zero. -/
+def zeroBits : Sign → UInt64
+  | .positive => 0
+  | .negative => 0x8000000000000000
+
+def isNeg : Sign → Bool
+  | .positive => false
+  | .negative => true
 
 /-- `atan2 y x` on bits with diagnostics (C argument order). -/
 def atan2BitsD (y x : UInt64) (up : Bool) : UInt64 × Nat × Bool :=
-  let s : Rat := if signBit y then -1 else 1
   match unpackBits y, unpackBits x with
   | .notANumber, _ => (qNaN, 0, true)
   | _, .notANumber => (qNaN, 0, true)
-  | .zero _, _ => if signBit x then rndD (piMul s) up else (y, 0, true)
-  | .infinity _, .infinity _ => rndD (piMul (s * (if signBit x then 3 / 4 else 1 / 4))) up
-  | .infinity _, _ => rndD (piMul (s / 2)) up
-  | _, .zero _ => rndD (piMul (s / 2)) up
-  | _, .infinity _ => if signBit x then rndD (piMul s) up else (y &&& 0x8000000000000000, 0, true)
-  | _, _ =>
+  | .zero sy, .zero sx => if isNeg sx then rndD (piMul (sgnQ sy)) up else (zeroBits sy, 0, true)
+  | .zero sy, .infinity sx => if isNeg sx then rndD (piMul (sgnQ sy)) up else (zeroBits sy, 0, true)
+  | .zero sy, .finite sx .. => if isNeg sx then rndD (piMul (sgnQ sy)) up else (zeroBits sy, 0, true)
+  | .infinity sy, .infinity sx =>
+    rndD (piMul (sgnQ sy * (if isNeg sx then 3 / 4 else 1 / 4))) up
+  | .infinity sy, _ => rndD (piMul (sgnQ sy / 2)) up
+  | .finite sy .., .zero _ => rndD (piMul (sgnQ sy / 2)) up
+  | .finite sy .., .infinity sx => if isNeg sx then rndD (piMul (sgnQ sy)) up else (zeroBits sy, 0, true)
+  | .finite .., .finite .. =>
     match bitsToRat? y, bitsToRat? x with
     | some qy, some qx => rndD (atan2Bounds qy qx) up
     | _, _ => (qNaN, 0, true)
