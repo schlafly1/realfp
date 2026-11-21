@@ -56,11 +56,15 @@ fi
 
 echo "== 4. lake build (library; C backend chosen by architecture)"
 lake build
-echo "== 5. lake exe interval64_tests (C runtime vs Lean spec, bit-exact; incl. exp/log Ziv spec)"
+echo "== 5. lake exe interval64_tests (C runtime vs Lean spec, bit-exact; incl. exp/log/sin/cos Ziv spec, pi certificate, interval sin/cos)"
 lake exe interval64_tests
 echo "== 6. lake lean Examples.lean"
 lake lean Examples.lean
 echo "== 7. proofs + axiom report"
 lake build Interval64Proofs
 scripts/check_axioms.sh   # counts #print axioms results, fails on sorryAx / unexpected axioms
+if [ "${SKIP_MATHLIB:-0}" != 1 ]; then
+  echo "== 8. Mathlib layer: real enclosure proofs (exp/log/sin/cos), axiom report, examples"
+  (cd RealFPMathlib && lake build && scripts/check_axioms.sh && lake lean Examples.lean)
+fi
 echo "== ALL DONE ($ARCH)"

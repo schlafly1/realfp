@@ -100,9 +100,15 @@ near-overflow, small integers, near-exact quotients and squares, specials):
 - `--bench`: micro-benchmark, on normal-range operands and on the mixed test-generator
   operands (which hit the slow and overflow paths often), reported separately.
 
-`lake build -R -Kbackend=rnerr` builds the arm64 backend on x86_64, so the
-Lean-side tests (`lake exe interval64_tests`, C runtime vs Lean spec) can run
-against it; `lake build -R` switches back.
+`lake -R -Kbackend=rnerr build interval64_tests` builds the arm64 backend on
+x86_64, so the Lean-side tests (`.lake/build/bin/interval64_tests`, C runtime vs
+Lean spec) can run against it; `lake -R build interval64_tests` switches back.
+(Name the exe target: a plain `lake build` does not relink the test exe.)
+`scripts/test_arm64_qemu.sh` also cross-compiles CORE-MATH exp/log/sin/cos and
+`c/iv64_transc.c` for aarch64 and checks RD/RU (FPCR) against the mpmath oracle
+under qemu. `scripts/test_arm64.sh` step 8 builds the Mathlib layer, runs its
+axiom check and `Examples.lean` (`SKIP_MATHLIB=1` skips it; the first Mathlib
+build downloads the cache).
 
 **On a real arm64 box (Jetson Orin, DGX Spark, …):**
 
