@@ -10,3 +10,5 @@ import Interval64Proofs.OfRat
 import Interval64Proofs.Tight
 import Interval64Proofs.TightIv
 import Interval64Proofs.TightSqrt
+import Interval64Proofs.KernelEq
+import Interval64Proofs.KernelFloat
