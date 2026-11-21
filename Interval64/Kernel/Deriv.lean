@@ -35,6 +35,66 @@ def IExpr.diff (i : Nat) : IExpr → IExpr
   | .sin a => .mul (.cos a) (a.diff i)
   | .cos a => .neg (.mul (.sin a) (a.diff i))
 
+/-! ### Light algebraic simplification (exact rational constant folding)
+
+Folding constants exactly in `Rat` avoids spurious rounding (e.g. `36 * (1/36)`), which matters
+when a bound is touching. `denote_dsimp` (Mathlib layer) shows the denotation is unchanged. -/
+
+def mkAdd : IExpr → IExpr → IExpr
+  | .rat p, .rat q => .rat (p + q)
+  | .rat p, b => bif p == 0 then b else .add (.rat p) b
+  | a, .rat q => bif q == 0 then a else .add a (.rat q)
+  | a, b => .add a b
+
+def mkNeg : IExpr → IExpr
+  | .rat p => .rat (-p)
+  | .neg a => a
+  | a => .neg a
+
+def mkSub : IExpr → IExpr → IExpr
+  | .rat p, .rat q => .rat (p - q)
+  | .rat p, b => bif p == 0 then mkNeg b else .sub (.rat p) b
+  | a, .rat q => bif q == 0 then a else .sub a (.rat q)
+  | a, b => .sub a b
+
+/-- `p * b` with `p` a rational. -/
+def mkMulC (p : Rat) : IExpr → IExpr
+  | .rat q => .rat (p * q)
+  | .mul (.rat q) c => bif p * q == 0 then .rat 0 else bif p * q == 1 then c else .mul (.rat (p * q)) c
+  | b => bif p == 0 then .rat 0 else bif p == 1 then b else .mul (.rat p) b
+
+def mkMul : IExpr → IExpr → IExpr
+  | .rat p, b => mkMulC p b
+  | a, .rat q => mkMulC q a
+  | a, b => .mul a b
+
+def mkDiv : IExpr → IExpr → IExpr
+  | a, .rat q => bif q == 0 then .rat 0 else mkMulC (1 / q) a
+  | a, b => .div a b
+
+def mkPow : IExpr → Nat → IExpr
+  | .rat p, n => .rat (p ^ n)
+  | a, n => bif Nat.beq n 0 then .rat 1 else bif Nat.beq n 1 then a else .pow a n
+
+def IExpr.dsimp : IExpr → IExpr
+  | .add a b => mkAdd a.dsimp b.dsimp
+  | .sub a b => mkSub a.dsimp b.dsimp
+  | .mul a b => mkMul a.dsimp b.dsimp
+  | .div a b => mkDiv a.dsimp b.dsimp
+  | .neg a => mkNeg a.dsimp
+  | .pow a n => mkPow a.dsimp n
+  | .inv a => .inv a.dsimp
+  | .sqrt a => .sqrt a.dsimp
+  | .abs a => .abs a.dsimp
+  | .exp a => .exp a.dsimp
+  | .log a => .log a.dsimp
+  | .sin a => .sin a.dsimp
+  | .cos a => .cos a.dsimp
+  | e => e
+
+/-- Simplified partial derivative (used by the checker). -/
+def IExpr.deriv (i : Nat) (e : IExpr) : IExpr := (e.diff i).dsimp
+
 /-- The enclosure is non-NaN and strictly positive. -/
 def posK (X : KI) : Bool := !isNaN X.lo && !isNaN X.hi && lt 0 X.lo
 /-- The enclosure is non-NaN and excludes `0`. -/
@@ -80,7 +140,7 @@ def zeroHi : Nat := (KI.ofRat 0).hi
 def centerK (env : List KI) (e : IExpr) (i m : Nat) : KI :=
   KI.meet (evalK env e)
     (KI.add (evalK (env.set i ⟨m, m⟩) e)
-      (KI.mul (evalK env (e.diff i)) (KI.sub (env.getD i zeroK) ⟨m, m⟩)))
+      (KI.mul (evalK env (e.deriv i)) (KI.sub (env.getD i zeroK) ⟨m, m⟩)))
 
 /-- `upper`: the goal predicate is downward closed (`f ≤ c`, `f < c`); otherwise upward closed. -/
 def checkD (e : IExpr) (g : KI → Bool) (upper : Bool) : DCert → List KI → Bool
@@ -91,8 +151,8 @@ def checkD (e : IExpr) (g : KI → Bool) (upper : Bool) : DCert → List KI → 
       checkD e g upper r (env.set i ⟨m, (env.getD i zeroK).hi⟩)
   | .mono i inc dc c, env =>
     Nat.blt i env.length && domOK env e &&
-      (bif inc then checkD (e.diff i) (gGe zeroHi) false dc env
-       else checkD (e.diff i) (gLe zeroLo) true dc env) &&
+      (bif inc then checkD (e.deriv i) (gGe zeroHi) false dc env
+       else checkD (e.deriv i) (gLe zeroLo) true dc env) &&
       finK (bif inc == upper then (env.getD i zeroK).hi else (env.getD i zeroK).lo) &&
       checkD e g upper c
         (env.set i (bif inc == upper then ⟨(env.getD i zeroK).hi, (env.getD i zeroK).hi⟩

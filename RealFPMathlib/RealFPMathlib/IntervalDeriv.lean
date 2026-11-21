@@ -133,6 +133,63 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     ring
 
 
+/-! ### Simplification preserves the denotation -/
+
+section dsimp
+variable (xs : List ℝ)
+
+theorem denote_mkAdd (a b : IExpr) : (mkAdd a b).denote xs = a.denote xs + b.denote xs := by
+  unfold mkAdd
+  split <;> simp only [IExpr.denote, Bool.cond_eq_ite, beq_iff_eq] <;> (try split_ifs) <;>
+    simp_all [IExpr.denote]
+
+theorem denote_mkNeg (a : IExpr) : (mkNeg a).denote xs = -a.denote xs := by
+  unfold mkNeg; split <;> simp [IExpr.denote]
+
+theorem denote_mkSub (a b : IExpr) : (mkSub a b).denote xs = a.denote xs - b.denote xs := by
+  unfold mkSub
+  split <;> simp only [IExpr.denote, Bool.cond_eq_ite, beq_iff_eq] <;> (try split_ifs) <;>
+    simp_all [IExpr.denote, denote_mkNeg]
+
+theorem denote_mkMulC (p : ℚ) (b : IExpr) : (mkMulC p b).denote xs = (p : ℝ) * b.denote xs := by
+  unfold mkMulC
+  split <;> simp only [IExpr.denote, Bool.cond_eq_ite, beq_iff_eq] <;> (try split_ifs) <;>
+    simp_all [IExpr.denote, mul_assoc]
+  all_goals first
+    | (rename_i h; rw [← mul_assoc, ← Rat.cast_mul, h]; simp)
+    | tauto
+    | skip
+
+theorem denote_mkMul (a b : IExpr) : (mkMul a b).denote xs = a.denote xs * b.denote xs := by
+  unfold mkMul
+  split <;> simp [IExpr.denote, denote_mkMulC, mul_comm]
+
+theorem denote_mkDiv (a b : IExpr) : (mkDiv a b).denote xs = a.denote xs / b.denote xs := by
+  unfold mkDiv
+  split <;> simp only [IExpr.denote, Bool.cond_eq_ite, beq_iff_eq] <;> (try split_ifs) <;>
+    simp_all [IExpr.denote, denote_mkMulC, div_eq_inv_mul]
+
+theorem denote_mkPow (a : IExpr) (n : Nat) : (mkPow a n).denote xs = a.denote xs ^ n := by
+  unfold mkPow
+  split <;> simp only [IExpr.denote, Bool.cond_eq_ite, Nat.beq_eq] <;> (try split_ifs) <;>
+    simp_all [IExpr.denote]
+
+theorem denote_dsimp : ∀ e : IExpr, e.dsimp.denote xs = e.denote xs := by
+  intro e
+  induction e with
+  | add a b iha ihb => simp [IExpr.dsimp, denote_mkAdd, iha, ihb, IExpr.denote]
+  | sub a b iha ihb => simp [IExpr.dsimp, denote_mkSub, iha, ihb, IExpr.denote]
+  | mul a b iha ihb => simp [IExpr.dsimp, denote_mkMul, iha, ihb, IExpr.denote]
+  | div a b iha ihb => simp [IExpr.dsimp, denote_mkDiv, iha, ihb, IExpr.denote]
+  | neg a iha => simp [IExpr.dsimp, denote_mkNeg, iha, IExpr.denote]
+  | pow a n iha => simp [IExpr.dsimp, denote_mkPow, iha, IExpr.denote]
+  | _ => simp_all [IExpr.dsimp, IExpr.denote]
+
+theorem denote_deriv (i : Nat) (e : IExpr) : (e.deriv i).denote xs = (e.diff i).denote xs :=
+  denote_dsimp xs _
+
+end dsimp
+
 /-! ### Enclosures -/
 
 theorem memK {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
@@ -304,12 +361,12 @@ theorem getD_set_same {xs : List ℝ} {i : Nat} (hi : i < xs.length) (t : ℝ) :
 theorem hasDerivAt_box {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
     (hxs : List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs env) {i : Nat} (hi : i < xs.length)
     {e : IExpr} (hd : domOK env e = true) {t : ℝ} (ht : t ∈ (toI (env.getD i zeroK)).toSet) :
-    HasDerivAt (fun s => e.denote (xs.set i s)) ((e.diff i).denote (xs.set i t)) t := by
+    HasDerivAt (fun s => e.denote (xs.set i s)) ((e.deriv i).denote (xs.set i t)) t := by
   have hz := forall2_setx hxs i ht
   have hi' : i < (xs.set i t).length := by simpa using hi
   have := hasDerivAt_denote hi' e (domOK_sound hw hz e hd)
   simp only [List.set_set, getD_set_same hi] at this
-  exact this
+  rw [denote_deriv]; exact this
 
 theorem mono_step (upper inc : Bool) {φx φr d x r : ℝ} (hd : if inc then 0 ≤ d else d ≤ 0)
     (hmv : φr - φx = d * (r - x)) (hxr : if (inc == upper) then x ≤ r else r ≤ x) :
@@ -352,15 +409,15 @@ theorem checkD_sound : ∀ (c : DCert) (e : IExpr) (g : KI → Bool) (upper : Bo
     have hi : i < xs.length := by rw [hlen]; exact Nat.blt_eq ▸ hil
     -- sign of the derivative on the box
     have hsign : ∀ zs, List.Forall₂ (fun x X => x ∈ (toI X).toSet) zs env →
-        (if inc then 0 ≤ (e.diff i).denote zs else (e.diff i).denote zs ≤ 0) := by
+        (if inc then 0 ≤ (e.deriv i).denote zs else (e.deriv i).denote zs ≤ 0) := by
       intro zs hzs
       cases inc
       · simp only [Bool.cond_false] at hsg
-        have := ihdc (e.diff i) _ true (fun y => y ≤ ((0 : ℚ) : ℝ)) (gLe_sound 0)
+        have := ihdc (e.deriv i) _ true (fun y => y ≤ ((0 : ℚ) : ℝ)) (gLe_sound 0)
           (fun y z h hy => by simp only [↓reduceIte] at h; linarith) env zs hw hzs hsg
         simpa using this
       · simp only [Bool.cond_true] at hsg
-        have := ihdc (e.diff i) _ false (fun y => ((0 : ℚ) : ℝ) ≤ y) (gGe_sound 0)
+        have := ihdc (e.deriv i) _ false (fun y => ((0 : ℚ) : ℝ) ≤ y) (gGe_sound 0)
           (fun y z h hy => by simp only [Bool.false_eq_true, ↓reduceIte] at h; linarith)
           env zs hw hzs hsg
         simpa using this
@@ -424,14 +481,14 @@ theorem checkD_sound : ∀ (c : DCert) (e : IExpr) (g : KI → Bool) (upper : Bo
       rw [float_le_iff_toE hl' hmn, hre] at h1
       rw [float_le_iff_toE hmn hh', hre] at h2
       exact mem_toSet_of_toE hl' hh' h1 h2
-    obtain ⟨d, hd, hmv⟩ := mvt_uIcc (S := fun d => d ∈ (toI (evalK env (e.diff i))).toSet)
+    obtain ⟨d, hd, hmv⟩ := mvt_uIcc (S := fun d => d ∈ (toI (evalK env (e.deriv i))).toSet)
       (φ := fun s => e.denote (xs.set i s)) (a := r) (b := xs.getD i 0) (fun t ht => by
         have htX := seg_mem hrX hx ht
-        exact ⟨_, (memK hw (forall2_setx hxs i htX) (e.diff i)).1, hasDerivAt_box hw hxs hi hdom htX⟩)
+        exact ⟨_, (memK hw (forall2_setx hxs i htX) (e.deriv i)).1, hasDerivAt_box hw hxs hi hdom htX⟩)
     simp only [hself] at hmv
     -- the pieces
     have hfr := memK (set_wf hw i hwp) (forall2_set2 hxs i hrm) e
-    have hdm := memK hw hxs (e.diff i)
+    have hdm := memK hw hxs (e.deriv i)
     have hsub : xs.getD i 0 - r ∈ (toI (KI.sub (env.getD i zeroK) ⟨m, m⟩)).toSet := by
       rw [sub_toI hwi hwp]; exact sub_mem_toSet hx hrm
     have hmul := mem_toSet_mul hd hsub
@@ -443,5 +500,40 @@ theorem checkD_sound : ∀ (c : DCert) (e : IExpr) (g : KI → Bool) (upper : Bo
     have hn := memK hw hxs e
     have hmt := meet_mem hn.2 (add_wf hfr.2 (mul_wf hdm.2 (sub_wf hwi hwp))) hn.1 hadd
     exact hg _ hmt.2 hgc _ hmt.1
+
+/-! ### Entry points for the tactic -/
+
+theorem proveD_le (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : DCert)
+    (h : checkD e (gLe (KI.ofRat c).lo) true cert (boxes bs) = true) (xs : List ℝ)
+    (hxs : InBoxes xs bs) : e.denote xs ≤ (c : ℝ) :=
+  checkD_sound cert e _ true (fun y => y ≤ (c : ℝ)) (gLe_sound c)
+    (fun y z h hy => by simp only [↓reduceIte] at h; linarith) _ xs (boxes_wf bs) (boxes_mem hxs) h
+
+theorem proveD_lt (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : DCert)
+    (h : checkD e (gLt (KI.ofRat c).lo) true cert (boxes bs) = true) (xs : List ℝ)
+    (hxs : InBoxes xs bs) : e.denote xs < (c : ℝ) :=
+  checkD_sound cert e _ true (fun y => y < (c : ℝ)) (gLt_sound c)
+    (fun y z h hy => by simp only [↓reduceIte] at h; linarith) _ xs (boxes_wf bs) (boxes_mem hxs) h
+
+theorem proveD_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : DCert)
+    (h : checkD e (gGe (KI.ofRat c).hi) false cert (boxes bs) = true) (xs : List ℝ)
+    (hxs : InBoxes xs bs) : (c : ℝ) ≤ e.denote xs :=
+  checkD_sound cert e _ false (fun y => (c : ℝ) ≤ y) (gGe_sound c)
+    (fun y z h hy => by simp only [Bool.false_eq_true, ↓reduceIte] at h; linarith) _ xs
+    (boxes_wf bs) (boxes_mem hxs) h
+
+theorem proveD_gt (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : DCert)
+    (h : checkD e (gGt (KI.ofRat c).hi) false cert (boxes bs) = true) (xs : List ℝ)
+    (hxs : InBoxes xs bs) : (c : ℝ) < e.denote xs :=
+  checkD_sound cert e _ false (fun y => (c : ℝ) < y) (gGt_sound c)
+    (fun y z h hy => by simp only [Bool.false_eq_true, ↓reduceIte] at h; linarith) _ xs
+    (boxes_wf bs) (boxes_mem hxs) h
+
+theorem checkD_split_of {e : IExpr} {g : KI → Bool} {upper : Bool} {i m : Nat} {l r : DCert}
+    {env : List KI} (hm : (!isNaN m && Nat.blt m (2 ^ 64)) = true)
+    (hl : checkD e g upper l (env.set i ⟨(env.getD i zeroK).lo, m⟩) = true)
+    (hr : checkD e g upper r (env.set i ⟨m, (env.getD i zeroK).hi⟩) = true) :
+    checkD e g upper (.split i m l r) env = true := by
+  simp only [checkD, hl, hr, Bool.and_true]; exact hm
 
 end RealFP

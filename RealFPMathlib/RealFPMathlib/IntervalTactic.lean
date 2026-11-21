@@ -22,6 +22,7 @@ How it works:
    `checkK`; soundness comes from `RealFP.checkK_sound` (no `native_decide`, standard axioms).
 -/
 import RealFPMathlib.IntervalSound
+import RealFPMathlib.IntervalDeriv
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Ring
@@ -91,6 +92,70 @@ def certLeaves : Cert → Nat
   | .leaf => 1
   | .split _ _ l r => certLeaves l + certLeaves r
 
+/-! ### Certificates with derivatives (`DCert`, `checkD`) -/
+
+def dLeaves : DCert → Nat
+  | .leaf => 1
+  | .split _ _ l r => dLeaves l + dLeaves r
+  | .mono _ _ dc c => dLeaves dc + dLeaves c
+  | .center _ _ => 1
+
+def dStats : DCert → Nat × Nat × Nat   -- (splits, mono, center)
+  | .leaf => (0, 0, 0)
+  | .split _ _ l r => let a := dStats l; let b := dStats r; (a.1 + b.1 + 1, a.2.1 + b.2.1, a.2.2 + b.2.2)
+  | .mono _ _ dc c => let a := dStats dc; let b := dStats c; (a.1 + b.1, a.2.1 + b.2.1 + 1, a.2.2 + b.2.2)
+  | .center _ _ => (0, 0, 1)
+
+/-- Variables whose interval is not a point. -/
+def wideVars (env : List KI) : List Nat :=
+  (List.range env.length).filter fun i => (env.getD i zeroK).lo != (env.getD i zeroK).hi
+
+/-- Search: leaf; else (if `deriv`) monotonicity with an obvious derivative sign, centred form,
+monotonicity with a derivative sign proved recursively (up to `order` derivatives); else split. -/
+partial def searchD (deriv : Bool) (maxEvals : Nat) (e : IExpr) (g : KI → Bool) (upper : Bool)
+    (order : Nat) (allowSplit : Bool) : Nat → List KI → StateM Nat (Option DCert)
+  | depth, env => do
+    modify (· + 1)
+    if g (evalK env e) then return some .leaf
+    if (← get) ≥ maxEvals then return none
+    if deriv && domOK env e then
+      let tryEnd (i : Nat) (inc : Bool) (dc : DCert) : StateM Nat (Option DCert) := do
+        let X := env.getD i zeroK
+        let p := if inc == upper then X.hi else X.lo
+        if !finK p then return none
+        let some c ← searchD deriv maxEvals e g upper order allowSplit depth (env.set i ⟨p, p⟩)
+          | return none
+        return some (.mono i inc dc c)
+      -- 1. monotone, sign visible on the box
+      for i in wideVars env do
+        modify (· + 1)
+        let D := evalK env (e.deriv i)
+        if gGe zeroHi D then
+          if let some c ← tryEnd i true .leaf then return some c
+        if gLe zeroLo D then
+          if let some c ← tryEnd i false .leaf then return some c
+      -- 2. centred form at the midpoint of the widest variable
+      if let some (i, m) := pickSplit env then
+        modify (· + 1)
+        if checkD e g upper (.center i m) env then return some (.center i m)
+      -- 3. monotone, sign proved with higher derivatives
+      if order > 0 then
+        for i in wideVars env do
+          for inc in [true, false] do
+            let gs := if inc then gGe zeroHi else gLe zeroLo
+            if let some dc ← searchD deriv maxEvals (e.deriv i) gs (!inc) (order - 1) false depth env then
+              if let some c ← tryEnd i inc dc then return some c
+    if depth == 0 || !allowSplit || (← get) ≥ maxEvals then return none
+    match pickSplit env with
+    | none => return none
+    | some (i, m) =>
+      let X := env.getD i zeroK
+      let some l ← searchD deriv maxEvals e g upper order allowSplit (depth - 1)
+        (env.set i ⟨X.lo, m⟩) | return none
+      let some r ← searchD deriv maxEvals e g upper order allowSplit (depth - 1)
+        (env.set i ⟨m, X.hi⟩) | return none
+      return some (.split i m l r)
+
 /-! ### Reification -/
 
 partial def iexprToExpr : IExpr → Expr
@@ -109,6 +174,12 @@ partial def iexprToExpr : IExpr → Expr
   | .log a => mkApp (mkConst ``IExpr.log) (iexprToExpr a)
   | .sin a => mkApp (mkConst ``IExpr.sin) (iexprToExpr a)
   | .cos a => mkApp (mkConst ``IExpr.cos) (iexprToExpr a)
+
+partial def dcertToExpr : DCert → Expr
+  | .leaf => mkConst ``DCert.leaf
+  | .split i m l r => mkApp4 (mkConst ``DCert.split) (toExpr i) (toExpr m) (dcertToExpr l) (dcertToExpr r)
+  | .mono i inc dc c => mkApp4 (mkConst ``DCert.mono) (toExpr i) (toExpr inc) (dcertToExpr dc) (dcertToExpr c)
+  | .center i m => mkApp2 (mkConst ``DCert.center) (toExpr i) (toExpr m)
 
 partial def certToExpr : Cert → Expr
   | .leaf => mkConst ``Cert.leaf
@@ -204,6 +275,10 @@ structure Cfg where
   maxBoxes : Nat := 50000
   /-- Boxes per `decide +kernel` call (separate kernel checks keep memory bounded). -/
   chunk : Nat := 32
+  /-- Use derivatives (monotonicity, centred form). -/
+  deriv : Bool := true
+  /-- Highest derivative order used to prove monotonicity. -/
+  order : Nat := 3
 
 def denoteSimp : TacticM Unit := do
   evalTactic (← `(tactic|
@@ -254,6 +329,36 @@ where
     setGoals saved
     instantiateMVars hM
 
+partial def proveCheckD (chunk : Nat) (eE gE upperE : Expr) (cert : DCert) (envE : Expr) :
+    TacticM Expr := do
+  match cert with
+  | .split i m l r =>
+    if dLeaves cert > chunk then
+      let lem := mkAppN (mkConst ``RealFP.checkD_split_of)
+        #[eE, gE, upperE, toExpr i, toExpr m, dcertToExpr l, dcertToExpr r, envE]
+      let ty ← inferType lem
+      let .forallE _ _ b1 _ := ty | throwError "interval: internal (split lemma)"
+      let .forallE _ hlT b2 _ := b1 | throwError "interval: internal (split lemma)"
+      let .forallE _ hrT _ _ := b2 | throwError "interval: internal (split lemma)"
+      let hm ← mkEqRefl (mkConst ``Bool.true)
+      let getEnv (t : Expr) : MetaM Expr := do
+        let some (_, lhs, _) := t.eq? | throwError "interval: internal (env)"
+        return lhs.appArg!
+      let hl ← proveCheckD chunk eE gE upperE l (← getEnv hlT)
+      let hr ← proveCheckD chunk eE gE upperE r (← getEnv hrT)
+      return mkAppN lem #[hm, hl, hr]
+    else leafChunk
+  | _ => leafChunk
+where
+  leafChunk : TacticM Expr := do
+    let chk := mkApp5 (mkConst ``checkD) eE gE upperE (dcertToExpr cert) envE
+    let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
+    let saved ← getGoals
+    setGoals [hM.mvarId!]
+    evalTactic (← `(tactic| decide +kernel))
+    setGoals saved
+    instantiateMVars hM
+
 /-- Prove `lhs ≤ rhs` (`strict = false`) or `lhs < rhs` on the main goal. -/
 def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let goal ← getMainGoal
@@ -276,25 +381,28 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let cK := KI.ofRat c
   let (g, gName, pName) :=
     match strict, upper with
-    | false, true => (gLe cK.lo, ``gLe, ``prove_le)
-    | true, true => (gLt cK.lo, ``gLt, ``prove_lt)
-    | false, false => (gGe cK.hi, ``gGe, ``prove_ge)
-    | true, false => (gGt cK.hi, ``gGt, ``prove_gt)
-  let (cert?, evals) := (search e g (2 * cfg.maxBoxes) cfg.depth env).run 0
+    | false, true => (gLe cK.lo, ``gLe, ``proveD_le)
+    | true, true => (gLt cK.lo, ``gLt, ``proveD_lt)
+    | false, false => (gGe cK.hi, ``gGe, ``proveD_ge)
+    | true, false => (gGt cK.hi, ``gGt, ``proveD_gt)
+  let (cert?, evals) :=
+    (searchD cfg.deriv (2 * cfg.maxBoxes) e g upper cfg.order true cfg.depth env).run 0
   let some cert := cert? |
     throwError "interval: no certificate within depth {cfg.depth} / {cfg.maxBoxes} boxes \
       ({evals} evaluations); try larger (depth := _) (maxBoxes := _) or tighter bounds"
-  if certLeaves cert > cfg.maxBoxes then
-    throwError "interval: certificate needs {certLeaves cert} boxes > maxBoxes {cfg.maxBoxes}"
-  trace[interval] "{vars.size} variable(s), {certLeaves cert} boxes, {evals} native evaluations"
+  if dLeaves cert > cfg.maxBoxes then
+    throwError "interval: certificate needs {dLeaves cert} boxes > maxBoxes {cfg.maxBoxes}"
+  let st := dStats cert
+  trace[interval] "{vars.size} variable(s), {dLeaves cert} boxes ({st.1} splits, {st.2.1} mono, \
+    {st.2.2} centred), {evals} native evaluations"
   let eE := iexprToExpr e
   let bsE := toExpr bs.toList
   let cE := toExpr c
-  let certE := certToExpr cert
+  let certE := dcertToExpr cert
   let xsE ← mkListLit (mkConst ``Real) vars.toList
   let kc := mkApp (mkConst (if upper then ``KI.lo else ``KI.hi)) (mkApp (mkConst ``KI.ofRat) cE)
   let gE := mkApp (mkConst gName) kc
-  let hM ← proveCheck cfg.chunk eE gE cert (mkApp (mkConst ``boxes) bsE)
+  let hM ← proveCheckD cfg.chunk eE gE (toExpr upper) cert (mkApp (mkConst ``boxes) bsE)
   let saved ← getGoals
   let hxsTy := mkApp2 (mkConst ``InBoxes) xsE bsE
   let hxsM ← mkFreshExprMVar hxsTy
@@ -348,7 +456,8 @@ partial def intervalCore (cfg : Cfg) : TacticM Unit := do
   | _ => throwError "interval: unsupported goal {t}"
 
 syntax (name := intervalTac) "interval" ("(" &"depth" " := " num ")")?
-  ("(" &"maxBoxes" " := " num ")")? ("(" &"chunk" " := " num ")")? : tactic
+  ("(" &"maxBoxes" " := " num ")")? ("(" &"chunk" " := " num ")")?
+  ("(" &"deriv" " := " ident ")")? ("(" &"order" " := " num ")")? : tactic
 
 @[tactic intervalTac] def evalInterval : Tactic := fun stx => do
   let mut cfg : Cfg := {}
@@ -357,6 +466,10 @@ syntax (name := intervalTac) "interval" ("(" &"depth" " := " num ")")?
     cfg := { cfg with maxBoxes := b[3].isNatLit?.getD cfg.maxBoxes }
   if let some b := stx[3].getOptional? then
     cfg := { cfg with chunk := b[3].isNatLit?.getD cfg.chunk }
+  if let some b := stx[4].getOptional? then
+    cfg := { cfg with deriv := b[3].getId != `false }
+  if let some b := stx[5].getOptional? then
+    cfg := { cfg with order := b[3].isNatLit?.getD cfg.order }
   evalTactic (← `(tactic| intros))
   evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
     ge_iff_le, gt_iff_lt] at *))
