@@ -7,7 +7,7 @@ Logical model (Mathlib-free), from the `exp` / `log` enclosures of `Interval64.T
   precision survives the cancellation in `sinh`).
 * `tanhBounds`: `sinh / cosh` with the positive `cosh` enclosure; `|q| ≥ 22`: `[1 - 2^-60, 1]`.
 * `log2Bounds q p = log q / log 2`, `log10Bounds q p = log q / log 10` (interval quotient of the
-  `logBounds` enclosures); exact results `k` for `q = 2^k` / `q = 10^k` are returned exactly.
+  `logBounds` enclosures, denominators clamped below by `1/2 < log 2`, `2 < log 10`); exact results `k` for `q = 2^k` / `q = 10^k` are returned exactly.
 Runtime: CORE-MATH `cr_sinh`, `cr_cosh`, `cr_tanh`, `cr_log2`, `cr_log10` under RD / RU.
 -/
 import Interval64.InvTrig
@@ -57,12 +57,12 @@ def ln10Bounds (p : Nat) : Rat × Rat := logBounds 10 p
 def log2Bounds (q : Rat) (p : Nat) : Rat × Rat :=
   match log2Exact? q with
   | some k => (k, k)
-  | none => divPos (logBounds q p) (ln2Bounds p)
+  | none => divPos (logBounds q p) (max (ln2Bounds p).1 (1 / 2), (ln2Bounds p).2)
 
 def log10Bounds (q : Rat) (p : Nat) : Rat × Rat :=
   match log10Exact? q with
   | some k => (k, k)
-  | none => divPos (logBounds q p) (ln10Bounds p)
+  | none => divPos (logBounds q p) (max (ln10Bounds p).1 2, (ln10Bounds p).2)
 
 /-! ## Bit-level specifications -/
 

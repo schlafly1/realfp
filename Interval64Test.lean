@@ -307,6 +307,76 @@ def funcTests : IO Nat := do
   IO.println s!"atan/atan2 random boxes: {nIv} sample points checked; interval policy failures: {ivF}"
   return at1.fails.size + at2.fails.size + at1.fallbacks + at2.fallbacks + orcBad.size + ivF
 
+/-! ## One-argument functions: generic C vs spec vs oracle -/
+
+structure Fn1 where
+  name : String
+  down : Float → Float
+  up : Float → Float
+  spec : UInt64 → Bool → UInt64 × Nat × Bool
+
+def fns1 : Array Fn1 := #[
+  ⟨"sinh", sinhDown, sinhUp, Hyp.sinhBitsD⟩,
+  ⟨"cosh", coshDown, coshUp, Hyp.coshBitsD⟩,
+  ⟨"tanh", tanhDown, tanhUp, Hyp.tanhBitsD⟩,
+  ⟨"log2", log2Down, log2Up, Hyp.logBBitsD false⟩,
+  ⟨"log10", log10Down, log10Up, Hyp.logBBitsD true⟩]
+
+def checkFn1 (f : Fn1) (x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT (f.name ++ ".down") f.down (fun b => f.spec b false) x st
+  checkT (f.name ++ ".up") f.up (fun b => f.spec b true) x st
+
+def fn1Tests : IO Nat := do
+  let t0 ← IO.monoMsNow
+  let lines ← (do let c ← IO.FS.readFile "tests/func_oracle.txt"; pure (c.splitOn "\n"))
+  let mut total := 0
+  for f in fns1 do
+    let mut st : ZivStats := {}
+    let mut orc := 0
+    let mut bad : Array String := #[]
+    for line in lines do
+      match line.splitOn " " with
+      | [fn, hx, d, u] =>
+        if fn == f.name then
+          let x := Float.ofBits (hexVal hx)
+          st := checkFn1 f x st; orc := orc + 1
+          if !(oracleSame (f.down x) d && oracleSame (f.up x) u) then bad := bad.push line
+      | _ => pure ()
+    for hb in specials do st := checkFn1 f (Float.ofBits hb) st
+    let mut s : UInt64 := 0xF00D
+    for _ in [0:500] do
+      s := xorshift s; st := checkFn1 f (Float.ofBits s) st
+      s := xorshift s; st := checkFn1 f (unitF s * 40.0 - 20.0) st
+      s := xorshift s
+      st := checkFn1 f ((unitF s * 2.0 - 1.0) * Float.exp2 (Float.ofNat ((s % 80).toNat) - 70.0)) st
+    IO.println s!"{f.name}: {st.n} checks; Ziv converged at step k: {st.steps}; fallback hits: {st.fallbacks}; mismatches: {st.fails.size}; oracle {orc} inputs, C mismatches {bad.size}"
+    for x in (st.fails ++ bad)[:6] do IO.println s!"  {x}"
+    total := total + st.fails.size + st.fallbacks + bad.size
+  -- intervals: sample points inside
+  let mut ivF := 0
+  let mut nIv := 0
+  let mut s : UInt64 := 0xBEEF
+  for _ in [0:2000] do
+    s := xorshift s; let c := (unitF s * 2.0 - 1.0) * Float.exp2 (Float.ofNat ((s % 16).toNat) - 8.0)
+    s := xorshift s; let r := unitF s * Float.exp2 (Float.ofNat ((s % 12).toNat) - 9.0)
+    let X : Interval64 := ⟨c - r, c + r⟩
+    let P : Interval64 := ⟨c.abs, c.abs + r⟩
+    let (S, C, T, L2, L10) := (Interval64.sinh X, Interval64.cosh X, Interval64.tanh X,
+      Interval64.log2 P, Interval64.log10 P)
+    for i in [0:9] do
+      let t := X.lo + (X.hi - X.lo) * (Float.ofNat i / 8.0)
+      let u := P.lo + (P.hi - P.lo) * (Float.ofNat i / 8.0)
+      if !(decide (t ≥ X.lo) && decide (t ≤ X.hi) && decide (u ≥ P.lo) && decide (u ≤ P.hi)) then continue
+      nIv := nIv + 1
+      if !(decide (S.lo ≤ sinhDown t) && decide (sinhUp t ≤ S.hi)) then ivF := ivF + 1
+      if !(decide (C.lo ≤ coshDown t) && decide (coshUp t ≤ C.hi)) then ivF := ivF + 1
+      if !(decide (T.lo ≤ tanhDown t) && decide (tanhUp t ≤ T.hi)) then ivF := ivF + 1
+      if !(decide (L2.lo ≤ log2Down u) && decide (log2Up u ≤ L2.hi)) then ivF := ivF + 1
+      if !(decide (L10.lo ≤ log10Down u) && decide (log10Up u ≤ L10.hi)) then ivF := ivF + 1
+  let t1 ← IO.monoMsNow
+  IO.println s!"sinh/cosh/tanh/log2/log10 random intervals: {nIv} sample points; failures: {ivF}; {t1 - t0} ms"
+  return total + ivF
+
 /-- Does `I` enclose the rational `q` (endpoints compared exactly)? -/
 def enclQ (I : Interval64) (q : Rat) : Bool :=
   let loOk := match Spec.bitsToRat? I.lo.toBits with
@@ -677,13 +747,14 @@ def main : IO UInt32 := do
   IO.println "----- exp / log / sin / cos -----"
   let transcFails ← transcTests
   let funcFails ← funcTests
+  let fn1Fails ← fn1Tests
   let splitFails ← splitTests
   let opsFails ← opsTests
-  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + splitFails + opsFails
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + fn1Fails + splitFails + opsFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} split={splitFails} ops={opsFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} fn1={fn1Fails} split={splitFails} ops={opsFails}"
     return 1
