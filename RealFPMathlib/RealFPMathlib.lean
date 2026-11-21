@@ -8,6 +8,8 @@ import RealFPMathlib.Transc
 import RealFPMathlib.Trig
 import RealFPMathlib.InvTrig
 import RealFPMathlib.Hyp
+import RealFPMathlib.Tan
+import RealFPMathlib.Asin
 import RealFPMathlib.Conv
 import RealFPMathlib.Split
 import RealFPMathlib.Ext

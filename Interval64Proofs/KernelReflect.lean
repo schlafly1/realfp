@@ -349,6 +349,12 @@ theorem evalK_toI {env : List KI} (h : ∀ X ∈ env, WF X) :
   | log10 a iha =>
     exact ⟨by simp only [evalK, evalI]; rw [(logBK_toI true iha.2).1, iha.1],
       (logBK_toI true iha.2).2⟩
+  | tan a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(tan_toI iha.2).1, iha.1], (tan_toI iha.2).2⟩
+  | asin a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(asin_toI iha.2).1, iha.1], (asin_toI iha.2).2⟩
+  | acos a iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(acos_toI iha.2).1, iha.1], (acos_toI iha.2).2⟩
 
 theorem boxes_wf (bs : List (Rat × Rat)) : ∀ X ∈ boxes bs, WF X := by
   induction bs with

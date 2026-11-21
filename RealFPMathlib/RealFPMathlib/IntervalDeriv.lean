@@ -59,6 +59,9 @@ def Dom (xs : List ℝ) : IExpr → Prop
   | .tanh a => Dom xs a
   | .log2 a => Dom xs a ∧ 0 < a.denote xs
   | .log10 a => Dom xs a ∧ 0 < a.denote xs
+  | .tan a => Dom xs a ∧ Real.cos (a.denote xs) ≠ 0
+  | .asin a => Dom xs a ∧ 0 < 1 - a.denote xs ^ 2
+  | .acos a => Dom xs a ∧ 0 < 1 - a.denote xs ^ 2
 
 theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     ∀ e : IExpr, Dom xs e →
@@ -185,6 +188,37 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     · funext t; simp [IExpr.denote, Real.logb]
     · show (a.diff i).denote xs / a.denote xs / Real.log ((10 : ℚ) : ℝ) = _
       push_cast; rfl
+  | tan a iha =>
+    intro h
+    have hc : HasDerivAt Real.tan (1 / Real.cos (a.denote xs) ^ 2)
+        ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
+      simp only [hs]; exact Real.hasDerivAt_tan h.2
+    have := hc.comp (xs.getD i 0) (iha h.1)
+    convert this using 1
+    show (a.diff i).denote xs / Real.cos (a.denote xs) ^ 2 = _
+    ring
+  | asin a iha =>
+    intro h
+    have h1 : a.denote xs ≠ -1 := fun e => by rw [e] at h; nlinarith [h.2]
+    have h2 : a.denote xs ≠ 1 := fun e => by rw [e] at h; nlinarith [h.2]
+    have hc : HasDerivAt Real.arcsin (1 / √(1 - a.denote xs ^ 2))
+        ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
+      simp only [hs]; exact Real.hasDerivAt_arcsin h1 h2
+    have := hc.comp (xs.getD i 0) (iha h.1)
+    convert this using 1
+    show (a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2) = _
+    push_cast; ring
+  | acos a iha =>
+    intro h
+    have h1 : a.denote xs ≠ -1 := fun e => by rw [e] at h; nlinarith [h.2]
+    have h2 : a.denote xs ≠ 1 := fun e => by rw [e] at h; nlinarith [h.2]
+    have hc : HasDerivAt Real.arccos (-(1 / √(1 - a.denote xs ^ 2)))
+        ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
+      simp only [hs]; exact Real.hasDerivAt_arccos h1 h2
+    have := hc.comp (xs.getD i 0) (iha h.1)
+    convert this using 1
+    show -((a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2)) = _
+    push_cast; ring
 
 
 /-! ### Simplification preserves the denotation -/
@@ -328,6 +362,22 @@ theorem domOK_sound {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
     intro h; simp only [domOK, Bool.and_eq_true] at h
     have m := memK hw hxs a
     exact ⟨iha h.1, pos_of_posK m.2 h.2 m.1⟩
+  | tan a iha =>
+    intro h; simp only [domOK, Bool.and_eq_true] at h
+    have m := memK hw hxs (.cos a)
+    exact ⟨iha h.1, ne_of_nzK m.2 h.2 m.1⟩
+  | asin a iha =>
+    intro h; simp only [domOK, Bool.and_eq_true] at h
+    have m := memK hw hxs (.sub (.rat 1) (.pow a 2))
+    have := pos_of_posK m.2 h.2 m.1
+    refine ⟨iha h.1, ?_⟩
+    simpa [IExpr.denote] using this
+  | acos a iha =>
+    intro h; simp only [domOK, Bool.and_eq_true] at h
+    have m := memK hw hxs (.sub (.rat 1) (.pow a 2))
+    have := pos_of_posK m.2 h.2 m.1
+    refine ⟨iha h.1, ?_⟩
+    simpa [IExpr.denote] using this
 
 /-! ### Points, segments, intersection -/
 

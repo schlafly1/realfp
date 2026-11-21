@@ -41,6 +41,11 @@ inductive IExpr where
   | log2 (a : IExpr)
   /-- `Real.logb 10`. -/
   | log10 (a : IExpr)
+  | tan (a : IExpr)
+  /-- Mathlib's `Real.arcsin` (clamped outside `[-1, 1]`). -/
+  | asin (a : IExpr)
+  /-- Mathlib's `Real.arccos`. -/
+  | acos (a : IExpr)
   deriving Repr, Inhabited
 
 /-! ### `Interval64` semantics -/
@@ -91,6 +96,9 @@ def evalI (env : List Interval64) : IExpr → Interval64
   | .tanh a => Interval64.tanh (evalI env a)
   | .log2 a => logBI false (evalI env a)
   | .log10 a => logBI true (evalI env a)
+  | .tan a => Interval64.tan (evalI env a)
+  | .asin a => Interval64.asin (evalI env a)
+  | .acos a => Interval64.acos (evalI env a)
 
 /-! ### Kernel semantics -/
 
@@ -133,6 +141,9 @@ def evalK (env : List KI) : IExpr → KI
   | .tanh a => KI.tanh (evalK env a)
   | .log2 a => logBK false (evalK env a)
   | .log10 a => logBK true (evalK env a)
+  | .tan a => KI.tan (evalK env a)
+  | .asin a => KI.asin (evalK env a)
+  | .acos a => KI.acos (evalK env a)
 
 /-! ### Goal predicates on the enclosure `F` of the expression -/
 

@@ -16,6 +16,7 @@ import RealFPMathlib.Transc
 import RealFPMathlib.Trig
 import RealFPMathlib.InvTrig
 import RealFPMathlib.Hyp
+import RealFPMathlib.Asin
 import Interval64Proofs.KernelReflect
 
 open Interval64 Interval64.Spec Interval64.KF
@@ -51,6 +52,9 @@ def _root_.Interval64.KF.IExpr.denote (xs : List ℝ) : IExpr → ℝ
   | .tanh a => Real.tanh (a.denote xs)
   | .log2 a => Real.logb 2 (a.denote xs)
   | .log10 a => Real.logb 10 (a.denote xs)
+  | .tan a => Real.tan (a.denote xs)
+  | .asin a => Real.arcsin (a.denote xs)
+  | .acos a => Real.arccos (a.denote xs)
 
 theorem zero_mem_zeroI : (0 : ℝ) ∈ zeroI.toSet := by
   have h := mem_toSet_ofRat 0
@@ -179,6 +183,9 @@ theorem eval_sound {xs : List ℝ} {env : List Interval64}
   | log10 a iha =>
     have := logBI_mem true iha
     simp only [RealFP.Hyp.baseR, ↓reduceIte] at this; exact this
+  | tan a iha => exact RealFP.Tan.tan_mem_toSet iha
+  | asin a iha => exact RealFP.Asin.asin_mem_toSet iha
+  | acos a iha => exact RealFP.Asin.acos_mem_toSet iha
 
 /-! ### Bisection -/
 

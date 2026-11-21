@@ -93,6 +93,13 @@ theorem h06 : Real.logb 2 1024 = 10 ∨ 9.99999 < Real.logb 2 1024 := by right; 
 theorem h07 : 0.30102 < Real.logb 10 2 ∧ Real.logb 10 2 < 0.30103 := by interval
 theorem h08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 8) : Real.logb 2 x ≤ x - 1/2 := by interval
 
+-- tan, asin, acos
+theorem a01 : 1.5574 < Real.tan 1 ∧ Real.tan 1 < 1.5575 := by interval
+theorem a02 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x ≤ Real.tan x := by interval
+theorem a03 : 0.5235 < Real.arcsin 0.5 ∧ Real.arcsin 0.5 < 0.5236 := by interval
+theorem a04 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 0.9) : x ≤ Real.arcsin x := by interval
+theorem a05 : 1.0471 < Real.arccos 0.5 ∧ Real.arccos 0.5 < 1.0472 := by interval
+
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
   interval (depth := 30) (maxBoxes := 100000)

@@ -182,6 +182,9 @@ partial def iexprToExpr : IExpr → Expr
   | .tanh a => mkApp (mkConst ``IExpr.tanh) (iexprToExpr a)
   | .log2 a => mkApp (mkConst ``IExpr.log2) (iexprToExpr a)
   | .log10 a => mkApp (mkConst ``IExpr.log10) (iexprToExpr a)
+  | .tan a => mkApp (mkConst ``IExpr.tan) (iexprToExpr a)
+  | .asin a => mkApp (mkConst ``IExpr.asin) (iexprToExpr a)
+  | .acos a => mkApp (mkConst ``IExpr.acos) (iexprToExpr a)
 
 partial def dcertToExpr : DCert → Expr
   | .leaf => mkConst ``DCert.leaf
@@ -236,6 +239,9 @@ partial def reify (vars : Array Expr) (e : Expr) : MetaM IExpr := do
   | (``Real.sinh, #[a]) => return .sinh (← r a)
   | (``Real.cosh, #[a]) => return .cosh (← r a)
   | (``Real.tanh, #[a]) => return .tanh (← r a)
+  | (``Real.tan, #[a]) => return .tan (← r a)
+  | (``Real.arcsin, #[a]) => return .asin (← r a)
+  | (``Real.arccos, #[a]) => return .acos (← r a)
   | (``Real.logb, #[b, a]) =>
     match ← r b with
     | .rat q =>
