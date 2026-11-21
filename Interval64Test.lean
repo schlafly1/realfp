@@ -212,6 +212,101 @@ def transcTests : IO Nat := do
   return e.fails.size + l.fails.size + sn.fails.size + cs.fails.size + e.fallbacks + l.fallbacks +
     sn.fallbacks + cs.fallbacks + ivF
 
+/-! ## More functions (atan, atan2, ...): C vs Lean spec vs mpmath oracle -/
+
+def checkT2 (name : String) (impl : Float → Float → Float)
+    (specD : UInt64 → UInt64 → UInt64 × Nat × Bool) (y x : Float) (st : ZivStats) : ZivStats :=
+  let (b, k, ok) := specD y.toBits x.toBits
+  let sp := Float.ofBits b
+  let c := impl y x
+  let st := { st with n := st.n + 1 }
+  let st := if ok then { st with steps := st.steps.modify k (· + 1) }
+    else { st with fallbacks := st.fallbacks + 1 }
+  if sameBitsOrNaN c sp then st
+  else { st with fails := st.fails.push s!"{name} y={showF y} x={showF x} C={showF c} spec={showF sp}" }
+
+def checkAtan (x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT "atan.down" atanDown (fun b => InvTrig.atanBitsD b false) x st
+  checkT "atan.up" atanUp (fun b => InvTrig.atanBitsD b true) x st
+
+def checkAtan2 (y x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT2 "atan2.down" atan2Down (fun a b => InvTrig.atan2BitsD a b false) y x st
+  checkT2 "atan2.up" atan2Up (fun a b => InvTrig.atan2BitsD a b true) y x st
+
+def oracleSame (got : Float) (want : String) : Bool :=
+  if want == "nan" then got.isNaN else got.toBits == hexVal want
+
+def funcTests : IO Nat := do
+  let t0 ← IO.monoMsNow
+  let mut at1 : ZivStats := {}
+  let mut at2 : ZivStats := {}
+  let mut orc := 0
+  let mut orcBad : Array String := #[]
+  -- mpmath oracle: C must match the oracle, and the spec must match C (checkT)
+  let lines ← (do let c ← IO.FS.readFile "tests/func_oracle.txt"; pure (c.splitOn "\n"))
+  for line in lines do
+    match line.splitOn " " with
+    | ["atan", hx, d, u] =>
+      let x := Float.ofBits (hexVal hx)
+      at1 := checkAtan x at1; orc := orc + 1
+      if !(oracleSame (atanDown x) d && oracleSame (atanUp x) u) then orcBad := orcBad.push line
+    | ["atan2", hy, hx, d, u] =>
+      let y := Float.ofBits (hexVal hy); let x := Float.ofBits (hexVal hx)
+      at2 := checkAtan2 y x at2; orc := orc + 1
+      if !(oracleSame (atan2Down y x) d && oracleSame (atan2Up y x) u) then orcBad := orcBad.push line
+    | _ => pure ()
+  let mut s : UInt64 := 0xA7A2
+  for hb in specials do
+    at1 := checkAtan (Float.ofBits hb) at1
+    for hb2 in specials do at2 := checkAtan2 (Float.ofBits hb) (Float.ofBits hb2) at2
+  for _ in [0:1000] do
+    s := xorshift s; let x := Float.ofBits s
+    at1 := checkAtan x at1
+    s := xorshift s; let w := unitF s * 20.0 - 10.0
+    at1 := checkAtan w at1
+    s := xorshift s; let y := Float.ofBits s
+    at2 := checkAtan2 y x at2
+    s := xorshift s; let v := unitF s * 20.0 - 10.0
+    at2 := checkAtan2 v w at2; at2 := checkAtan2 (-v) (-w) at2
+  let t1 ← IO.monoMsNow
+  IO.println s!"atan: {at1.n} checks (down+up); Ziv converged at step k: {at1.steps}; fallback hits: {at1.fallbacks}; mismatches: {at1.fails.size}"
+  IO.println s!"atan2: {at2.n} checks (down+up); Ziv converged at step k: {at2.steps}; fallback hits: {at2.fallbacks}; mismatches: {at2.fails.size}"
+  IO.println s!"  mpmath oracle (tests/func_oracle.txt): {orc} inputs, C mismatches: {orcBad.size}; {t1 - t0} ms"
+  for f in (at1.fails ++ at2.fails ++ orcBad)[:16] do IO.println s!"  {f}"
+  -- constants and interval policies
+  let mut ivF := 0
+  if !(Interval64.pi.lo.toBits == 0x400921FB54442D18 && Interval64.pi.hi.toBits == 0x400921FB54442D19) then
+    ivF := ivF + 1
+  if !(halfPi.lo.toBits == 0x3FF921FB54442D18 && halfPi.hi.toBits == 0x3FF921FB54442D19) then ivF := ivF + 1
+  if !(argHull.lo.toBits == 0xC00921FB54442D19 && argHull.hi.toBits == 0x400921FB54442D19) then ivF := ivF + 1
+  if !(isInvalid (Interval64.atan ⟨Float.nan, 1.0⟩)) then ivF := ivF + 1
+  if !(isInvalid (Interval64.atan2 ⟨0.0, 1.0⟩ ⟨Float.nan, 1.0⟩)) then ivF := ivF + 1
+  -- boxes meeting the branch cut / origin give the hull
+  if !(Interval64.atan2 ⟨-1.0, 1.0⟩ ⟨-2.0, -1.0⟩ == argHull) then ivF := ivF + 1
+  if !(Interval64.atan2 ⟨0.0, 1.0⟩ ⟨-2.0, -1.0⟩ == argHull) then ivF := ivF + 1
+  if !(Interval64.atan2 ⟨-1.0, 1.0⟩ ⟨0.0, 1.0⟩ == argHull) then ivF := ivF + 1
+  -- random boxes: pointwise directed atan2 at sample points must lie inside
+  let mut nIv := 0
+  for _ in [0:3000] do
+    s := xorshift s; let cy := unitF s * 8.0 - 4.0
+    s := xorshift s; let cx := unitF s * 8.0 - 4.0
+    s := xorshift s; let r := unitF s * Float.exp2 (Float.ofNat ((s % 12).toNat) - 9.0)
+    let Y : Interval64 := ⟨cy - r, cy + r⟩
+    let X : Interval64 := ⟨cx - r / 2.0, cx + r⟩
+    let A := Interval64.atan2 Y X
+    let T := Interval64.atan X
+    for i in [0:5] do
+      for j in [0:5] do
+        let y := Y.lo + (Y.hi - Y.lo) * (Float.ofNat i / 4.0)
+        let x := X.lo + (X.hi - X.lo) * (Float.ofNat j / 4.0)
+        if !(decide (y ≥ Y.lo) && decide (y ≤ Y.hi) && decide (x ≥ X.lo) && decide (x ≤ X.hi)) then continue
+        if y == 0.0 && decide (x ≤ 0.0) then continue  -- IEEE signed-zero convention differs from arg
+        nIv := nIv + 1
+        if !(decide (A.lo ≤ atan2Down y x) && decide (atan2Up y x ≤ A.hi)) then ivF := ivF + 1
+        if !(decide (T.lo ≤ atanDown x) && decide (atanUp x ≤ T.hi)) then ivF := ivF + 1
+  IO.println s!"atan/atan2 random boxes: {nIv} sample points checked; interval policy failures: {ivF}"
+  return at1.fails.size + at2.fails.size + at1.fallbacks + at2.fallbacks + orcBad.size + ivF
+
 /-- Does `I` enclose the rational `q` (endpoints compared exactly)? -/
 def enclQ (I : Interval64) (q : Rat) : Bool :=
   let loOk := match Spec.bitsToRat? I.lo.toBits with
@@ -581,13 +676,14 @@ def main : IO UInt32 := do
 
   IO.println "----- exp / log / sin / cos -----"
   let transcFails ← transcTests
+  let funcFails ← funcTests
   let splitFails ← splitTests
   let opsFails ← opsTests
-  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + splitFails + opsFails
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + splitFails + opsFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} split={splitFails} ops={opsFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} split={splitFails} ops={opsFails}"
     return 1
