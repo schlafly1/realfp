@@ -147,3 +147,11 @@ import Interval64.Conv
 #print axioms Interval64.KF.le_toF
 #print axioms Interval64.KF.beq_toF
 #print axioms Interval64.KF.neg_toF
+#print axioms Interval64.KF.add_toI
+#print axioms Interval64.KF.mul_toI
+#print axioms Interval64.KF.pown_toI
+#print axioms Interval64.KF.exp_toI
+#print axioms Interval64.KF.log_toI
+#print axioms Interval64.KF.sin_toI
+#print axioms Interval64.KF.cos_toI
+#print axioms Interval64.KF.evalK_toI

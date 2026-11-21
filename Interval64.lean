@@ -18,3 +18,5 @@ import Interval64.Transc
 import Interval64.Trig
 import Interval64.Ops
 import Interval64.Kernel.Nat
+import Interval64.Kernel.Interval
+import Interval64.Kernel.Reflect
