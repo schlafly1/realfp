@@ -55,6 +55,8 @@ target cm_exp.o pkg : FilePath := transcObj pkg "coremath/exp.c" "cm_exp.o"
 target cm_log.o pkg : FilePath := transcObj pkg "coremath/log.c" "cm_log.o"
 target cm_sin.o pkg : FilePath := transcObj pkg "coremath/sin.c" "cm_sin.o"
 target cm_cos.o pkg : FilePath := transcObj pkg "coremath/cos.c" "cm_cos.o"
+target cm_atan.o pkg : FilePath := transcObj pkg "coremath/atan.c" "cm_atan.o"
+target cm_atan2.o pkg : FilePath := transcObj pkg "coremath/atan2.c" "cm_atan2.o"
 target iv64_transc.o pkg : FilePath := transcObj pkg "iv64_transc.c" "iv64_transc.o"
 
 /-- Static library of the C kernels. Lake links this into executables and
@@ -65,6 +67,7 @@ target iv64_transc.o pkg : FilePath := transcObj pkg "iv64_transc.c" "iv64_trans
 extern_lib libleaninterval64 pkg := do
   let oFile ← interval64.o.fetch
   let objs := #[oFile, ← cm_exp.o.fetch, ← cm_log.o.fetch, ← cm_sin.o.fetch, ← cm_cos.o.fetch,
+    ← cm_atan.o.fetch, ← cm_atan2.o.fetch,
     ← iv64_transc.o.fetch]
   let name := nameToStaticLib "leaninterval64"
   buildStaticLib ((pkg : Package).staticLibDir / name) objs

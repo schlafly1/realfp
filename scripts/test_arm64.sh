@@ -31,10 +31,12 @@ fi
 echo "== 1c. CORE-MATH exp/log/sin/cos under RD/RU vs mpmath oracle (tests/transc_oracle.txt)"
 TFLAGS="-O2 -frounding-math -ffp-contract=off -fno-math-errno"
 if [ "$ARCH" = x86_64 ]; then TFLAGS="$TFLAGS -mfma"; fi
-for f in exp log sin cos; do cc $TFLAGS -c c/coremath/$f.c -o "$OUT/cm_$f.o"; done
+for f in exp log sin cos atan atan2; do cc $TFLAGS -c c/coremath/$f.c -o "$OUT/cm_$f.o"; done
 cc $TFLAGS -c c/iv64_transc.c -o "$OUT/iv64_transc.o"
 cc -O2 tests/test_transc.c "$OUT"/cm_*.o "$OUT/iv64_transc.o" -o "$OUT/test_transc" -lm
 "$OUT/test_transc" tests/transc_oracle.txt
+cc -O2 tests/test_func.c "$OUT"/cm_*.o "$OUT/iv64_transc.o" -o "$OUT/test_func" -lm
+"$OUT/test_func" tests/func_oracle.txt
 
 echo "== 2. library C self-test (backend + RN+err vs fesetround, interval policy)"
 cc $CFLAGS -fPIC $X86FLAGS c/interval64.c tests/selftest_main.c -o "$OUT/selftest" -lm

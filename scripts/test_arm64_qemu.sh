@@ -24,7 +24,10 @@ echo "== aarch64 (qemu): library C self-test"
 qemu-aarch64 "$OUT/arm_selftest"
 echo "== aarch64 (qemu): CORE-MATH exp/log/sin/cos under RD/RU (FPCR) vs mpmath oracle"
 TFLAGS="-O2 -frounding-math -ffp-contract=off -fno-math-errno"
-for f in exp log sin cos; do aarch64-linux-gnu-gcc $TFLAGS -c c/coremath/$f.c -o "$OUT/cm_$f.o"; done
+for f in exp log sin cos atan atan2; do aarch64-linux-gnu-gcc $TFLAGS -c c/coremath/$f.c -o "$OUT/cm_$f.o"; done
 aarch64-linux-gnu-gcc $TFLAGS -c c/iv64_transc.c -o "$OUT/iv64_transc.o"
 aarch64-linux-gnu-gcc -O2 -static tests/test_transc.c "$OUT"/cm_*.o "$OUT/iv64_transc.o" -o "$OUT/arm_transc" -lm
 qemu-aarch64 "$OUT/arm_transc" tests/transc_oracle.txt
+echo "== aarch64 (qemu): CORE-MATH atan/atan2/... under RD/RU (FPCR) vs mpmath oracle"
+aarch64-linux-gnu-gcc -O2 -static tests/test_func.c "$OUT"/cm_*.o "$OUT/iv64_transc.o" -o "$OUT/arm_func" -lm
+qemu-aarch64 "$OUT/arm_func" tests/func_oracle.txt

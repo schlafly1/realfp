@@ -20,6 +20,8 @@ double cr_exp(double);
 double cr_log(double);
 double cr_sin(double);
 double cr_cos(double);
+double cr_atan(double);
+double cr_atan2(double, double);
 
 #if defined(__x86_64__)
 #include <immintrin.h>
@@ -76,8 +78,25 @@ IV64_DIR(iv64_dir_sin_up,   cr_sin, 1)
 IV64_DIR(iv64_dir_cos_down, cr_cos, 0)
 IV64_DIR(iv64_dir_cos_up,   cr_cos, 1)
 
+IV64_DIR(iv64_dir_atan_down, cr_atan, 0)
+IV64_DIR(iv64_dir_atan_up,   cr_atan, 1)
+
+#define IV64_DIR2(name, fn, up)                                  \
+  double name(double y, double x) {                              \
+    iv64_mode_t m = iv64_set_mode(up);                           \
+    double r = fn(y, x);                                         \
+    __asm__ __volatile__("" : "+" IV64_BARRIER_REG(r) :: "memory"); \
+    iv64_restore_mode(m);                                        \
+    return r;                                                    \
+  }
+
+IV64_DIR2(iv64_dir_atan2_down, cr_atan2, 0)
+IV64_DIR2(iv64_dir_atan2_up,   cr_atan2, 1)
+
 /* Round-to-nearest CORE-MATH (for benchmarks / comparison). */
 double iv64_cr_exp(double x) { return cr_exp(x); }
 double iv64_cr_log(double x) { return cr_log(x); }
 double iv64_cr_sin(double x) { return cr_sin(x); }
 double iv64_cr_cos(double x) { return cr_cos(x); }
+double iv64_cr_atan(double x) { return cr_atan(x); }
+double iv64_cr_atan2(double y, double x) { return cr_atan2(y, x); }
