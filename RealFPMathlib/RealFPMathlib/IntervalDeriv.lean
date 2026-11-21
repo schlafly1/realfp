@@ -2,6 +2,7 @@
 Soundness of derivative-based certificates (`Interval64.KF.checkD`): monotonicity and the
 mean-value (centred) form, using `IExpr.diff` and Mathlib's `HasDerivAt`.
 -/
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.InverseDeriv
 import RealFPMathlib.IntervalSound
 import Mathlib.Analysis.SpecialFunctions.Sqrt
 import Mathlib.Analysis.SpecialFunctions.Log.Deriv
@@ -194,31 +195,34 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
         ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
       simp only [hs]; exact Real.hasDerivAt_tan h.2
     have := hc.comp (xs.getD i 0) (iha h.1)
-    convert this using 1
-    show (a.diff i).denote xs / Real.cos (a.denote xs) ^ 2 = _
+    refine this.congr_deriv ?_
+    show _ = (a.diff i).denote xs / Real.cos (a.denote xs) ^ 2
     ring
   | asin a iha =>
     intro h
-    have h1 : a.denote xs ≠ -1 := fun e => by rw [e] at h; nlinarith [h.2]
-    have h2 : a.denote xs ≠ 1 := fun e => by rw [e] at h; nlinarith [h.2]
+    have hp : 0 < 1 - a.denote xs ^ 2 := h.2
+    have h1 : a.denote xs ≠ -1 := fun e => by rw [e] at hp; norm_num at hp
+    have h2 : a.denote xs ≠ 1 := fun e => by rw [e] at hp; norm_num at hp
     have hc : HasDerivAt Real.arcsin (1 / √(1 - a.denote xs ^ 2))
         ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
       simp only [hs]; exact Real.hasDerivAt_arcsin h1 h2
     have := hc.comp (xs.getD i 0) (iha h.1)
-    convert this using 1
-    show (a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2) = _
+    refine this.congr_deriv ?_
+    show _ = (a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2)
     push_cast; ring
   | acos a iha =>
     intro h
-    have h1 : a.denote xs ≠ -1 := fun e => by rw [e] at h; nlinarith [h.2]
-    have h2 : a.denote xs ≠ 1 := fun e => by rw [e] at h; nlinarith [h.2]
+    have hp : 0 < 1 - a.denote xs ^ 2 := h.2
+    have h1 : a.denote xs ≠ -1 := fun e => by rw [e] at hp; norm_num at hp
+    have h2 : a.denote xs ≠ 1 := fun e => by rw [e] at hp; norm_num at hp
     have hc : HasDerivAt Real.arccos (-(1 / √(1 - a.denote xs ^ 2)))
         ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
       simp only [hs]; exact Real.hasDerivAt_arccos h1 h2
-    have := hc.comp (xs.getD i 0) (iha h.1)
-    convert this using 1
-    show -((a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2)) = _
-    push_cast; ring
+    have hd := iha h.1
+    have h3 := HasDerivAt.comp (h₂ := Real.arccos) (h := fun t => a.denote (xs.set i t)) (xs.getD i 0) hc hd
+    have h4 := h3.congr_deriv (g' :=
+      -((a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2))) (by push_cast; ring)
+    exact h4
 
 
 /-! ### Simplification preserves the denotation -/
