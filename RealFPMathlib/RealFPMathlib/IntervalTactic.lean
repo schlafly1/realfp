@@ -174,6 +174,9 @@ partial def iexprToExpr : IExpr → Expr
   | .log a => mkApp (mkConst ``IExpr.log) (iexprToExpr a)
   | .sin a => mkApp (mkConst ``IExpr.sin) (iexprToExpr a)
   | .cos a => mkApp (mkConst ``IExpr.cos) (iexprToExpr a)
+  | .pi => mkConst ``IExpr.pi
+  | .atan a => mkApp (mkConst ``IExpr.atan) (iexprToExpr a)
+  | .atan2 a b => mkApp2 (mkConst ``IExpr.atan2) (iexprToExpr a) (iexprToExpr b)
 
 partial def dcertToExpr : DCert → Expr
   | .leaf => mkConst ``DCert.leaf
@@ -223,6 +226,21 @@ partial def reify (vars : Array Expr) (e : Expr) : MetaM IExpr := do
   | (``Real.log, #[a]) => return .log (← r a)
   | (``Real.sin, #[a]) => return .sin (← r a)
   | (``Real.cos, #[a]) => return .cos (← r a)
+  | (``Real.pi, #[]) => return .pi
+  | (``Real.arctan, #[a]) => return .atan (← r a)
+  | (``Complex.arg, #[z]) =>
+    -- `Complex.arg (↑x + ↑y * Complex.I)` is `atan2 y x`
+    match z.getAppFnArgs with
+    | (``HAdd.hAdd, #[_, _, _, _, a, b]) =>
+      match a.getAppFnArgs, b.getAppFnArgs with
+      | (``Complex.ofReal, #[x]), (``HMul.hMul, #[_, _, _, _, c, i]) =>
+        match c.getAppFnArgs with
+        | (``Complex.ofReal, #[y]) =>
+          unless i.isConstOf ``Complex.I do throwError "interval: expected `↑x + ↑y * Complex.I`: {z}"
+          return .atan2 (← r y) (← r x)
+        | _ => throwError "interval: expected `↑x + ↑y * Complex.I`: {z}"
+      | _, _ => throwError "interval: expected `↑x + ↑y * Complex.I`: {z}"
+    | _ => throwError "interval: expected `Complex.arg (↑x + ↑y * Complex.I)`: {z}"
   | (``HPow.hPow, #[_, nT, _, _, a, n]) =>
     unless (← isDefEq nT (mkConst ``Nat)) do
       throwError "interval: only natural-number powers are supported: {e}"

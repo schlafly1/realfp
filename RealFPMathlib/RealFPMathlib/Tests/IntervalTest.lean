@@ -70,6 +70,19 @@ theorem d10 (x : ℝ) (h0 : -1/10 ≤ x) (h1 : x ≤ 1/10) : 0.985 ≤ Real.exp 
 theorem d09 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.sin x ≤ x + 1/1000 := by
   interval (deriv := false)
 
+-- atan, atan2 (= Complex.arg), π
+theorem f01 : 3.14159 < Real.pi ∧ Real.pi < 3.1416 := by interval
+theorem f02 : Real.arctan 1 < 0.7854 := by interval
+theorem f03 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : Real.arctan x ≤ x := by interval
+theorem f04 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x^3/3 ≤ Real.arctan x := by interval (order := 5)
+theorem f05 (x y : ℝ) (hx : 1 ≤ x) (hx' : x ≤ 2) (hy : 1 ≤ y) (hy' : y ≤ 2) :
+    0.46 ≤ Complex.arg (↑x + ↑y * Complex.I) ∧ Complex.arg (↑x + ↑y * Complex.I) ≤ 1.11 := by interval
+theorem f06 (x y : ℝ) (hx : -2 ≤ x) (hx' : x ≤ -1) (hy : 1 ≤ y) (hy' : y ≤ 2) :
+    2.03 ≤ Complex.arg (↑x + ↑y * Complex.I) := by interval
+theorem f07 (x y : ℝ) (hx : -2 ≤ x) (hx' : x ≤ 2) (hy : -1 ≤ y) (hy' : y ≤ 1) :
+    Complex.arg (↑x + ↑y * Complex.I) ≤ 3.1416 := by interval
+theorem f08 : 4 * Real.arctan (1/5) - Real.arctan (1/239) < Real.pi / 4 + 1/10^10 := by interval
+
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
   interval (depth := 30) (maxBoxes := 100000)

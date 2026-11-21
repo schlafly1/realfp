@@ -51,6 +51,9 @@ def Dom (xs : List ℝ) : IExpr → Prop
   | .log a => Dom xs a ∧ 0 < a.denote xs
   | .sin a => Dom xs a
   | .cos a => Dom xs a
+  | .pi => True
+  | .atan a => Dom xs a
+  | .atan2 _ _ => False
 
 theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     ∀ e : IExpr, Dom xs e →
@@ -131,6 +134,15 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     refine this.congr_deriv ?_
     show _ = -(Real.sin (a.denote xs) * (a.diff i).denote xs)
     ring
+  | pi => intro _; simpa [IExpr.diff, IExpr.denote] using hasDerivAt_const (xs.getD i 0) Real.pi
+  | atan a iha =>
+    intro h
+    have := (iha h).arctan
+    simp only [hs] at this
+    refine this.congr_deriv ?_
+    show _ = (a.diff i).denote xs / (((1 : ℚ) : ℝ) + a.denote xs ^ 2)
+    push_cast; ring
+  | atan2 a b _ _ => intro h; exact h.elim
 
 
 /-! ### Simplification preserves the denotation -/
@@ -260,6 +272,9 @@ theorem domOK_sound {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
     exact ⟨iha h.1, pos_of_posK m.2 h.2 m.1⟩
   | sin a iha => intro h; exact iha h
   | cos a iha => intro h; exact iha h
+  | pi => intro _; trivial
+  | atan a iha => intro h; exact iha h
+  | atan2 a b _ _ => intro h; simp [domOK] at h
 
 /-! ### Points, segments, intersection -/
 

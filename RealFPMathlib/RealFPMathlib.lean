@@ -6,6 +6,7 @@ import RealFPMathlib.Mem
 import RealFPMathlib.Tight
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig
+import RealFPMathlib.InvTrig
 import RealFPMathlib.Conv
 import RealFPMathlib.Split
 import RealFPMathlib.Ext

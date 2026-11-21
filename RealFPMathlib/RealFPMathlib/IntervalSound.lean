@@ -14,11 +14,12 @@ import RealFPMathlib.Tight
 import RealFPMathlib.Unbounded
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig
+import RealFPMathlib.InvTrig
 import Interval64Proofs.KernelReflect
 
 open Interval64 Interval64.Spec Interval64.KF
 open Interval64Proofs.FloatBits
-open RealFP.Transc RealFP.Trig
+open RealFP.Transc RealFP.Trig RealFP.InvTrig
 
 noncomputable section
 
@@ -41,6 +42,9 @@ def _root_.Interval64.KF.IExpr.denote (xs : List ℝ) : IExpr → ℝ
   | .log a => Real.log (a.denote xs)
   | .sin a => Real.sin (a.denote xs)
   | .cos a => Real.cos (a.denote xs)
+  | .pi => Real.pi
+  | .atan a => Real.arctan (a.denote xs)
+  | .atan2 a b => Complex.arg (((b.denote xs : ℝ) : ℂ) + ((a.denote xs : ℝ) : ℂ) * Complex.I)
 
 theorem zero_mem_zeroI : (0 : ℝ) ∈ zeroI.toSet := by
   have h := mem_toSet_ofRat 0
@@ -95,6 +99,36 @@ theorem logI_mem {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) : Real.log x �
     exact log_mem_toSet hx (EReal.coe_lt_coe_iff.1 this)
   · exact mem_toSet_whole _
 
+theorem atan2I_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
+    Complex.arg ((x : ℂ) + (y : ℂ) * Complex.I) ∈ (atan2I Y X).toSet := by
+  obtain ⟨⟨hXl, hXl'⟩, ⟨hXh, hXh'⟩⟩ := mem_toSet_iff_toE.1 hx
+  obtain ⟨⟨hYl, hYl'⟩, ⟨hYh, hYh'⟩⟩ := mem_toSet_iff_toE.1 hy
+  have hnan : anyNan Y X = false := by simp [anyNan, hXl, hXh, hYl, hYh]
+  unfold atan2I
+  simp only [hnan, Bool.false_eq_true, ↓reduceIte]
+  by_cases h1 : 0 < X.lo
+  · simp only [h1, decide_true, ↓reduceIte]
+    have h0 : (0 : EReal) < X.lo.toE := (zero_lt_iff_toE hXl).1 h1
+    have hxp : 0 < x := EReal.coe_pos.1 (lt_of_lt_of_le h0 hXl')
+    rw [arg_right hxp, div_eq_mul_inv]
+    exact atan_mem_toSet (mem_toSet_mul hy (mem_inv hx))
+  · simp only [h1, decide_false, Bool.false_eq_true, ↓reduceIte]
+    by_cases h2 : 0 < Y.lo
+    · simp only [h2, decide_true, ↓reduceIte]
+      have h0 : (0 : EReal) < Y.lo.toE := (zero_lt_iff_toE hYl).1 h2
+      have hyp : 0 < y := EReal.coe_pos.1 (lt_of_lt_of_le h0 hYl')
+      rw [arg_upper hyp, div_eq_mul_inv]
+      exact sub_mem_toSet halfPi_mem_toSet (atan_mem_toSet (mem_toSet_mul hx (mem_inv hy)))
+    · simp only [h2, decide_false, Bool.false_eq_true, ↓reduceIte]
+      by_cases h3 : Y.hi < 0
+      · simp only [h3, decide_true, ↓reduceIte]
+        have h0 : Y.hi.toE < (0 : EReal) := (lt_zero_iff_toE hYh).1 h3
+        have hyn : y < 0 := EReal.coe_neg'.1 (lt_of_le_of_lt hYh' h0)
+        rw [arg_lower hyn, div_eq_mul_inv]
+        exact sub_mem_toSet negHalfPi_mem_toSet (atan_mem_toSet (mem_toSet_mul hx (mem_inv hy)))
+      · simp only [h3, decide_false, Bool.false_eq_true, ↓reduceIte]
+        exact arg_mem_argHull _
+
 theorem eval_sound {xs : List ℝ} {env : List Interval64}
     (h : List.Forall₂ (fun x X => x ∈ X.toSet) xs env) :
     ∀ e : IExpr, e.denote xs ∈ (evalI env e).toSet := by
@@ -117,6 +151,9 @@ theorem eval_sound {xs : List ℝ} {env : List Interval64}
   | log a iha => exact logI_mem iha
   | sin a iha => exact sin_mem_toSet iha
   | cos a iha => exact cos_mem_toSet iha
+  | pi => exact pi_mem_toSet
+  | atan a iha => exact atan_mem_toSet iha
+  | atan2 a b iha ihb => exact atan2I_mem ihb iha
 
 /-! ### Bisection -/
 
