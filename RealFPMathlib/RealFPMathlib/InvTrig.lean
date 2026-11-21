@@ -441,4 +441,131 @@ theorem atan2Down_loR {y x : Float} {qy qx : ℚ} (hy : bitsToEVal y.toBits = so
         | negative => have := signedVal_neg' (e := ey) hmy; rw [hy', h0] at this; simp at this
       exact rndD_down_loR (fun p => (atan2Bounds_spec hqy p).1)
 
+/-- Pointwise: `arg (x + y i) ≤ atan2Up y x` for finite `y`, `x` (values `qy`, `qx`) off the
+    branch-cut convention cases (`qy ≠ 0` or `qx > 0`). -/
+theorem atan2Up_hiR {y x : Float} {qy qx : ℚ} (hy : bitsToEVal y.toBits = some (.rat qy))
+    (hx : bitsToEVal x.toBits = some (.rat qx)) (h : qy ≠ 0 ∨ 0 < qx) :
+    hiR (bitsToEVal (Directed.atan2Up y x).toBits)
+      (Complex.arg (((qx : ℝ) : ℂ) + ((qy : ℝ) : ℂ) * Complex.I)) := by
+  apply hiR_ofBits
+  unfold atan2UpBits atan2BitsD
+  cases hu : unpackBits y.toBits with
+  | notANumber => simp [bitsToEVal, hu, toEVal] at hy
+  | infinity s => cases s <;> simp [bitsToEVal, hu, toEVal] at hy
+  | zero sy =>
+    have hqy : qy = 0 := zero_of_unpack_zero hu hy
+    have hqx : 0 < qx := by rcases h with h | h; exact absurd hqy h; exact h
+    cases hv : unpackBits x.toBits with
+    | notANumber => simp [bitsToEVal, hv, toEVal] at hx
+    | infinity s => cases s <;> simp [bitsToEVal, hv, toEVal] at hx
+    | zero sx => have := zero_of_unpack_zero hv hx; subst this; exact absurd hqx (lt_irrefl _)
+    | finite sx m e hm =>
+      have hv' := val_of_unpack_finite hv hx
+      cases sx with
+      | negative =>
+        have := signedVal_neg' (e := e) hm; rw [hv'] at this
+        have : (0 : ℝ) < qx := by exact_mod_cast hqx
+        linarith
+      | positive =>
+        simp only [isNeg, Bool.false_eq_true, ↓reduceIte]
+        rw [bitsToEVal_zeroBits, hqy]
+        have : (0 : ℝ) < (qx : ℝ) := by exact_mod_cast hqx
+        simp only [Rat.cast_zero, Complex.ofReal_zero, zero_mul, add_zero]
+        rw [Complex.arg_ofReal_of_nonneg this.le]; simp
+  | finite sy my ey hmy =>
+    have hy' := val_of_unpack_finite hu hy
+    cases hv : unpackBits x.toBits with
+    | notANumber => simp [bitsToEVal, hv, toEVal] at hx
+    | infinity s => cases s <;> simp [bitsToEVal, hv, toEVal] at hx
+    | zero sx =>
+      have hqx := zero_of_unpack_zero hv hx
+      dsimp only
+      refine rndD_up_hiR (fun p => ?_)
+      have hm := (piMul_spec (sgnQ sy / 2) p).2
+      rw [hqx]
+      cases sy with
+      | positive =>
+        have hp := signedVal_pos (e := ey) hmy; rw [hy'] at hp
+        rw [arg_upper hp]; simp [sgnQ] at hm ⊢; linarith
+      | negative =>
+        have hp := signedVal_neg' (e := ey) hmy; rw [hy'] at hp
+        rw [arg_lower hp]; simp [sgnQ] at hm ⊢; linarith
+    | finite sx mx ex hmx =>
+      have hx' := val_of_unpack_finite hv hx
+      dsimp only
+      simp only [bitsToRat?_of_finite hu, bitsToRat?_of_finite hv]
+      rw [hy', hx']
+      have hqy : qy ≠ 0 := by
+        intro h0
+        cases sy with
+        | positive => have := signedVal_pos (e := ey) hmy; rw [hy', h0] at this; simp at this
+        | negative => have := signedVal_neg' (e := ey) hmy; rw [hy', h0] at this; simp at this
+      exact rndD_up_hiR (fun p => (atan2Bounds_spec hqy p).2)
+
+/-! ### Interval enclosures -/
+
+theorem ofBits_down_loR {c : ℚ} {y : ℝ} (h : (c : ℝ) ≤ y) :
+    loR (bitsToEVal (Float.ofBits (ofRatDown c)).toBits) y := loR_ofBits (ofRatDown_loR h)
+
+theorem ofBits_up_hiR {c : ℚ} {y : ℝ} (h : y ≤ (c : ℝ)) :
+    hiR (bitsToEVal (Float.ofBits (ofRatUp c)).toBits) y := hiR_ofBits (ofRatUp_hiR h)
+
+/-- `π ∈ Interval64.pi`. -/
+theorem pi_mem_toSet : Real.pi ∈ Interval64.pi.toSet := by
+  obtain ⟨l, u⟩ := piBounds_spec 128 false
+  exact ⟨ofBits_down_loR l, ofBits_up_hiR u⟩
+
+theorem halfPi_mem_toSet : Real.pi / 2 ∈ halfPi.toSet := by
+  obtain ⟨l, u⟩ := piBounds_spec 128 false
+  exact ⟨ofBits_down_loR (by push_cast; linarith), ofBits_up_hiR (by push_cast; linarith)⟩
+
+theorem negHalfPi_mem_toSet : -(Real.pi / 2) ∈ negHalfPi.toSet := by
+  obtain ⟨l, u⟩ := piBounds_spec 128 false
+  exact ⟨ofBits_down_loR (by push_cast; linarith), ofBits_up_hiR (by push_cast; linarith)⟩
+
+theorem arg_mem_argHull (z : ℂ) : Complex.arg z ∈ argHull.toSet := by
+  obtain ⟨l, u⟩ := piBounds_spec 128 false
+  have h1 := Complex.neg_pi_lt_arg z
+  have h2 := Complex.arg_le_pi z
+  exact ⟨ofBits_down_loR (by push_cast; linarith), ofBits_up_hiR (by push_cast; linarith)⟩
+
+/-- `atan` interval enclosure (any interval, extended endpoints). -/
+theorem atan_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.arctan x ∈ (Interval64.atan X).toSet := by
+  unfold Interval64.atan
+  rw [isNaN_false_of_loR hx.1, isNaN_false_of_hiR hx.2]
+  exact ⟨atanDown_loR hx.1, atanUp_hiR hx.2⟩
+
+/-- `atan2` interval enclosure: `Complex.arg (x + y i) ∈ atan2 Y X` for every `x ∈ X`,
+    `y ∈ Y` (C argument order; boxes meeting the branch cut give `[-π, π]`). -/
+theorem atan2_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
+    Complex.arg ((x : ℂ) + (y : ℂ) * Complex.I) ∈ (Interval64.atan2 Y X).toSet := by
+  obtain ⟨⟨hXl, hXl'⟩, ⟨hXh, hXh'⟩⟩ := mem_toSet_iff_toE.1 hx
+  obtain ⟨⟨hYl, hYl'⟩, ⟨hYh, hYh'⟩⟩ := mem_toSet_iff_toE.1 hy
+  have hnan : anyNan Y X = false := by simp [anyNan, hXl, hXh, hYl, hYh]
+  unfold Interval64.atan2
+  simp only [hnan, Bool.false_eq_true, ↓reduceIte]
+  by_cases h1 : X.lo > 0
+  · simp only [h1, decide_true, ↓reduceIte]
+    have h0 : (0 : EReal) < X.lo.toE := (zero_lt_iff_toE hXl).1 h1
+    have hxp : 0 < x := EReal.coe_pos.1 (lt_of_lt_of_le h0 hXl')
+    rw [arg_right hxp]
+    exact atan_mem_toSet (mem_toSet_div hy hx hxp.ne')
+  · simp only [h1, decide_false, Bool.false_eq_true, ↓reduceIte]
+    by_cases h2 : Y.lo > 0
+    · simp only [h2, decide_true, ↓reduceIte]
+      have h0 : (0 : EReal) < Y.lo.toE := (zero_lt_iff_toE hYl).1 h2
+      have hyp : 0 < y := EReal.coe_pos.1 (lt_of_lt_of_le h0 hYl')
+      rw [arg_upper hyp]
+      exact sub_mem_toSet halfPi_mem_toSet (atan_mem_toSet (mem_toSet_div hx hy hyp.ne'))
+    · simp only [h2, decide_false, Bool.false_eq_true, ↓reduceIte]
+      by_cases h3 : Y.hi < 0
+      · simp only [h3, decide_true, ↓reduceIte]
+        have h0 : Y.hi.toE < (0 : EReal) := (lt_zero_iff_toE hYh).1 h3
+        have hyn : y < 0 := EReal.coe_neg'.1 (lt_of_le_of_lt hYh' h0)
+        rw [arg_lower hyn]
+        exact sub_mem_toSet negHalfPi_mem_toSet (atan_mem_toSet (mem_toSet_div hx hy hyn.ne))
+      · simp only [h3, decide_false, Bool.false_eq_true, ↓reduceIte]
+        exact arg_mem_argHull _
+
 end RealFP.InvTrig
