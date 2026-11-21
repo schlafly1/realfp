@@ -10,6 +10,7 @@ import RealFPMathlib.Demo
 import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Transc
+import RealFPMathlib.Examples.Trig
 
 open Interval64 Interval64.Directed Interval64.Spec RealFP
 
@@ -101,3 +102,18 @@ example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) :
     Real.exp x ∈ (Interval64.exp X).toSet := RealFP.Transc.exp_mem_toSet hx
 example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) (h0 : 0 < x) :
     Real.log x ∈ (Interval64.log X).toSet := RealFP.Transc.log_mem_toSet hx h0
+
+/-! ## 7. sin / cos: CORE-MATH under RD/RU, certified π, extrema detection -/
+#eval Interval64.sin (ofRatInterval 1 2)   -- [sin 1 rounded down, 1]: contains max π/2
+#eval Interval64.cos (ofRatInterval 1 2)   -- [cos 2 ↓, cos 1 ↑]: monotone, no extremum
+#eval Interval64.sin ⟨0.0, 7.0⟩            -- [-1, 1]: contains both extrema
+#eval Interval64.sin (ofRat 1e22)          -- huge argument, exact reduction
+
+-- `∀ x ∈ [1, 2], 0.84147098480789 < sin x ≤ 1` (decide +kernel, no native_decide):
+#check @RealFP.Examples.Trig.sin_bounds_one_two
+
+-- Real enclosure for any interval:
+example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) :
+    Real.sin x ∈ (Interval64.sin X).toSet := RealFP.Trig.sin_mem_toSet hx
+example (X : Interval64) (x : ℝ) (hx : x ∈ X.toSet) :
+    Real.cos x ∈ (Interval64.cos X).toSet := RealFP.Trig.cos_mem_toSet hx

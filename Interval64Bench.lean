@@ -55,15 +55,17 @@ def benchScalar (name : String) (f : Float → Float) (xs : Array Float) (reps :
   IO.println s!"  {name}: {ns} ns/call  (sink={acc})"
 
 def transcBench : IO Unit := do
-  IO.println "----- exp / log (Lean extern call, CORE-MATH) -----"
+  IO.println "----- exp / log / sin / cos (Lean extern call, CORE-MATH) -----"
   let mut s : UInt64 := 0x1234
   let mut ex : Array Float := #[]
   let mut lx : Array Float := #[]
+  let mut sx : Array Float := #[]
   for _ in [0:4096] do
     let (u, s1) := step s; s := s1
     let t := Float.ofNat (u >>> 11).toNat / 9007199254740992.0
     ex := ex.push (t * 40.0 - 20.0)
     lx := lx.push (Float.exp2 (t * 60.0 - 30.0))
+    sx := sx.push (t * 200.0 - 100.0)
   benchScalar "cr_exp  (RN, reference)" crExp ex 200
   benchScalar "expDown (RD)" expDown ex 200
   benchScalar "expUp   (RU)" expUp ex 200
@@ -72,6 +74,14 @@ def transcBench : IO Unit := do
   benchScalar "logUp   (RU)" logUp lx 200
   benchScalar "Float.exp (libm RN)" Float.exp ex 200
   benchScalar "Float.log (libm RN)" Float.log lx 200
+  benchScalar "cr_sin  (RN, reference)" crSin sx 200
+  benchScalar "sinDown (RD)" sinDown sx 200
+  benchScalar "sinUp   (RU)" sinUp sx 200
+  benchScalar "cr_cos  (RN, reference)" crCos sx 200
+  benchScalar "cosDown (RD)" cosDown sx 200
+  benchScalar "cosUp   (RU)" cosUp sx 200
+  benchScalar "Float.sin (libm RN)" Float.sin sx 200
+  benchScalar "Float.cos (libm RN)" Float.cos sx 200
 
 def main : IO Unit := do
   IO.println "Interval64 benches"

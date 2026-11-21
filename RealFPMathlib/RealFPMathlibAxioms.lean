@@ -8,6 +8,8 @@ import RealFPMathlib.Demo
 import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Transc
+import RealFPMathlib.Trig
+import RealFPMathlib.Examples.Trig
 
 #print axioms RealFP.loR_rat
 #print axioms RealFP.hiR_rat
@@ -173,3 +175,53 @@ import RealFPMathlib.Examples.Transc
 #print axioms RealFP.Examples.Transc.L_hi
 #print axioms RealFP.Examples.Transc.log_two_mem
 #print axioms RealFP.Examples.Transc.log_two_bounds
+#print axioms RealFP.Trig.cisTaylor_eq
+#print axioms RealFP.Trig.trigSmall_spec
+#print axioms RealFP.Trig.trigTerms_pos
+#print axioms RealFP.Trig.piCheck_spec
+#print axioms RealFP.Trig.piCache_get
+#print axioms RealFP.Trig.piBounds_spec
+#print axioms RealFP.Trig.sin_add_three_pi_div_two
+#print axioms RealFP.Trig.cos_add_three_pi_div_two
+#print axioms RealFP.Trig.sin_cos_quadrant
+#print axioms RealFP.Trig.quad_cases
+#print axioms RealFP.Trig.quadSin_spec
+#print axioms RealFP.Trig.quadCos_spec
+#print axioms RealFP.Trig.trigBounds_spec
+#print axioms RealFP.Trig.sinRat_down
+#print axioms RealFP.Trig.sinRat_up
+#print axioms RealFP.Trig.cosRat_down
+#print axioms RealFP.Trig.cosRat_up
+#print axioms RealFP.Trig.zero_of_unpack_zero
+#print axioms RealFP.Trig.val_of_unpack_finite
+#print axioms RealFP.Trig.sinDown_loR
+#print axioms RealFP.Trig.sinUp_hiR
+#print axioms RealFP.Trig.cosDown_loR
+#print axioms RealFP.Trig.cosUp_hiR
+#print axioms RealFP.Trig.loR_exists_rat
+#print axioms RealFP.Trig.hiR_exists_rat
+#print axioms RealFP.Trig.loR_fmin
+#print axioms RealFP.Trig.hiR_fmax
+#print axioms RealFP.Trig.sin_min_le
+#print axioms RealFP.Trig.sin_le_max
+#print axioms RealFP.Trig.cos_min_le
+#print axioms RealFP.Trig.cos_le_max
+#print axioms RealFP.Trig.halfPiMul_spec
+#print axioms RealFP.Trig.avoids_spec
+#print axioms RealFP.Trig.minusOne_loR
+#print axioms RealFP.Trig.plusOne_hiR
+#print axioms RealFP.Trig.sin_mem_toSet
+#print axioms RealFP.Trig.cos_mem_toSet
+#print axioms RealFP.Examples.Trig.I_lo
+#print axioms RealFP.Examples.Trig.I_hi
+#print axioms RealFP.Examples.Trig.I_lo_nan
+#print axioms RealFP.Examples.Trig.I_hi_nan
+#print axioms RealFP.Examples.Trig.avoids_min
+#print axioms RealFP.Examples.Trig.not_avoids_max
+#print axioms RealFP.Examples.Trig.sinDown_one
+#print axioms RealFP.Examples.Trig.sinDown_two
+#print axioms RealFP.Examples.Trig.S_eq
+#print axioms RealFP.Examples.Trig.S_lo
+#print axioms RealFP.Examples.Trig.S_hi
+#print axioms RealFP.Examples.Trig.sin_mem_one_two
+#print axioms RealFP.Examples.Trig.sin_bounds_one_two

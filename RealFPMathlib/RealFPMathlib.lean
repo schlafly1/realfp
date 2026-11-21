@@ -5,3 +5,4 @@ import RealFPMathlib.Basic
 import RealFPMathlib.Mem
 import RealFPMathlib.Tight
 import RealFPMathlib.Transc
+import RealFPMathlib.Trig

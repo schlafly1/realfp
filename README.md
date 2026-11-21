@@ -118,7 +118,7 @@ scripts/test_arm64.sh        # C tests + bench, installs elan if needed,
 checks the count, and fails on `sorryAx` or any axiom other than `propext`,
 `Classical.choice`, `Quot.sound` and the generated `native_decide` axioms.
 
-## Transcendentals (`exp`, `log`)
+## Transcendentals (`exp`, `log`, `sin`, `cos`)
 
 `Interval64.Directed.expDown/expUp/logDown/logUp` are correctly rounded toward
 −∞ / +∞; `Interval64.exp` and `Interval64.log` are the interval versions
@@ -136,8 +136,7 @@ compiled with `-O2 -frounding-math -ffp-contract=off -fno-math-errno` (+`-mfma`
 on x86_64). Cost of the mode switch (x86_64, this box, direct C calls):
 exp RN 4.9 ns vs RD/RU 11–12 ns; log RN 6.9 ns vs RD/RU 9.6–9.8 ns. Through
 the Lean extern: exp RD/RU ≈ 18 ns, log ≈ 16 ns (RN CORE-MATH ≈ 10.6 ns, libm
-`Float.exp` ≈ 11.6 ns). `sin`/`cos` are vendored and exported
-(`iv64_dir_sin_*`, `iv64_dir_cos_*`) but have no Lean spec yet.
+`Float.exp` ≈ 11.6 ns). sin/cos: see below.
 
 **Specification (Lean, Mathlib-free).** Rational enclosures with explicit
 error terms, refined by a Ziv loop:
@@ -190,6 +189,55 @@ proved. `RealFPMathlib/Examples/Transc.lean` proves
 `2.718281828459045 < exp 1 < 2.7182818284590456` and
 `0.6931471805599452 < log 2 < 0.6931471805599455` with `decide +kernel` (the
 kernel runs the Lean spec; no `native_decide`).
+
+### `sin`, `cos` (`Interval64/Trig.lean`)
+
+`Interval64.Directed.sinDown/sinUp/cosDown/cosUp` (C: CORE-MATH `cr_sin`/`cr_cos`
+under RD/RU, as above) with a Mathlib-free Lean spec:
+
+- **π.** `machinPi P` (Machin series) is only a candidate; `piCheck P` rounds it
+  to `[a, b]` at `2^-P` and *certifies* it: `3 ≤ a ≤ b ≤ 63/20`,
+  `cos(a/4) > 1/√2` and `cos(b/4) < 1/√2` via the Taylor enclosure (so
+  `a ≤ π ≤ b` because `cos` is decreasing on `[0, π]` and `cos(π/4) = 1/√2`).
+  If the check fails, the valid fallback `[3, 3.15]` is used. `piBounds` caches
+  the 10 enclosures for the Ziv precisions (`p + 110` bits, or `p + 1104` bits
+  for `|x| ≥ 2^30`, enough for the largest doubles).
+- **Reduction.** `k = round(4q/(π_lo+π_hi))`, `r = q − kπ/2` enclosed in
+  `[rl, rh]` (π bounds chosen by the sign of `k`), Taylor of `cis r0` at
+  `r0 = rl` rounded down, widened by the Lipschitz bound `|r − r0| ≤ rh − r0`,
+  then quadrant `k mod 4`. Same Ziv loop as exp/log; `±0` → `sin`: same zero,
+  `cos`: 1; `±∞`/NaN → NaN.
+- **Interval policy.** NaN endpoint → invalid; infinite endpoint → `[−1, 1]`.
+  For finite `[a, b]` the lower end is `min(fDown a, fDown b)` when
+  `avoids a b c` certifies `[a, b] ⊆ [(4n+c)π/2, (4n+c+4)π/2]` (no interior
+  minimum; `c = 3` for sin, `2` for cos), else `−1`; the upper end likewise
+  (`c = 1` sin, `0` cos), else `+1`. `avoids` uses the same certified π bounds.
+
+**Tests.** C vs Lean spec bit-for-bit, down and up: 16204 checks each for sin
+and cos (specials, randoms incl. huge arguments, 2000 CORE-MATH hard cases each
+from `sin.wc`/`cos.wc`; `tests/transc_hard.txt` now has 8000 lines), 0
+mismatches, 0 fallback hits (all converge at 128 bits), on both backends. All
+10 cached π enclosures pass the certificate. 3000 random intervals × sample
+points (26986 points) are checked to lie inside `Interval64.sin/cos`: 0
+failures. The mpmath oracle (`tests/test_transc.c`) covers sin/cos under RD/RU
+on x86_64 and qemu-aarch64.
+
+**Proofs (`RealFPMathlib/RealFPMathlib/Trig.lean`).** `trigSmall_spec`
+(Taylor, from `Complex.exp_bound`), `piCheck_spec`/`piBounds_spec`
+(`π_lo ≤ π ≤ π_hi`), `trigBounds_spec` (reduction), `sinDown_loR` …
+`cosUp_hiR` (finite input), unimodality lemmas `sin_min_le`, `sin_le_max`,
+`cos_min_le`, `cos_le_max`, `avoids_spec`, and
+
+```lean
+theorem sin_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.sin x ∈ (Interval64.sin X).toSet
+theorem cos_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.cos x ∈ (Interval64.cos X).toSet
+```
+
+Axioms: `propext`, `Classical.choice`, `Quot.sound`. Example
+(`RealFPMathlib/Examples/Trig.lean`, `decide +kernel`):
+`∀ x ∈ [1, 2], 0.84147098480789 < sin x ∧ sin x ≤ 1`.
 
 ## Interval policy
 

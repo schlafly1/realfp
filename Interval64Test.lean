@@ -80,6 +80,14 @@ def checkLog (x : Float) (st : ZivStats) : ZivStats :=
   let st := checkT "log.down" logDown (fun b => Transc.logBitsD b false) x st
   checkT "log.up" logUp (fun b => Transc.logBitsD b true) x st
 
+def checkSin (x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT "sin.down" sinDown (fun b => Trig.sinBitsD b false) x st
+  checkT "sin.up" sinUp (fun b => Trig.sinBitsD b true) x st
+
+def checkCos (x : Float) (st : ZivStats) : ZivStats :=
+  let st := checkT "cos.down" cosDown (fun b => Trig.cosBitsD b false) x st
+  checkT "cos.up" cosUp (fun b => Trig.cosBitsD b true) x st
+
 def hexVal (s : String) : UInt64 :=
   s.foldl (fun acc c =>
     let d : UInt64 := if '0' ≤ c && c ≤ '9' then (c.toNat - 48).toUInt64
@@ -98,11 +106,19 @@ def transcTests : IO Nat := do
     0.6931471805599453, 2.718281828459045]
   let mut e : ZivStats := {}
   let mut l : ZivStats := {}
+  let mut sn : ZivStats := {}
+  let mut cs : ZivStats := {}
+  let trigExtra : Array Float := #[0.75, 0.7500000000000001, 0.7853981633974483, 1.5707963267948966,
+    3.141592653589793, 4.71238898038469, 6.283185307179586, 355.0, 103993.0, 1.0e22, 1.0e300,
+    1.7976931348623157e308, Float.ofBits 0x6CF0000000000000, 1.0e-300, 1.0e-10, 1073741824.0,
+    1073741823.9999999]
   for hb in specials do
     e := checkExp (Float.ofBits hb) e; l := checkLog (Float.ofBits hb) l
-  for x in extra do
+    sn := checkSin (Float.ofBits hb) sn; cs := checkCos (Float.ofBits hb) cs
+  for x in extra ++ trigExtra do
     e := checkExp x e; l := checkLog x l
     e := checkExp (-x) e; l := checkLog (-x) l
+    sn := checkSin x sn; cs := checkCos x cs; sn := checkSin (-x) sn; cs := checkCos (-x) cs
   let mut s : UInt64 := 0x5EED
   for _ in [0:2000] do
     s := xorshift s; let x := Float.ofBits s
@@ -113,6 +129,12 @@ def transcTests : IO Nat := do
     e := checkExp y e
     s := xorshift s; l := checkLog (unitF s * 4.0) l
     s := xorshift s; l := checkLog (1.0 + (unitF s - 0.5) * 1.0e-6) l
+    s := xorshift s; let z := Float.ofBits s
+    sn := checkSin z sn; cs := checkCos z cs
+    s := xorshift s; let w := unitF s * 20.0 - 10.0
+    sn := checkSin w sn; cs := checkCos w cs
+    s := xorshift s; let v := (unitF s * 2.0 - 1.0) * Float.exp2 (Float.ofNat ((s % 80).toNat) - 70.0)
+    sn := checkSin v sn; cs := checkCos v cs
   -- CORE-MATH hard-to-round cases
   let hard ← (do let c ← IO.FS.readFile "tests/transc_hard.txt"; pure (c.splitOn "\n"))
   let mut nHard := 0
@@ -124,12 +146,18 @@ def transcTests : IO Nat := do
         e := checkExp x e; nHard := nHard + 1
       else if fn == "log" then
         l := checkLog x l; nHard := nHard + 1
+      else if fn == "sin" then
+        sn := checkSin x sn; nHard := nHard + 1
+      else if fn == "cos" then
+        cs := checkCos x cs; nHard := nHard + 1
     | _ => pure ()
   let t1 ← IO.monoMsNow
   IO.println s!"exp: {e.n} checks (down+up); Ziv converged at step k (prec 128*2^k): {e.steps}; fallback hits: {e.fallbacks}; mismatches: {e.fails.size}"
   IO.println s!"log: {l.n} checks (down+up); Ziv converged at step k (prec 128*2^k): {l.steps}; fallback hits: {l.fallbacks}; mismatches: {l.fails.size}"
+  IO.println s!"sin: {sn.n} checks (down+up); Ziv converged at step k (prec 128*2^k): {sn.steps}; fallback hits: {sn.fallbacks}; mismatches: {sn.fails.size}"
+  IO.println s!"cos: {cs.n} checks (down+up); Ziv converged at step k (prec 128*2^k): {cs.steps}; fallback hits: {cs.fallbacks}; mismatches: {cs.fails.size}"
   IO.println s!"  (includes {nHard} CORE-MATH hard-to-round inputs; {t1 - t0} ms)"
-  for f in (e.fails ++ l.fails)[:16] do IO.println s!"  {f}"
+  for f in (e.fails ++ l.fails ++ sn.fails ++ cs.fails)[:16] do IO.println s!"  {f}"
   -- interval policies
   let mut ivF := 0
   let ie := Interval64.exp ⟨-1.0, 1.0⟩
@@ -141,8 +169,48 @@ def transcTests : IO Nat := do
   let iz := Interval64.log ⟨0.0, 0.0⟩
   if !(iz.lo.isInf && iz.hi.isInf && decide (iz.hi < 0)) then ivF := ivF + 1
   if !(isInvalid (Interval64.exp ⟨Float.nan, 1.0⟩)) then ivF := ivF + 1
-  IO.println s!"exp/log interval policy failures: {ivF}"
-  return e.fails.size + l.fails.size + e.fallbacks + l.fallbacks + ivF
+  -- π certificates: every cached enclosure must be certified (not the [3, 3.15] fallback)
+  let mut piBad := 0
+  for k in [0:5] do
+    for big in [false, true] do
+      let pb := Trig.piBounds (Transc.zivPrec k) big
+      if !(decide (pb.2 - pb.1 < 1 / 2 ^ (Transc.zivPrec k + 100)) && decide (pb.1 < pb.2)) then piBad := piBad + 1
+  IO.println s!"pi enclosures (10 cached precisions) not certified at full width: {piBad}"
+  ivF := ivF + piBad
+  -- sin / cos intervals
+  let is1 := Interval64.sin ⟨0.0, 3.0⟩          -- contains the max π/2, no min
+  if !(is1.hi.toBits == plusOne.toBits && is1.lo.toBits == (fmin (sinDown 0.0) (sinDown 3.0)).toBits) then ivF := ivF + 1
+  let is2 := Interval64.sin ⟨4.0, 5.0⟩          -- contains the min 3π/2
+  if !(is2.lo.toBits == minusOne.toBits) then ivF := ivF + 1
+  let is3 := Interval64.sin ⟨0.1, 0.2⟩          -- monotone
+  if !(is3.lo.toBits == (sinDown 0.1).toBits && is3.hi.toBits == (sinUp 0.2).toBits) then ivF := ivF + 1
+  let ic1 := Interval64.cos ⟨-1.0, 1.0⟩         -- contains max 0
+  if !(ic1.hi.toBits == plusOne.toBits && ic1.lo.toBits == (cosDown 1.0).toBits) then ivF := ivF + 1
+  let ic2 := Interval64.cos ⟨3.0, 3.2⟩          -- contains min π
+  if !(ic2.lo.toBits == minusOne.toBits) then ivF := ivF + 1
+  let iw := Interval64.sin ⟨-Float.inf, 0.0⟩
+  if !(iw.lo.toBits == minusOne.toBits && iw.hi.toBits == plusOne.toBits) then ivF := ivF + 1
+  if !(isInvalid (Interval64.cos ⟨Float.nan, 1.0⟩)) then ivF := ivF + 1
+  -- random intervals: sampled points (RN libm, then checked against directed C at the point) inside
+  let mut nIv := 0
+  let mut nSharp := 0
+  for _ in [0:3000] do
+    s := xorshift s; let c := (unitF s * 2.0 - 1.0) * Float.exp2 (Float.ofNat ((s % 40).toNat) - 10.0)
+    s := xorshift s; let r := unitF s * Float.exp2 (Float.ofNat ((s % 12).toNat) - 9.0)
+    let X : Interval64 := ⟨c - r, c + r⟩
+    let S := Interval64.sin X
+    let C := Interval64.cos X
+    if S.lo.toBits != minusOne.toBits && S.hi.toBits != plusOne.toBits then nSharp := nSharp + 1
+    for i in [0:9] do
+      let t := X.lo + (X.hi - X.lo) * (Float.ofNat i / 8.0)
+      if !(decide (t ≥ X.lo) && decide (t ≤ X.hi)) then continue
+      nIv := nIv + 1
+      if !(decide (S.lo ≤ sinDown t) && decide (sinUp t ≤ S.hi)) then ivF := ivF + 1
+      if !(decide (C.lo ≤ cosDown t) && decide (cosUp t ≤ C.hi)) then ivF := ivF + 1
+  IO.println s!"sin/cos random intervals: {nIv} sample points checked ({nSharp}/3000 sin results not clamped to ±1)"
+  IO.println s!"exp/log/sin/cos interval policy failures: {ivF}"
+  return e.fails.size + l.fails.size + sn.fails.size + cs.fails.size + e.fallbacks + l.fallbacks +
+    sn.fallbacks + cs.fallbacks + ivF
 
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
@@ -330,7 +398,7 @@ def main : IO UInt32 := do
   for f in specFails[:16] do
     IO.println (failToString f)
 
-  IO.println "----- exp / log -----"
+  IO.println "----- exp / log / sin / cos -----"
   let transcFails ← transcTests
   let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails
   if leanFails == 0 then
