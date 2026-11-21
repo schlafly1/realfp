@@ -11,6 +11,7 @@ import Interval64.Transc
 import Interval64.Trig
 import Interval64.InvTrig
 import Interval64.Hyp
+import Interval64.Asin
 import Interval64.OfRat
 
 namespace Interval64.KF
@@ -200,6 +201,36 @@ def logB (ten : Bool) (a : KI) : KI :=
     | .zero _ => ⟨logBLo ten a.lo, negInfBits⟩
     | .infinity .positive => ⟨logBLo ten a.lo, infBits⟩
     | _ => invalid
+
+def tan (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid
+  else
+    match Spec.bitsToRat? (UInt64.ofNat a.lo), Spec.bitsToRat? (UInt64.ofNat a.hi) with
+    | some x, some y =>
+      if Trig.avoids x y 1 && Trig.avoids x y 3 then
+        ⟨(Tan.tanDownBits (UInt64.ofNat a.lo)).toNat, (Tan.tanUpBits (UInt64.ofNat a.hi)).toNat⟩
+      else whole
+    | _, _ => whole
+
+def negOneBits : Nat := negBits oneBits
+
+def asinLo (x : Nat) : Nat :=
+  bif lt x negOneBits then negHalfPi.lo else bif lt oneBits x then halfPi.lo
+  else (Asin.asinDownBits (UInt64.ofNat x)).toNat
+def asinHi (x : Nat) : Nat :=
+  bif lt x negOneBits then negHalfPi.hi else bif lt oneBits x then halfPi.hi
+  else (Asin.asinUpBits (UInt64.ofNat x)).toNat
+def acosLo (x : Nat) : Nat :=
+  bif lt x negOneBits then pi.lo else bif lt oneBits x then 0
+  else (Asin.acosDownBits (UInt64.ofNat x)).toNat
+def acosHi (x : Nat) : Nat :=
+  bif lt x negOneBits then pi.hi else bif lt oneBits x then 0
+  else (Asin.acosUpBits (UInt64.ofNat x)).toNat
+
+def asin (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid else ⟨asinLo a.lo, asinHi a.hi⟩
+def acos (a : KI) : KI :=
+  bif isNaN a.lo || isNaN a.hi then invalid else ⟨acosLo a.hi, acosHi a.lo⟩
 
 end KI
 
