@@ -20,3 +20,4 @@ import Interval64.Ops
 import Interval64.Kernel.Nat
 import Interval64.Kernel.Interval
 import Interval64.Kernel.Reflect
+import Interval64.Kernel.Deriv
