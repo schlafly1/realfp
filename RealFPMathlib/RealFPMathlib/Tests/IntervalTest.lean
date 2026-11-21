@@ -91,7 +91,7 @@ theorem h04 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 2) : x ≤ Real.sinh x := by in
 theorem h05 : 0.7615 < Real.tanh 1 ∧ Real.tanh 1 < 0.7616 := by interval
 theorem h06 : Real.logb 2 1024 = 10 ∨ 9.99999 < Real.logb 2 1024 := by right; interval
 theorem h07 : 0.30102 < Real.logb 10 2 ∧ Real.logb 10 2 < 0.30103 := by interval
-theorem h08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 8) : Real.logb 2 x ≤ x - 1 := by interval
+theorem h08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 8) : Real.logb 2 x ≤ x - 1/2 := by interval
 
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
