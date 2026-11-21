@@ -3,6 +3,7 @@ Real enclosures for the directed `asin`, `acos` of `Interval64.Asin` and the int
 -/
 import RealFPMathlib.Tan
 import Interval64.Asin
+import RealFPMathlib.Ops
 
 open Interval64 Interval64.Spec Interval64.Transc Interval64.Trig Interval64.InvTrig
 open Interval64.Asin
@@ -197,5 +198,120 @@ theorem acosUp_hiR {a : Float} {q : ℚ} (h : bitsToEVal a.toBits = some (.rat q
     simp only [bitsToRat?_of_finite hu]
     rw [val_of_unpack_finite hu h, if_pos (ratAbs_le_one hq)]
     exact rndD_up_hiR (fun p => (acosBounds_spec hq p).2)
+
+/-! ### Interval endpoints (clamped `Real.arcsin` / `Real.arccos`) -/
+
+theorem toE_negOne : (-1 : Float).toE = -1 := by
+  rw [toE_neg isNaN_one, toE_one]
+
+theorem isNaN_negOne : (-1 : Float).isNaN = false := by decide
+
+/-- An endpoint that is neither `< -1` nor `> 1` is a rational in `[-1, 1]`. -/
+theorem rat_of_mid {f : Float} (hn : f.isNaN = false) (h1 : ¬ f < -1) (h2 : ¬ 1 < f) :
+    ∃ q : ℚ, bitsToEVal f.toBits = some (.rat q) ∧ |(q : ℝ)| ≤ 1 := by
+  rw [float_lt_iff_toE hn isNaN_negOne, toE_negOne, not_lt] at h1
+  rw [float_lt_iff_toE isNaN_one hn, toE_one, not_lt] at h2
+  have ht : f.toE ≠ ⊤ := fun h => by rw [h] at h2; exact absurd h2 (by decide)
+  have hb : f.toE ≠ ⊥ := fun h => by rw [h] at h1; exact absurd h1 (by decide)
+  obtain ⟨q, hq, he⟩ := exists_rat_of_toE hn hb ht
+  refine ⟨q, bitsToEVal_rat_of_bitsToRat? hq, abs_le.2 ⟨?_, ?_⟩⟩
+  · rw [he] at h1; exact EReal.coe_le_coe_iff.1 (by simpa using h1)
+  · rw [he] at h2; exact EReal.coe_le_coe_iff.1 (by simpa using h2)
+
+theorem lo_of_loR {f : Float} {q : ℚ} {x : ℝ} (h : loR (bitsToEVal f.toBits) x)
+    (hq : bitsToEVal f.toBits = some (.rat q)) : (q : ℝ) ≤ x := by rw [hq] at h; exact h
+
+theorem hi_of_hiR {f : Float} {q : ℚ} {x : ℝ} (h : hiR (bitsToEVal f.toBits) x)
+    (hq : bitsToEVal f.toBits = some (.rat q)) : x ≤ (q : ℝ) := by rw [hq] at h; exact h
+
+theorem lt_negOne_real {f : Float} {x : ℝ} (hn : f.isNaN = false) (h : f < -1)
+    (hx : (x : EReal) ≤ f.toE) : x ≤ -1 := by
+  rw [float_lt_iff_toE hn isNaN_negOne, toE_negOne] at h
+  have := lt_of_le_of_lt hx h
+  exact (EReal.coe_lt_coe_iff.1 (by simpa using this)).le
+
+theorem one_lt_real {f : Float} {x : ℝ} (hn : f.isNaN = false) (h : 1 < f)
+    (hx : f.toE ≤ (x : EReal)) : 1 ≤ x := by
+  rw [float_lt_iff_toE isNaN_one hn, toE_one] at h
+  have := lt_of_lt_of_le h hx
+  exact (EReal.coe_lt_coe_iff.1 (by simpa using this)).le
+
+theorem zero_loR {y : ℝ} (h : 0 ≤ y) : loR (bitsToEVal (0 : Float).toBits) y :=
+  (loR_iff_toE _ _).2 ⟨isNaN_zero, by simpa using h⟩
+
+theorem zero_hiR {y : ℝ} (h : y ≤ 0) : hiR (bitsToEVal (0 : Float).toBits) y :=
+  (hiR_iff_toE _ _).2 ⟨isNaN_zero, by simpa using h⟩
+
+theorem asinLo_loR {f : Float} {x : ℝ} (h : loR (bitsToEVal f.toBits) x) :
+    loR (bitsToEVal (asinLo f).toBits) (Real.arcsin x) := by
+  have hn := isNaN_false_of_loR h
+  have hx := ((loR_iff_toE _ _).1 h).2
+  unfold asinLo
+  split_ifs with h1 h2
+  · exact loR_mono negHalfPi_mem_toSet.1 (Real.neg_pi_div_two_le_arcsin x)
+  · rw [Real.arcsin_of_one_le (one_lt_real hn (of_decide_eq_true h2) hx)]
+    exact halfPi_mem_toSet.1
+  · obtain ⟨q, hq, hq1⟩ := rat_of_mid hn (fun h' => h1 (decide_eq_true h'))
+      (fun h' => h2 (decide_eq_true h'))
+    exact loR_mono (asinDown_loR hq hq1) (Real.arcsin_le_arcsin (lo_of_loR h hq))
+
+theorem asinHi_hiR {f : Float} {x : ℝ} (h : hiR (bitsToEVal f.toBits) x) :
+    hiR (bitsToEVal (asinHi f).toBits) (Real.arcsin x) := by
+  have hn := isNaN_false_of_hiR h
+  have hx := ((hiR_iff_toE _ _).1 h).2
+  unfold asinHi
+  split_ifs with h1 h2
+  · rw [Real.arcsin_of_le_neg_one (lt_negOne_real hn (of_decide_eq_true h1) hx)]
+    exact negHalfPi_mem_toSet.2
+  · exact hiR_mono halfPi_mem_toSet.2 (Real.arcsin_le_pi_div_two x)
+  · obtain ⟨q, hq, hq1⟩ := rat_of_mid hn (fun h' => h1 (decide_eq_true h'))
+      (fun h' => h2 (decide_eq_true h'))
+    exact hiR_mono (asinUp_hiR hq hq1) (Real.arcsin_le_arcsin (hi_of_hiR h hq))
+
+theorem arccos_anti {x y : ℝ} (h : x ≤ y) : Real.arccos y ≤ Real.arccos x := by
+  rw [Real.arccos_eq_pi_div_two_sub_arcsin, Real.arccos_eq_pi_div_two_sub_arcsin]
+  linarith [Real.arcsin_le_arcsin h]
+
+/-- Lower end of `acos X` from the upper endpoint `f ≥ x`. -/
+theorem acosLo_loR {f : Float} {x : ℝ} (h : hiR (bitsToEVal f.toBits) x) :
+    loR (bitsToEVal (acosLo f).toBits) (Real.arccos x) := by
+  have hn := isNaN_false_of_hiR h
+  have hx := ((hiR_iff_toE _ _).1 h).2
+  unfold acosLo
+  split_ifs with h1 h2
+  · rw [Real.arccos_of_le_neg_one (lt_negOne_real hn (of_decide_eq_true h1) hx)]
+    exact pi_mem_toSet.1
+  · exact zero_loR (Real.arccos_nonneg x)
+  · obtain ⟨q, hq, hq1⟩ := rat_of_mid hn (fun h' => h1 (decide_eq_true h'))
+      (fun h' => h2 (decide_eq_true h'))
+    exact loR_mono (acosDown_loR hq hq1) (arccos_anti (hi_of_hiR h hq))
+
+/-- Upper end of `acos X` from the lower endpoint `f ≤ x`. -/
+theorem acosHi_hiR {f : Float} {x : ℝ} (h : loR (bitsToEVal f.toBits) x) :
+    hiR (bitsToEVal (acosHi f).toBits) (Real.arccos x) := by
+  have hn := isNaN_false_of_loR h
+  have hx := ((loR_iff_toE _ _).1 h).2
+  unfold acosHi
+  split_ifs with h1 h2
+  · exact hiR_mono pi_mem_toSet.2 (Real.arccos_le_pi x)
+  · rw [Real.arccos_of_one_le (one_lt_real hn (of_decide_eq_true h2) hx)]
+    exact zero_hiR le_rfl
+  · obtain ⟨q, hq, hq1⟩ := rat_of_mid hn (fun h' => h1 (decide_eq_true h'))
+      (fun h' => h2 (decide_eq_true h'))
+    exact hiR_mono (acosUp_hiR hq hq1) (arccos_anti (lo_of_loR h hq))
+
+/-- `asin` interval enclosure (Mathlib's `Real.arcsin`, any real member). -/
+theorem asin_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.arcsin x ∈ (Interval64.asin X).toSet := by
+  unfold Interval64.asin
+  rw [isNaN_false_of_loR hx.1, isNaN_false_of_hiR hx.2]
+  exact ⟨asinLo_loR hx.1, asinHi_hiR hx.2⟩
+
+/-- `acos` interval enclosure (Mathlib's `Real.arccos`, any real member). -/
+theorem acos_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    Real.arccos x ∈ (Interval64.acos X).toSet := by
+  unfold Interval64.acos
+  rw [isNaN_false_of_loR hx.1, isNaN_false_of_hiR hx.2]
+  exact ⟨acosLo_loR hx.2, acosHi_hiR hx.1⟩
 
 end RealFP.Asin
