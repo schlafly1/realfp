@@ -275,6 +275,124 @@ def splitTests : IO Nat := do
   IO.println s!"divSplit: case table + {pts} random quotient points (exact rationals) checked; failures: {bad}"
   return bad
 
+/-- `q ≤ f` (exact; `f = +∞` always, NaN never). -/
+def leQF (q : Rat) (f : Float) : Bool :=
+  match Spec.bitsToRat? f.toBits with
+  | some r => decide (q ≤ r)
+  | none => f.isInf && decide (f > 0)
+
+/-- `f ≤ q` (exact; `f = -∞` always, NaN never). -/
+def leFQ (f : Float) (q : Rat) : Bool :=
+  match Spec.bitsToRat? f.toBits with
+  | some r => decide (r ≤ q)
+  | none => f.isInf && decide (f < 0)
+
+def ratAbs (q : Rat) : Rat := if q < 0 then -q else q
+
+/-- Unbounded `mul` / `div` / `divSplit` / `sqrt` (half-lines, `whole`, `0`) and the
+    `Interval64.Ops` operations, all checked against exact rationals at sample points. -/
+def opsTests : IO Nat := do
+  let mut bad := 0
+  let mut n := 0
+  let inf := Float.inf
+  let r (x : Float) : Option Rat := Spec.bitsToRat? x.toBits
+  -- regression: ∞/∞ corners used to make `div` return `invalid`
+  let one_inf : Interval64 := ⟨1.0, inf⟩
+  for (nm, q) in [("div", Interval64.div one_inf one_inf), ("feDiv", Interval64.feDiv one_inf one_inf)] do
+    if !(q.lo.toBits == (0.0 : Float).toBits && q.hi == inf) then
+      IO.println s!"FAIL: {nm} [1,inf]/[1,inf] = {repr q}, expected [0, inf]"; bad := bad + 1
+  for (nm, q) in [("div", Interval64.div whole one_inf), ("feDiv", Interval64.feDiv whole one_inf)] do
+    if !isWhole q then
+      IO.println s!"FAIL: {nm} whole/[1,inf] = {repr q}, expected whole"; bad := bad + 1
+  let q := Interval64.div ⟨-inf, -1.0⟩ ⟨-inf, -2.0⟩
+  if !(q.lo.toBits == (0.0 : Float).toBits && q.hi == inf) then
+    IO.println s!"FAIL: div [-inf,-1]/[-inf,-2] = {repr q}"; bad := bad + 1
+  -- square tightening
+  let sq := square ⟨-1.0, 2.0⟩
+  if !(r sq.lo == some 0 && r sq.hi == some 4) then
+    IO.println s!"FAIL: square [-1,2] = {repr sq}"; bad := bad + 1
+  -- random intervals with infinite / zero / finite endpoints
+  let ends (k : UInt64) (u : Float) : Float :=
+    match k % 8 with
+    | 0 => -inf | 1 => inf | 2 => 0.0 | 3 => -0.0
+    | 4 => (u - 0.5) * 1.0e-3 | _ => (u - 0.5) * 20.0
+  let mut s : UInt64 := 0x0B5E55ED
+  for _ in [0:6000] do
+    s := xorshift s; let k1 := s; s := xorshift s; let e1 := ends k1 (unitF s)
+    s := xorshift s; let k2 := s; s := xorshift s; let e2 := ends k2 (unitF s)
+    s := xorshift s; let k3 := s; s := xorshift s; let e3 := ends k3 (unitF s)
+    s := xorshift s; let k4 := s; s := xorshift s; let e4 := ends k4 (unitF s)
+    -- nonempty intervals only (`[+∞, +∞]` and `[-∞, -∞]` contain no real)
+    let fix (I : Interval64) : Interval64 :=
+      if I.lo == inf then ⟨0.0, inf⟩ else if I.hi == -inf then ⟨-inf, 0.0⟩ else I
+    let A : Interval64 := fix (if decide (e2 < e1) then ⟨e2, e1⟩ else ⟨e1, e2⟩)
+    let B : Interval64 := fix (if decide (e4 < e3) then ⟨e4, e3⟩ else ⟨e3, e4⟩)
+    let pick (I : Interval64) (u : Float) : Float :=
+      let lo := if I.lo.isInf then (if decide (I.hi < -1.0e6) then I.hi - 1.0e6 else -1.0e6) else I.lo
+      let hi := if I.hi.isInf then (if decide (I.lo > 1.0e6) then I.lo + 1.0e6 else 1.0e6) else I.hi
+      let x := lo + (hi - lo) * u
+      if decide (x < lo) then lo else if decide (x > hi) then hi else x
+    let M := A * B; let D := A / B; let DF := Interval64.feDiv A B; let MF := Interval64.feMul A B
+    let SQ := square A; let SR := Interval64.sqrt A; let IV := inv A
+    let MN := Interval64.min A B; let MX := Interval64.max A B
+    let IS := intersect A B; let HU := hull A B; let NG := -A; let AB := Interval64.abs A
+    let P := divSplit A B
+    let md := mid A; let bs := bisect A; let wd := width A; let mg := mag A; let mi := mig A
+    let pw := (List.range 8).map (pown A)
+    -- mid / width / bisect sanity (A is nonempty)
+    if !(contains A md && (r md).isSome) then
+      if bad < 20 then IO.println s!"FAIL: mid {repr A} = {md}"
+      bad := bad + 1
+    match r A.lo, r A.hi with
+    | some l, some h => if !leQF (h - l) wd then bad := bad + 1
+    | _, _ => if !(wd.isInf && decide (wd > 0)) then bad := bad + 1
+    if !(subset bs.1 A && subset bs.2 A) then bad := bad + 1
+    for i in [0:6] do
+      s := xorshift s; let x := pick A (unitF s)
+      s := xorshift s; let y := pick B (unitF s)
+      match r x, r y with
+      | some qx, some qy =>
+        n := n + 1
+        let chk (idx : Nat) (ok : Bool) (msg : String) : StateT Nat IO Unit := do
+          if !ok then
+            modify (· + 1)
+            if (← get) ≤ 20 then IO.println s!"FAIL[{idx}] {msg}: A={repr A} B={repr B} x={x} y={y}"
+        let ((), b) ← (do
+          chk 0 (enclQ M (qx * qy)) "mul"
+          chk 1 (enclQ MF (qx * qy)) "feMul"
+          if qy != 0 then
+            chk 2 (enclQ D (qx / qy)) "div"
+            chk 3 (enclQ DF (qx / qy)) "feDiv"
+            chk 4 (P.toList.any (fun I => enclQ I (qx / qy))) "divSplit"
+          if qx ≥ 0 then
+            -- sqrt: lo² ≤ x ≤ hi² (lo ≤ 0 or lo finite; hi = +∞ or finite)
+            let loOk := match r SR.lo with
+              | some l => decide (l ≤ 0) || decide (l * l ≤ qx) | none => false
+            let hiOk := match r SR.hi with
+              | some h => decide (h ≥ 0) && decide (qx ≤ h * h) | none => SR.hi == inf
+            chk 5 (loOk && hiOk) "sqrt"
+          chk 6 (enclQ SQ (qx * qx)) "square"
+          chk 7 (enclQ NG (-qx)) "neg"
+          chk 8 (enclQ AB (ratAbs qx)) "abs"
+          chk 9 (enclQ MN (min qx qy)) "min"
+          chk 10 (enclQ MX (max qx qy)) "max"
+          chk 11 (if qx == 0 then isWhole IV else enclQ IV (1 / qx)) "inv"
+          chk 12 (enclQ HU qx && enclQ HU qy) "hull"
+          chk 13 (if enclQ B qx then enclQ IS qx else true) "intersect"
+          chk 14 (leQF (ratAbs qx) mg && leFQ mi (ratAbs qx)) "mag/mig"
+          chk 15 (enclQ bs.1 qx || enclQ bs.2 qx) "bisect"
+          chk 16 (contains A x && subset ⟨x, x⟩ A) "contains/subset"
+          for k in [0:8] do
+            chk (100 + k) (enclQ (pw.getD k invalid) (qx ^ k)) s!"pown {k}"
+          ).run 0
+        bad := bad + b
+      | _, _ => pure ()
+    -- intersect is exact: if invalid, no common point at the endpoints
+    if isInvalid IS then
+      if enclQ B 0 && enclQ A 0 then bad := bad + 1
+  IO.println s!"unbounded mul/div/divSplit/sqrt + Ops (neg abs square pown0-7 min max inv intersect hull mid width mag mig bisect subset contains): {n} random point pairs (exact rationals), failures: {bad}"
+  return bad
+
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
   IO.println s!"C backend: {backendName}"
@@ -464,11 +582,12 @@ def main : IO UInt32 := do
   IO.println "----- exp / log / sin / cos -----"
   let transcFails ← transcTests
   let splitFails ← splitTests
-  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + splitFails
+  let opsFails ← opsTests
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + splitFails + opsFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} split={splitFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} split={splitFails} ops={opsFails}"
     return 1

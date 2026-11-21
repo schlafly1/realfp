@@ -53,10 +53,8 @@ theorem my_hi_le : (X12 * X12 - X12).hi ≤ 3.0 := by native_decide
 example (x : ℝ) (hx : x ∈ Set.Icc (1 : ℝ) 2) : x * x - x ≤ 3 := by
   have hxI : x ∈ X12.toSet :=
     mem_toSet_ofRatInterval (by push_cast; linarith [hx.1]) (by push_cast; linarith [hx.2])
-  have hlo : ∃ q, bitsToRat? X12.lo.toBits = some q := Option.isSome_iff_exists.mp (by decide +kernel)
-  have hhi : ∃ q, bitsToRat? X12.hi.toBits = some q := Option.isSome_iff_exists.mp (by decide +kernel)
   have h := le_of_mem_toSet_of_hi_le (q := 3)
-    (sub_mem_toSet (mul_mem_toSet hxI hxI hlo hhi hlo hhi) hxI) my_hi_le (by decide +kernel)
+    (sub_mem_toSet (mem_toSet_mul hxI hxI) hxI) my_hi_le (by decide +kernel)
   exact_mod_cast h
 
 #print axioms Demo.sq_add_le
@@ -137,10 +135,9 @@ example (X : Interval64) (x : ℝ) (hx : x ∈ X) : Real.sin x ∈ Interval64.si
 #eval (divSplit 5 (ofRatInterval (-2) 3)).toList
 #eval (divSplit 5 (ofRatInterval (-2) 3) : Interval64)  -- hull (coercion): whole line
 
-example (A B : Interval64) (x y : ℝ) (hx : x ∈ A) (hy : y ∈ B) (hy0 : y ≠ 0)
-    (h1 : ∃ q, bitsToRat? A.lo.toBits = some q) (h2 : ∃ q, bitsToRat? A.hi.toBits = some q)
-    (h3 : ∃ q, bitsToRat? B.lo.toBits = some q) (h4 : ∃ q, bitsToRat? B.hi.toBits = some q) :
-    x / y ∈ divSplit A B := RealFP.divSplit_mem hx hy hy0 h1 h2 h3 h4
+-- No finiteness hypotheses: half-lines and `whole` are allowed.
+example (A B : Interval64) (x y : ℝ) (hx : x ∈ A) (hy : y ∈ B) (hy0 : y ≠ 0) :
+    x / y ∈ divSplit A B := RealFP.mem_divSplit hx hy hy0
 
 -- Interval Newton with a split: both roots of x² = 2 in [-2, 2] located (decide +kernel):
 #check @RealFP.Examples.Split.sqrt_two_roots

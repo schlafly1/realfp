@@ -9,6 +9,10 @@ Policy (documented, not IEEE 1788 decorations):
   is clipped to `[+0, hi]`. `sqrt(-0)` is `-0`, so `sqrt [-0, +0] = [-0, +0]`.
 * Multiplication uses the four-corner rule. A `0 * ∞` corner is skipped;
   if every corner is `0 * ∞`, the result is the whole line (conservative).
+* Division corners `±∞ / ±∞` are NaN. They are skipped (`divNaNCorners`, a slow
+  path taken only when a corner is NaN); skipping them is sound because such a
+  corner is never the extreme one (the finite-numerator corners give the limit).
+  Before this fix `[1, ∞] / [1, ∞]` returned `invalid` (an empty enclosure).
 -/
 import Interval64.Directed
 import Interval64.Widen
@@ -76,6 +80,18 @@ def mul (a b : Interval64) : Interval64 :=
     let (lo, hi, got) := accCorner a.hi b.hi lo hi got
     if !got then whole else ⟨lo, hi⟩
 
+/-- NaN-skipping minimum (`y` if `x` is NaN, `x` if `y` is NaN). -/
+def fminN (x y : Float) : Float := if x.isNaN then y else if y.isNaN then x else fmin x y
+/-- NaN-skipping maximum. -/
+def fmaxN (x y : Float) : Float := if x.isNaN then y else if y.isNaN then x else fmax x y
+
+/-- Slow path of `div`: some corner is NaN (only `±∞ / ±∞` can be). NaN corners are
+    skipped; if all are NaN the result is `whole`. -/
+@[noinline] def divNaNCorners (d0 d1 d2 d3 u0 u1 u2 u3 : Float) : Interval64 :=
+  let lo := fminN d0 (fminN d1 (fminN d2 d3))
+  let hi := fmaxN u0 (fmaxN u1 (fmaxN u2 u3))
+  if lo.isNaN || hi.isNaN then whole else ⟨lo, hi⟩
+
 /-- Division. If `0` lies in `b`, returns `whole`. -/
 def div (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
@@ -91,7 +107,7 @@ def div (a b : Interval64) : Interval64 :=
     let u3 := divUp a.hi b.hi
     let lo := fmin d0 (fmin d1 (fmin d2 d3))
     let hi := fmax u0 (fmax u1 (fmax u2 u3))
-    if lo.isNaN || hi.isNaN then invalid else ⟨lo, hi⟩
+    if lo.isNaN || hi.isNaN then divNaNCorners d0 d1 d2 d3 u0 u1 u2 u3 else ⟨lo, hi⟩
 
 def sqrt (a : Interval64) : Interval64 :=
   if a.lo.isNaN || a.hi.isNaN then invalid
@@ -138,7 +154,7 @@ def feDiv (a b : Interval64) : Interval64 :=
     let u3 := feDivUp a.hi b.hi
     let lo := fmin d0 (fmin d1 (fmin d2 d3))
     let hi := fmax u0 (fmax u1 (fmax u2 u3))
-    if lo.isNaN || hi.isNaN then invalid else ⟨lo, hi⟩
+    if lo.isNaN || hi.isNaN then divNaNCorners d0 d1 d2 d3 u0 u1 u2 u3 else ⟨lo, hi⟩
 
 def feSqrt (a : Interval64) : Interval64 :=
   if a.lo.isNaN || a.hi.isNaN then invalid

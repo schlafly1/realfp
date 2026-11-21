@@ -6,12 +6,15 @@
   `intCast_mem`, `ratCoe_mem`, `ofScientific_mem` (`(0.1 : ℝ) ∈ (0.1 : Interval64)`),
   `floatCoe_mem` (`f.toReal? = some r → r ∈ (f : Interval64)`).
 * The main enclosure theorems restated with `∈` in `RealFP.Iv`
-  (`Iv.add_mem`, …, `Iv.cos_mem`); the `*_mem_toSet` names are unchanged.
+  (`Iv.add_mem`, `Iv.mem_mul`, `Iv.mem_div`, `Iv.mem_sqrt`, …, `Iv.cos_mem`).
+  `Iv.mem_mul` / `Iv.mem_div` / `Iv.mem_sqrt` need no finiteness hypotheses; the
+  old `Iv.mul_mem` / `Iv.div_mem` / `Iv.sqrt_mem` (with them) are deprecated aliases.
 -/
 import RealFPMathlib.Tight
 import RealFPMathlib.Mem
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig
+import RealFPMathlib.Unbounded
 
 open Interval64 Interval64.Spec
 
@@ -68,22 +71,39 @@ theorem add_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y) : x
 theorem sub_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y) : x - y ∈ X - Y :=
   sub_mem_toSet hx hy
 
-theorem mul_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y)
-    (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q) (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)
-    (hYlo : ∃ q, bitsToRat? Y.lo.toBits = some q) (hYhi : ∃ q, bitsToRat? Y.hi.toBits = some q) :
-    x * y ∈ X * Y :=
-  mul_mem_toSet hx hy hXlo hXhi hYlo hYhi
+/-- `x * y ∈ X * Y`, no finiteness assumption (half-lines and `whole` allowed). -/
+theorem mem_mul {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y) : x * y ∈ X * Y :=
+  mem_toSet_mul hx hy
 
-theorem div_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y) (hy0 : y ≠ 0)
-    (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q) (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)
-    (hYlo : ∃ q, bitsToRat? Y.lo.toBits = some q) (hYhi : ∃ q, bitsToRat? Y.hi.toBits = some q) :
+/-- `x / y ∈ X / Y` for `y ≠ 0`, no finiteness assumption. -/
+theorem mem_div {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y) (hy0 : y ≠ 0) :
     x / y ∈ X / Y :=
-  div_mem_toSet hx hy hy0 hXlo hXhi hYlo hYhi
+  mem_toSet_div hx hy hy0
 
-theorem sqrt_mem {X : Interval64} {x : ℝ} (hx : x ∈ X) (hx0 : 0 ≤ x)
-    (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q) (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q) :
+/-- `√x ∈ sqrt X` for `0 ≤ x`, no finiteness assumption. -/
+theorem mem_sqrt {X : Interval64} {x : ℝ} (hx : x ∈ X) (hx0 : 0 ≤ x) :
     Real.sqrt x ∈ Interval64.sqrt X :=
-  sqrt_mem_toSet hx hx0 hXlo hXhi
+  mem_toSet_sqrt hx hx0
+
+@[deprecated "use RealFP.Iv.mem_mul (no finiteness hypotheses)" (since := "2026-11-21")]
+theorem mul_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y)
+    (_hXlo : ∃ q, bitsToRat? X.lo.toBits = some q) (_hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)
+    (_hYlo : ∃ q, bitsToRat? Y.lo.toBits = some q) (_hYhi : ∃ q, bitsToRat? Y.hi.toBits = some q) :
+    x * y ∈ X * Y :=
+  mem_mul hx hy
+
+@[deprecated "use RealFP.Iv.mem_div (no finiteness hypotheses)" (since := "2026-11-21")]
+theorem div_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X) (hy : y ∈ Y) (hy0 : y ≠ 0)
+    (_hXlo : ∃ q, bitsToRat? X.lo.toBits = some q) (_hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)
+    (_hYlo : ∃ q, bitsToRat? Y.lo.toBits = some q) (_hYhi : ∃ q, bitsToRat? Y.hi.toBits = some q) :
+    x / y ∈ X / Y :=
+  mem_div hx hy hy0
+
+@[deprecated "use RealFP.Iv.mem_sqrt (no finiteness hypotheses)" (since := "2026-11-21")]
+theorem sqrt_mem {X : Interval64} {x : ℝ} (hx : x ∈ X) (hx0 : 0 ≤ x)
+    (_hXlo : ∃ q, bitsToRat? X.lo.toBits = some q) (_hXhi : ∃ q, bitsToRat? X.hi.toBits = some q) :
+    Real.sqrt x ∈ Interval64.sqrt X :=
+  mem_sqrt hx hx0
 
 theorem exp_mem {X : Interval64} {x : ℝ} (hx : x ∈ X) : Real.exp x ∈ Interval64.exp X :=
   Transc.exp_mem_toSet hx

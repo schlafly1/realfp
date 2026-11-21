@@ -266,8 +266,9 @@ Mathlib layer (`RealFPMathlib/Conv.lean`): `Membership ℝ Interval64` with
 `x ∈ X ↔ x ∈ X.toSet` (`RealFP.mem_iff`, simp); `ratCoe_mem`, `natCast_mem`,
 `intCast_mem`, `ofNat_mem`, `zero_mem`, `one_mem`, `ofScientific_mem`
 (`(0.1 : ℝ) ∈ (0.1 : Interval64)`), `floatCoe_mem`
-(`f.toReal? = some r → r ∈ (f : Interval64)`); and `RealFP.Iv.{add,sub,mul,div,sqrt,exp,log,sin,cos}_mem`,
-the enclosure theorems stated with `∈` (the `*_mem_toSet` names still work).
+(`f.toReal? = some r → r ∈ (f : Interval64)`); and `RealFP.Iv.{add,sub,exp,log,sin,cos}_mem`,
+`RealFP.Iv.mem_{mul,div,sqrt}`, the enclosure theorems stated with `∈` (no finiteness
+hypotheses; the older `Iv.{mul,div,sqrt}_mem`, which took them, are deprecated aliases).
 Example (`RealFPMathlib/Examples/Conv.lean`):
 `∀ x ∈ [0, 1], x * x - 0.1 * x + 2 ≤ 3` from one evaluation of `X * X - 0.1 * X + 2`.
 
@@ -303,13 +304,13 @@ Proofs (`RealFPMathlib/Split.lean`): `Membership ℝ Interval64Pair`
 `mem_hull`/`mem_coe` (`x ∈ P → x ∈ P.hull`), and
 
 ```lean
-theorem divSplit_mem {A B : Interval64} {x y : ℝ} (hx : x ∈ A) (hy : y ∈ B) (hy0 : y ≠ 0)
-    (hAlo : ∃ q, bitsToRat? A.lo.toBits = some q) (hAhi : ∃ q, bitsToRat? A.hi.toBits = some q)
-    (hBlo : ∃ q, bitsToRat? B.lo.toBits = some q) (hBhi : ∃ q, bitsToRat? B.hi.toBits = some q) :
+theorem mem_divSplit {A B : Interval64} {x y : ℝ} (hx : x ∈ A) (hy : y ∈ B) (hy0 : y ≠ 0) :
     x / y ∈ divSplit A B
 ```
 
-(finite endpoints, as for `div_mem_toSet`), plus `divSplit_hull_mem`.
+(no finiteness hypotheses: half-lines and `whole` are allowed), plus `mem_divSplit_hull`.
+The older `divSplit_mem` / `divSplit_hull_mem` (which also required the four endpoints
+to be finite) still compile but are deprecated.
 Example (`RealFPMathlib/Examples/Split.lean`): interval Newton in slope form.
 Splitting `[-2, 2]` by `divSplit 2 [-2, 2]` and taking one Newton step per
 piece proves that every root of `x² = 2` in `[-2, 2]` lies in `±[1.3999, 1.4286]`
@@ -322,6 +323,56 @@ piece and in the hull (0 failures).
 - NaN endpoint → invalid `[NaN, NaN]`.
 - Division by an interval containing `0` → whole line `[-∞, +∞]`.
 - `sqrt` of `hi < 0` → invalid; `lo < 0 ≤ hi` clips to `[+0, hi]`; `sqrt(-0) = -0`.
+- Multiplication: a `0 · ∞` corner is skipped; if all four are, the result is `whole`.
+- Division: a `±∞ / ±∞` corner (NaN) is skipped. This is a slow path
+  (`divNaNCorners`, `@[noinline]`) entered only when the usual `fmin`/`fmax`
+  fold produced a NaN, so finite intervals pay nothing extra.
+
+**Soundness fix (Nov 2026).** Before this fix, `div` and `feDiv` returned
+`invalid` (the empty set) when a `∞/∞` corner was NaN and was not the first
+corner in the fold, e.g. `[1, ∞] / [1, ∞]` and `whole / [1, ∞]`. That is an
+unsound enclosure. They now give `[0, ∞]` and `whole`. `divSplit` had the same
+problem through its `one (a / b)` branch and is fixed by the same change. The
+membership theorems below now cover infinite endpoints, so this case is proved.
+
+## More interval operations (`Interval64/Ops.lean`)
+
+All are Lean code over the existing directed kernels and `Float` comparisons
+(no new C), so `#eval`/compiled code use the C kernels and `decide +kernel`
+sees the spec. Invalid (NaN) arguments give `invalid` (NaN for scalars).
+
+| op | result |
+|---|---|
+| `-X` (`Neg` instance, `Interval64.neg`) | `[-hi, -lo]` (exact) |
+| `Interval64.abs X` | `X` if `0 ≤ lo`, `-X` if `hi ≤ 0`, else `[0, max (-lo) hi]` |
+| `square X` | dependency-aware `X²`, `⊆ [0, ∞]`: `square [-1, 2] = [0, 4]`, whereas `X * X = [-2, 4]` |
+| `pown X n` | `n = 0`: `[1, 1]`; odd `n`: `[lo^n ↓, hi^n ↑]`; even `n`: the same on `abs X` (dependency-aware). Endpoint powers by binary exponentiation of point intervals (`ipow`, ≤ 2·log₂ n interval ops) |
+| `Interval64.min X Y`, `Interval64.max X Y` (`Min`/`Max` instances) | pointwise, exact |
+| `inv X` | `[1/hi ↓, 1/lo ↑]`; `whole` if `0 ∈ X` |
+| `intersect X Y` | `[max lo, min hi]`; **empty → `invalid`** (`[NaN, NaN]`, the empty set) |
+| `hull X Y` | `[min lo, max hi]`; an invalid argument is ignored |
+| `mid X` | `lo/2 + hi/2` (infinite ends replaced by `∓maxFloat`, so `mid whole = 0` and half-lines give a finite point), clamped into `[lo, hi]` |
+| `width X` | `hi - lo` rounded up |
+| `mag X`, `mig X` | largest `abs x` on `X` (= `max (-lo) hi`); smallest `abs x` (`0` if `0 ∈ X`) |
+| `bisect X` | `([lo, mid X], [mid X, hi])` |
+| `subset X Y`, `contains X f` | `Y.lo ≤ X.lo ∧ X.hi ≤ Y.hi` (false if either is invalid); `lo ≤ f ≤ hi` |
+
+Proofs (`RealFPMathlib/Ops.lean`; none needs finite endpoints): `mem_neg`, `mem_abs`,
+`mem_square` (`x ^ 2 ∈ square X`), `mem_pown` (`x ^ n ∈ pown X n`), `mem_min`,
+`mem_max`, `mem_inv` (`x⁻¹ ∈ inv X`, with Lean's `0⁻¹ = 0`), `toSet_intersect`
+(`(intersect X Y).toSet = X.toSet ∩ Y.toSet`, exact), `mem_intersect`,
+`union_subset_toSet_hull`, `toSet_subset_of_subset`, `mem_of_contains`,
+`mid_spec` (`lo ≤ mid X ≤ hi`, not NaN, for nonempty `X`), `contains_mid`,
+`bisect_cover`, `bisect_fst_subset`, `bisect_snd_subset` (for nonempty `X`),
+`abs_le_mag`, `mig_le_abs`, `sub_le_width` (`x - y ≤ width X` for `x, y ∈ X`), and
+`width_ge` (`hi - lo ≤ width X` for finite endpoints). Example
+(`RealFPMathlib/Examples/Ops.lean`, `decide +kernel` only): `square [-1, 2] = [0, 4]`
+versus `[-1, 2] * [-1, 2] = [-2, 4]`, and `sq_bounds : -1 ≤ x ≤ 2 → 0 ≤ x² ≤ 4`.
+Tests (`opsTests` in `Interval64Test.lean`): 36000 random point pairs on random
+intervals with `±∞`, `±0`, tiny and ordinary endpoints, checked against exact
+rationals for unbounded `*`, `/`, `feMul`, `feDiv`, `divSplit`, `sqrt` and every op
+above (`pown` for `n = 0 … 7`), plus the `∞/∞` regression cases; 0 failures with
+both the AVX-512 and the `rnerr` backend.
 
 ## Proofs and trust
 
@@ -401,8 +452,16 @@ should also work but has not been tested.)
   `IsRoundUpR` with transfer lemmas from the rational versions.
 * `Mem` (enclosure for real inputs):
   `add_mem_toSet`, `sub_mem_toSet` (`x ∈ X.toSet → y ∈ Y.toSet → x + y ∈ (X + Y).toSet`,
-  infinite endpoints allowed); `mul_mem_toSet`, `div_mem_toSet` (`y ≠ 0`),
-  finite endpoints; `sqrt_mem_toSet` (`Real.sqrt x ∈ (sqrt X).toSet` for `0 ≤ x`).
+  infinite endpoints allowed). The finite-endpoint `mul_mem_toSet`,
+  `div_mem_toSet`, `sqrt_mem_toSet` are deprecated in favour of:
+* `Unbounded`: `mem_toSet_mul` (`x * y ∈ (X * Y).toSet`), `mem_toSet_div`
+  (`y ≠ 0`), `mem_toSet_sqrt` (`0 ≤ x`), with **no finiteness hypotheses**
+  (half-lines and `whole` work, including the `0 · ∞` and `∞ / ∞` corners). They
+  are built on `Ext` (`Float.toE : Float → EReal`, an order isomorphism on
+  non-NaN floats: `float_le_iff_toE`, `mem_toSet_iff_toE`, `toE_fmin`, …) and
+  `Corners` (which corner of the four bounds a product or quotient in `EReal`).
+* `Ops`: the theorems for `Interval64/Ops.lean`
+  ([above](#more-interval-operations-interval64opslean)).
 * `Tight`: `addDown_isRoundDownR` … `divUp_isRoundUpR`, `sqrtDown_isRoundDownR`,
   `sqrtUp_isRoundUpR`: the directed result is the greatest representable real
   `≤` (least `≥`) the exact real result, so `IsRoundDownR.no_between`: no
@@ -412,7 +471,7 @@ should also work but has not been tested.)
 * `Demo` (not imported by `RealFPMathlib`): `sq_add_le : ∀ x ∈ Set.Icc (1/10 : ℝ) (3/10), x * x + x ≤ 13/32`,
   `sqrt_two_bounds : 1.41421356 < √2 < 1.41421357`, `sqrt_le_on : ∀ x ∈ [2,3], √x ≤ 111/64`.
 
-**Trust.** Everything in `Basic`/`Mem`/`Tight` uses only `propext`,
+**Trust.** Everything outside `Demo`/`Examples` uses only `propext`,
 `Classical.choice`, `Quot.sound`. Only the `Demo` theorems use `native_decide`
 (one generated axiom each, and the compiled C kernels are trusted).
 `scripts/check_axioms.sh` enforces this. Mathlib itself does not accept
@@ -434,3 +493,5 @@ upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.
   `s = √(25/26)`), with Interval64 enclosures `s_bounds`, `y_bounds`.
   The solution count is pure algebra (no `native_decide`); Interval64 is used
   only for the numeric enclosures.
+* `Ops.lean` — `square` vs `*` on `[-1, 2]`, `pown`, and the other new operations,
+  all by `decide +kernel`.

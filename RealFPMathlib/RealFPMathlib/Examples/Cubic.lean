@@ -24,12 +24,9 @@ def G (X : Interval64) : Interval64 := X * (ofRat 6 - X * X)
 /-- Box number `i` of width `2^-k`. -/
 def box (k i : Nat) : Interval64 := ofRatInterval ((i : ℚ) / 2 ^ k) (((i : ℚ) + 1) / 2 ^ k)
 
-/-- Checker for one box: all endpoints used by `mul_mem_toSet` are finite, and
-    the computed upper bound of `G X` is `≤ c`. -/
+/-- Checker for one box: the computed upper bound of `G X` is `≤ c`
+    (`mem_toSet_mul` needs no finiteness side conditions). -/
 def boxOK (c : Float) (X : Interval64) : Bool :=
-  (bitsToRat? X.lo.toBits).isSome && (bitsToRat? X.hi.toBits).isSome &&
-  (bitsToRat? (ofRat 6 - X * X).lo.toBits).isSome &&
-  (bitsToRat? (ofRat 6 - X * X).hi.toBits).isSome &&
   decide ((G X).hi ≤ c)
 
 /-- Checker for all boxes `0 … n-1`. -/
@@ -38,16 +35,13 @@ def allOK (c : Float) (k n : Nat) : Bool := (List.range n).all fun i => boxOK c 
 theorem boxOK_sound {c : Float} {q : ℚ} {X : Interval64} (h : boxOK c X = true)
     (hc : bitsToRat? c.toBits = some q) {x : ℝ} (hx : x ∈ X.toSet) :
     x * (6 - x * x) ≤ q := by
-  simp only [boxOK, Bool.and_eq_true, decide_eq_true_eq] at h
-  obtain ⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩ := h
-  have hX1 := Option.isSome_iff_exists.mp h1
-  have hX2 := Option.isSome_iff_exists.mp h2
+  simp only [boxOK, decide_eq_true_eq] at h
   have h6 : (6 : ℝ) ∈ (ofRat 6).toSet := by exact_mod_cast mem_toSet_ofRat 6
   have hy : 6 - x * x ∈ (ofRat 6 - X * X).toSet :=
-    sub_mem_toSet h6 (mul_mem_toSet hx hx hX1 hX2 hX1 hX2)
+    sub_mem_toSet h6 (mem_toSet_mul hx hx)
   have hG : x * (6 - x * x) ∈ (G X).toSet :=
-    mul_mem_toSet hx hy hX1 hX2 (Option.isSome_iff_exists.mp h3) (Option.isSome_iff_exists.mp h4)
-  exact le_of_mem_toSet_of_hi_le hG h5 hc
+    mem_toSet_mul hx hy
+  exact le_of_mem_toSet_of_hi_le hG h hc
 
 /-- The boxes `0 … n-1` cover `[0, n / 2^k]`. -/
 theorem exists_box {k n : Nat} (hn : 0 < n) {x : ℝ} (h0 : 0 ≤ x) (h1 : x ≤ (n : ℝ) / 2 ^ k) :

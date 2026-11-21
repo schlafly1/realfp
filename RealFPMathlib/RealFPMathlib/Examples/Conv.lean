@@ -31,8 +31,7 @@ theorem mem_X {x : ℝ} (h0 : 0 ≤ x) (h1 : x ≤ 1) : x ∈ X :=
 theorem poly_mem {x : ℝ} (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * x - 0.1 * x + 2 ∈ P := by
   have hx := mem_X h0 h1
   exact Iv.add_mem
-    (Iv.sub_mem (Iv.mul_mem hx hx ⟨_, X_lo⟩ ⟨_, X_hi⟩ ⟨_, X_lo⟩ ⟨_, X_hi⟩)
-      (Iv.mul_mem (ofScientific_mem 1 true 1) hx ⟨_, tenth_lo⟩ ⟨_, tenth_hi⟩ ⟨_, X_lo⟩ ⟨_, X_hi⟩))
+    (Iv.sub_mem (Iv.mem_mul hx hx) (Iv.mem_mul (ofScientific_mem 1 true 1) hx))
     (ofNat_mem 2)
 
 /-- `x² − 0.1·x + 2 ≤ 3` on `[0, 1]`, from one interval evaluation. -/

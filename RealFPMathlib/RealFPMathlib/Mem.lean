@@ -80,6 +80,7 @@ theorem exists_corner_ge {a b c d : ℝ} {x y : ℝ} (hx1 : a ≤ x) (hx2 : x �
       nlinarith [mul_nonneg (sub_nonneg.2 hx1) (neg_nonneg.2 hy),
         mul_nonneg (neg_nonneg.2 ha) (sub_nonneg.2 hy1)]
 
+@[deprecated "use RealFP.mem_toSet_mul (no finiteness hypotheses)" (since := "2026-11-21")]
 theorem mul_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet)
     (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q)
     (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)
@@ -136,6 +137,7 @@ theorem div_le_div_neg {a b c d : ℝ} (hb : b < 0) (hd : d < 0) (h : a * d ≤ 
   rw [← neg_div_neg_eq a b, ← neg_div_neg_eq c d]
   exact div_le_div_pos (neg_pos.2 hb) (neg_pos.2 hd) (by nlinarith)
 
+@[deprecated "use RealFP.mem_toSet_div (no finiteness hypotheses)" (since := "2026-11-21")]
 theorem div_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet)
     (hy0 : y ≠ 0)
     (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q)
@@ -198,6 +200,7 @@ theorem div_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : 
 /-! ### Square root -/
 
 /-- `Real.sqrt` enclosure for finite-endpoint intervals (negative parts are clipped). -/
+@[deprecated "use RealFP.mem_toSet_sqrt (no finiteness hypotheses)" (since := "2026-11-21")]
 theorem sqrt_mem_toSet {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) (hx0 : 0 ≤ x)
     (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q)
     (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q) :

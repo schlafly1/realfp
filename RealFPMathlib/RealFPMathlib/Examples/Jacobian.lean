@@ -232,18 +232,14 @@ theorem Y_hi : bitsToRat? Y.hi.toBits = some (-6889182714411405 / 45035996273704
 
 theorem s_mem : s ∈ S.toSet := by
   have h : (((25/26 : ℚ)) : ℝ) ∈ (ofRat (25/26)).toSet := mem_toSet_ofRat _
-  have := sqrt_mem_toSet h (by norm_num)
-    (Option.isSome_iff_exists.mp (by decide +kernel))
-    (Option.isSome_iff_exists.mp (by decide +kernel))
+  have := mem_toSet_sqrt h (by norm_num)
   have e : (((25/26 : ℚ)) : ℝ) = 25/26 := by norm_num
   rw [e] at this
   exact this
 
 theorem y_mem : -3 / (2 * s) ∈ Y.toSet := by
   have h : (((-3/2 : ℚ)) : ℝ) ∈ (ofRat (-3/2)).toSet := mem_toSet_ofRat _
-  have := div_mem_toSet h s_mem s_pos.ne'
-    (Option.isSome_iff_exists.mp (by decide +kernel))
-    (Option.isSome_iff_exists.mp (by decide +kernel)) ⟨_, S_lo⟩ ⟨_, S_hi⟩
+  have := mem_toSet_div h s_mem s_pos.ne'
   have e : -3 / (2 * s) = (((-3/2 : ℚ)) : ℝ) / s := by push_cast; field_simp
   rw [e]; exact this
 

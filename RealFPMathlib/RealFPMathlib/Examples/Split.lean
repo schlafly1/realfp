@@ -9,7 +9,7 @@ on `[-2, -1]`, `x = 0.25 / (1.5 - x) - 1.5`. Evaluating these with `Interval64`
 gives `x ∈ [1.39999…, 1.42858…]` resp. its negative.
 
 All interval endpoints are computed by the Lean kernel (`decide +kernel`, the Lean
-spec, no `native_decide`); the real-number steps use `divSplit_mem` and `Iv.*_mem`.
+spec, no `native_decide`); the real-number steps use `mem_divSplit` and `Iv.*_mem` / `Iv.mem_*`.
 -/
 import RealFPMathlib.Split
 
@@ -48,8 +48,7 @@ theorem step1 {x : ℝ} (h1 : -2 ≤ x) (h2 : x ≤ 2) (hr : x * x = 2) : x ≤ 
   have hx0 : x ≠ 0 := by rintro rfl; norm_num at hr
   have hx : x ∈ X0 := mem_ofRatInterval (by push_cast; linarith) (by push_cast; linarith)
   have hq : (2 : ℝ) / x = x := by field_simp; linarith
-  have h := divSplit_mem (ofNat_mem 2) hx hx0 (fin (by decide +kernel)) (fin (by decide +kernel))
-    (fin (by decide +kernel)) (fin (by decide +kernel))
+  have h := mem_divSplit (ofNat_mem 2) hx hx0
   rw [hq] at h
   rcases h with h | h
   · left
@@ -68,9 +67,7 @@ theorem step2_pos {x : ℝ} (h1 : 1 ≤ x) (h2 : x ≤ 2) (hr : x * x = 2) : x �
   have hN : x = 1.5 - 0.25 / (x + 1.5) := by field_simp; norm_num; nlinarith
   rw [hN]
   exact Iv.sub_mem (ofScientific_mem 15 true 1)
-    (Iv.div_mem (ofScientific_mem 25 true 2) (Iv.add_mem hx (ofScientific_mem 15 true 1)) hne
-      (fin (by decide +kernel)) (fin (by decide +kernel))
-      (fin (by decide +kernel)) (fin (by decide +kernel)))
+    (Iv.mem_div (ofScientific_mem 25 true 2) (Iv.add_mem hx (ofScientific_mem 15 true 1)) hne)
 
 /-- Step 2 on `[-2, -1]`. -/
 theorem step2_neg {x : ℝ} (h1 : -2 ≤ x) (h2 : x ≤ -1) (hr : x * x = 2) : x ∈ N2 := by
@@ -79,9 +76,7 @@ theorem step2_neg {x : ℝ} (h1 : -2 ≤ x) (h2 : x ≤ -1) (hr : x * x = 2) : x
   have hN : x = 0.25 / (1.5 - x) - 1.5 := by field_simp; norm_num; nlinarith
   rw [hN]
   exact Iv.sub_mem
-    (Iv.div_mem (ofScientific_mem 25 true 2) (Iv.sub_mem (ofScientific_mem 15 true 1) hx) hne
-      (fin (by decide +kernel)) (fin (by decide +kernel))
-      (fin (by decide +kernel)) (fin (by decide +kernel)))
+    (Iv.mem_div (ofScientific_mem 25 true 2) (Iv.sub_mem (ofScientific_mem 15 true 1) hx) hne)
     (ofScientific_mem 15 true 1)
 
 /-- Both roots of `x² = 2` in `[-2, 2]` are located to about `0.03`. -/
