@@ -179,6 +179,9 @@ theorem tan_toI {a : KI} (ha : WF a) : toI (KI.tan a) = Interval64.tan (toI a) �
           toBits_toF_of_not_nan ha.1 h.1, toBits_toF_of_not_nan ha.2 h.2, toF_ofBits, ite_true]
   · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
 
+theorem lo_toI' (X : KI) : (toI X).lo = toF X.lo := rfl
+theorem hi_toI' (X : KI) : (toI X).hi = toF X.hi := rfl
+
 theorem negOne_toF : (-1 : Float) = toF KI.negOneBits := by
   rw [← toF_one, neg_toF oneBits_lt]; rfl
 
@@ -187,46 +190,70 @@ theorem negOneBits_lt : KI.negOneBits < 2 ^ 64 := negBits_lt oneBits_lt
 theorem asinLo_toF {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
     asinLo (toF x) = toF (KI.asinLo x) ∧ KI.asinLo x < 2 ^ 64 := by
   unfold asinLo KI.asinLo
-  rw [negOne_toF, ← toF_one, lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
-  cases lt x KI.negOneBits
-  · cases lt KI.oneBits x
-    · refine ⟨?_, UInt64.toNat_lt _⟩
-      simp [Directed.asinDown, Directed.asinDownSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
-    · exact ⟨by simp [halfPi_toI.1.symm, toI], halfPi_toI.2.1⟩
-  · exact ⟨by simp [negHalfPi_toI.1.symm, toI], negHalfPi_toI.2.1⟩
+  simp only [negOne_toF]
+  simp only [← toF_one]
+  rw [lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
+  cases lt x KI.negOneBits <;> cases lt KI.oneBits x
+  · rw [Bool.cond_false, Bool.cond_false, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_false _ _ (eq_false Bool.false_ne_true)]
+    refine ⟨?_, UInt64.toNat_lt _⟩
+    simp only [Directed.asinDown, Directed.asinDownSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
+  · rw [Bool.cond_false, Bool.cond_true, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show halfPi.lo = toF KI.halfPi.lo by rw [← halfPi_toI.1, lo_toI']), halfPi_toI.2.1⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show negHalfPi.lo = toF KI.negHalfPi.lo by rw [← negHalfPi_toI.1, lo_toI']), negHalfPi_toI.2.1⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show negHalfPi.lo = toF KI.negHalfPi.lo by rw [← negHalfPi_toI.1, lo_toI']), negHalfPi_toI.2.1⟩
 
 theorem asinHi_toF {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
     asinHi (toF x) = toF (KI.asinHi x) ∧ KI.asinHi x < 2 ^ 64 := by
   unfold asinHi KI.asinHi
-  rw [negOne_toF, ← toF_one, lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
-  cases lt x KI.negOneBits
-  · cases lt KI.oneBits x
-    · refine ⟨?_, UInt64.toNat_lt _⟩
-      simp [Directed.asinUp, Directed.asinUpSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
-    · exact ⟨by simp [halfPi_toI.1.symm, toI], halfPi_toI.2.2⟩
-  · exact ⟨by simp [negHalfPi_toI.1.symm, toI], negHalfPi_toI.2.2⟩
+  simp only [negOne_toF]
+  simp only [← toF_one]
+  rw [lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
+  cases lt x KI.negOneBits <;> cases lt KI.oneBits x
+  · rw [Bool.cond_false, Bool.cond_false, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_false _ _ (eq_false Bool.false_ne_true)]
+    refine ⟨?_, UInt64.toNat_lt _⟩
+    simp only [Directed.asinUp, Directed.asinUpSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
+  · rw [Bool.cond_false, Bool.cond_true, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show halfPi.hi = toF KI.halfPi.hi by rw [← halfPi_toI.1, hi_toI']), halfPi_toI.2.2⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show negHalfPi.hi = toF KI.negHalfPi.hi by rw [← negHalfPi_toI.1, hi_toI']), negHalfPi_toI.2.2⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show negHalfPi.hi = toF KI.negHalfPi.hi by rw [← negHalfPi_toI.1, hi_toI']), negHalfPi_toI.2.2⟩
 
 theorem acosLo_toF {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
     acosLo (toF x) = toF (KI.acosLo x) ∧ KI.acosLo x < 2 ^ 64 := by
   unfold acosLo KI.acosLo
-  rw [negOne_toF, ← toF_one, lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
-  cases lt x KI.negOneBits
-  · cases lt KI.oneBits x
-    · refine ⟨?_, UInt64.toNat_lt _⟩
-      simp [Directed.acosDown, Directed.acosDownSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
-    · exact ⟨by simp [toF_zero], zero_lt⟩
-  · exact ⟨by simp [pi_toI.1.symm, toI], pi_toI.2.1⟩
+  simp only [negOne_toF]
+  simp only [← toF_one]
+  rw [lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
+  cases lt x KI.negOneBits <;> cases lt KI.oneBits x
+  · rw [Bool.cond_false, Bool.cond_false, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_false _ _ (eq_false Bool.false_ne_true)]
+    refine ⟨?_, UInt64.toNat_lt _⟩
+    simp only [Directed.acosDown, Directed.acosDownSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
+  · rw [Bool.cond_false, Bool.cond_true, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show (0 : Float) = toF 0 from toF_zero.symm), zero_lt⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show pi.lo = toF KI.pi.lo by rw [← pi_toI.1, lo_toI']), pi_toI.2.1⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show pi.lo = toF KI.pi.lo by rw [← pi_toI.1, lo_toI']), pi_toI.2.1⟩
 
 theorem acosHi_toF {x : Nat} (hx : x < 2 ^ 64) (hn : isNaN x = false) :
     acosHi (toF x) = toF (KI.acosHi x) ∧ KI.acosHi x < 2 ^ 64 := by
   unfold acosHi KI.acosHi
-  rw [negOne_toF, ← toF_one, lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
-  cases lt x KI.negOneBits
-  · cases lt KI.oneBits x
-    · refine ⟨?_, UInt64.toNat_lt _⟩
-      simp [Directed.acosUp, Directed.acosUpSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
-    · exact ⟨by simp [toF_zero], zero_lt⟩
-  · exact ⟨by simp [pi_toI.1.symm, toI], pi_toI.2.2⟩
+  simp only [negOne_toF]
+  simp only [← toF_one]
+  rw [lt_toF hx negOneBits_lt, lt_toF oneBits_lt hx]
+  cases lt x KI.negOneBits <;> cases lt KI.oneBits x
+  · rw [Bool.cond_false, Bool.cond_false, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_false _ _ (eq_false Bool.false_ne_true)]
+    refine ⟨?_, UInt64.toNat_lt _⟩
+    simp only [Directed.acosUp, Directed.acosUpSpec, toBits_toF_of_not_nan hx hn, toF_ofBits]
+  · rw [Bool.cond_false, Bool.cond_true, ite_cond_eq_false _ _ (eq_false Bool.false_ne_true), ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show (0 : Float) = toF 0 from toF_zero.symm), zero_lt⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show pi.hi = toF KI.pi.hi by rw [← pi_toI.1, hi_toI']), pi_toI.2.2⟩
+  · rw [Bool.cond_true, ite_cond_eq_true _ _ (eq_true rfl)]
+    exact ⟨(show pi.hi = toF KI.pi.hi by rw [← pi_toI.1, hi_toI']), pi_toI.2.2⟩
 
 theorem asin_toI {a : KI} (ha : WF a) : toI (KI.asin a) = Interval64.asin (toI a) ∧ WF (KI.asin a) := by
   unfold Interval64.asin KI.asin
