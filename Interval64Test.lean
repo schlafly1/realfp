@@ -321,7 +321,9 @@ def fns1 : Array Fn1 := #[
   ⟨"tanh", tanhDown, tanhUp, Hyp.tanhBitsD⟩,
   ⟨"log2", log2Down, log2Up, Hyp.logBBitsD false⟩,
   ⟨"log10", log10Down, log10Up, Hyp.logBBitsD true⟩,
-  ⟨"tan", tanDown, tanUp, Tan.tanBitsD⟩]
+  ⟨"tan", tanDown, tanUp, Tan.tanBitsD⟩,
+  ⟨"asin", asinDown, asinUp, Asin.asinBitsD⟩,
+  ⟨"acos", acosDown, acosUp, Asin.acosBitsD⟩]
 
 def checkFn1 (f : Fn1) (x : Float) (st : ZivStats) : ZivStats :=
   let st := checkT (f.name ++ ".down") f.down (fun b => f.spec b false) x st
