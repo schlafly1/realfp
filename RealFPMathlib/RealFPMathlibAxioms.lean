@@ -1,10 +1,12 @@
 /-
 Print the axioms used by every theorem of the Mathlib layer.
 Run with: `scripts/check_axioms.sh` (from RealFPMathlib/) or `lake lean RealFPMathlibAxioms.lean`.
-Only `RealFP.Demo.*` may use `native_decide` (the script enforces this).
+Only `RealFP.Demo.*` and `RealFP.Examples.*` may use `native_decide` (the script enforces this).
 -/
 import RealFPMathlib
 import RealFPMathlib.Demo
+import RealFPMathlib.Examples.Cubic
+import RealFPMathlib.Examples.Jacobian
 
 #print axioms RealFP.loR_rat
 #print axioms RealFP.hiR_rat
@@ -80,3 +82,39 @@ import RealFPMathlib.Demo
 #print axioms RealFP.Demo.sqrt_two_bounds
 #print axioms RealFP.Demo.K_hi_le
 #print axioms RealFP.Demo.sqrt_le_on
+#print axioms RealFP.Examples.Cubic.boxOK_sound
+#print axioms RealFP.Examples.Cubic.exists_box
+#print axioms RealFP.Examples.Cubic.allOK_sound
+#print axioms RealFP.Examples.Cubic.allOK_13
+#print axioms RealFP.Examples.Cubic.c_val
+#print axioms RealFP.Examples.Cubic.c_le
+#print axioms RealFP.Examples.Cubic.f_sqrt_two
+#print axioms RealFP.Examples.Cubic.cubic_bound
+#print axioms RealFP.Examples.Jacobian.F_points
+#print axioms RealFP.Examples.Jacobian.deriv_hmul
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F1_x
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F1_y
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F1_z
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F2_x
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F2_y
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F2_z
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F3_x
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F3_y
+#print axioms RealFP.Examples.Jacobian.hasDerivAt_F3_z
+#print axioms RealFP.Examples.Jacobian.jac_det
+#print axioms RealFP.Examples.Jacobian.F_not_injective
+#print axioms RealFP.Examples.Jacobian.F_eq_iff
+#print axioms RealFP.Examples.Jacobian.solutions_quarter
+#print axioms RealFP.Examples.Jacobian.ncard_solutions_quarter
+#print axioms RealFP.Examples.Jacobian.s_pos
+#print axioms RealFP.Examples.Jacobian.s_sq
+#print axioms RealFP.Examples.Jacobian.solutions_026
+#print axioms RealFP.Examples.Jacobian.ncard_solutions_026
+#print axioms RealFP.Examples.Jacobian.S_lo
+#print axioms RealFP.Examples.Jacobian.S_hi
+#print axioms RealFP.Examples.Jacobian.Y_lo
+#print axioms RealFP.Examples.Jacobian.Y_hi
+#print axioms RealFP.Examples.Jacobian.s_mem
+#print axioms RealFP.Examples.Jacobian.y_mem
+#print axioms RealFP.Examples.Jacobian.s_bounds
+#print axioms RealFP.Examples.Jacobian.y_bounds

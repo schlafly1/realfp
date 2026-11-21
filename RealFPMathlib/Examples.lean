@@ -7,6 +7,8 @@ Examples for the Mathlib layer. Run from `RealFPMathlib/`:
 -/
 import RealFPMathlib
 import RealFPMathlib.Demo
+import RealFPMathlib.Examples.Cubic
+import RealFPMathlib.Examples.Jacobian
 
 open Interval64 Interval64.Directed Interval64.Spec RealFP
 
@@ -54,3 +56,30 @@ example (x : ℝ) (hx : x ∈ Set.Icc (1 : ℝ) 2) : x * x - x ≤ 3 := by
   exact_mod_cast h
 
 #print axioms Demo.sq_add_le
+
+/-! ## 5. Worked examples (`RealFPMathlib/Examples/`) -/
+
+-- Example 1: 6x - x³ ≤ f(√2) + 0.001 for all x ≥ 0, by 20480 Interval64 boxes on [0, 5/2]
+-- plus algebra for x ≥ 5/2.
+#check @RealFP.Examples.Cubic.cubic_bound
+#eval RealFP.Examples.Cubic.allOK 5.6578 13 20480   -- true  (box width 2^-13)
+#eval RealFP.Examples.Cubic.allOK 5.6578 12 10240   -- false (2^-12 is too coarse)
+
+-- Example 2: constant Jacobian determinant -2, but F is not injective.
+#check @RealFP.Examples.Jacobian.jac_det
+#check @RealFP.Examples.Jacobian.F_not_injective
+#check @RealFP.Examples.Jacobian.solutions_quarter      -- exactly the 3 given points
+#check @RealFP.Examples.Jacobian.ncard_solutions_026    -- 3 solutions for (-0.26, 0, 0)
+#check @RealFP.Examples.Jacobian.s_bounds               -- 0.9805806756 < s < 0.9805806757
+#check @RealFP.Examples.Jacobian.y_bounds
+#eval (RealFP.Examples.Jacobian.S, RealFP.Examples.Jacobian.Y)
+-- Interval residual check: F evaluated on the box (S, Y, 169/25) contains (-0.26, 0, 0).
+open RealFP.Examples.Jacobian in
+#eval
+  let X := S; let Yb := Y; let Z := ofRat (169/25)
+  let one := ofRat 1; let three := ofRat 3; let four := ofRat 4
+  let u := one + X * Yb; let w := four + three * X * Yb
+  (u * u * u * Z + Yb * Yb * u * w,
+   Yb + three * X * (u * u) * Z + three * X * (Yb * Yb) * w,
+   ofRat 2 * X - three * (X * X) * Yb - X * X * X * Z)
+

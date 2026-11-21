@@ -218,3 +218,19 @@ should also work but has not been tested.)
 `scripts/check_axioms.sh` enforces this. Mathlib itself does not accept
 `native_decide`, so proofs that use it are fine in your projects but cannot be
 upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.
+
+### Worked examples (`RealFPMathlib/RealFPMathlib/Examples/`)
+
+* `Cubic.lean` — `cubic_bound : ∀ x : ℝ, 0 ≤ x → 6x - x³ ≤ (6√2 - √2³) + 0.001`.
+  `[0, 5/2]` is split into 20480 boxes of width `2^-13`; a Bool checker
+  (`allOK`, evaluated by `native_decide` with the C kernels, ~0.4 s) bounds
+  `X * (6 - X*X)` on each box, and `allOK_sound` turns that into the real bound.
+  `x ≥ 5/2` is algebra. (Width `2^-12` is too coarse for the 0.001 slack.)
+* `Jacobian.lean` — `F(x,y,z) = ((1+xy)³z + y²(1+xy)(4+3xy), y + 3x(1+xy)²z + 3xy²(4+3xy), 2x - 3x²y - x³z)`.
+  Mathlib `HasDerivAt` partials, `jac_det : det = -2` everywhere, `F_not_injective`,
+  `F_eq_iff` (all solutions of `F = (a,0,0)`, `a ≠ 0`), `solutions_quarter` /
+  `ncard_solutions_quarter` (exactly the 3 given points), `solutions_026` /
+  `ncard_solutions_026` (exactly 3 solutions: `(0,0,-0.26)`, `(±s, ∓3/(2s), 169/25)`,
+  `s = √(25/26)`), with Interval64 enclosures `s_bounds`, `y_bounds`.
+  The solution count is pure algebra (no `native_decide`); Interval64 is used
+  only for the numeric enclosures.
