@@ -455,7 +455,7 @@ example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
   bounded). Soundness once and for all: `RealFP.eval_sound` (`denote xs e ∈ evalI env e`),
   `checkK_sound`, `prove_le/lt/ge/gt` (`RealFPMathlib/IntervalSound.lean`).
 * **Trust**: standard axioms only (`propext`, `Classical.choice`, `Quot.sound`).
-* **Cost**: about 1–3 ms of kernel time per box for polynomial terms, much more with
+* **Cost**: a few ms of kernel time per box for polynomial terms (2306 boxes, 2 variables: ~10 s), much more with
   transcendental functions (see table); trace with `set_option trace.interval true`.
 * **Limits**: no dependency-problem reduction (centred forms/Taylor), so bounds that are
   tight at a point need a margin; `log` of an interval not strictly positive gives `whole`;
