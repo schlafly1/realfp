@@ -85,4 +85,117 @@ theorem asinPos_spec {q : ℚ} (h0 : 0 < q) (h1 : q < 1) (p : ℕ) :
   · exact ⟨flo, hi_ok hpi.1 hh⟩
   · exact ⟨flo, fhi⟩
 
+theorem asinBounds_spec {q : ℚ} (h : |(q : ℝ)| ≤ 1) (p : ℕ) :
+    ((asinBounds q p).1 : ℝ) ≤ Real.arcsin q ∧ Real.arcsin q ≤ (asinBounds q p).2 := by
+  obtain ⟨hl, hu⟩ := abs_le.1 h
+  unfold asinBounds
+  split_ifs with h0 h1 h2 h3
+  · subst h0; simp
+  · subst h1
+    have := piMul_spec (1 / 2) p; push_cast at this ⊢; rw [Real.arcsin_one]
+    constructor <;> linarith [this.1, this.2]
+  · subst h2
+    have := piMul_spec (-1 / 2) p; push_cast at this ⊢; rw [Real.arcsin_neg_one]
+    constructor <;> linarith [this.1, this.2]
+  · have h1' : q < 1 := lt_of_le_of_ne (by exact_mod_cast hu) h1
+    exact asinPos_spec h3 h1' p
+  · have hq : 0 < -q := by
+      rcases lt_or_eq_of_le (not_lt.1 h3) with h | h
+      · linarith
+      · exact absurd h h0
+    have hq1 : -q < 1 := by
+      have : (-1 : ℝ) ≤ q := hl
+      have h' : (-1 : ℚ) ≤ q := by exact_mod_cast this
+      rcases lt_or_eq_of_le h' with h | h
+      · linarith
+      · exact absurd h.symm h2
+    obtain ⟨a, b⟩ := asinPos_spec hq hq1 p
+    push_cast at a b ⊢
+    rw [Real.arcsin_neg] at a b
+    constructor <;> linarith
+
+theorem acosBounds_spec {q : ℚ} (h : |(q : ℝ)| ≤ 1) (p : ℕ) :
+    ((acosBounds q p).1 : ℝ) ≤ Real.arccos q ∧ Real.arccos q ≤ (acosBounds q p).2 := by
+  unfold acosBounds
+  split_ifs with h1
+  · subst h1; simp
+  · dsimp only
+    obtain ⟨a, b⟩ := asinBounds_spec h (p + 64)
+    obtain ⟨c, d⟩ := piBounds_spec (p + 64) false
+    rw [Real.arccos_eq_pi_div_two_sub_arcsin]
+    push_cast
+    constructor <;> linarith
+
+/-! ### Bit level -/
+
+theorem ratAbs_le_one {q : ℚ} (h : |(q : ℝ)| ≤ 1) : ratAbs' q ≤ 1 := by
+  obtain ⟨hl, hu⟩ := abs_le.1 h
+  have hl' : (-1 : ℚ) ≤ q := by exact_mod_cast hl
+  have hu' : q ≤ 1 := by exact_mod_cast hu
+  unfold ratAbs'; split <;> linarith
+
+theorem asinDown_loR {a : Float} {q : ℚ} (h : bitsToEVal a.toBits = some (.rat q))
+    (hq : |(q : ℝ)| ≤ 1) : loR (bitsToEVal (Directed.asinDown a).toBits) (Real.arcsin q) := by
+  apply loR_ofBits
+  unfold asinDownBits asinBitsD
+  cases hu : unpackBits a.toBits with
+  | notANumber => simp [bitsToEVal, hu, toEVal] at h
+  | infinity s => cases s <;> simp [bitsToEVal, hu, toEVal] at h
+  | zero s =>
+    show loR (bitsToEVal a.toBits) _
+    rw [h, zero_of_unpack_zero hu h]; simp
+  | finite s m e hm =>
+    simp only [bitsToRat?_of_finite hu]
+    rw [val_of_unpack_finite hu h, if_pos (ratAbs_le_one hq)]
+    exact rndD_down_loR (fun p => (asinBounds_spec hq p).1)
+
+theorem asinUp_hiR {a : Float} {q : ℚ} (h : bitsToEVal a.toBits = some (.rat q))
+    (hq : |(q : ℝ)| ≤ 1) : hiR (bitsToEVal (Directed.asinUp a).toBits) (Real.arcsin q) := by
+  apply hiR_ofBits
+  unfold asinUpBits asinBitsD
+  cases hu : unpackBits a.toBits with
+  | notANumber => simp [bitsToEVal, hu, toEVal] at h
+  | infinity s => cases s <;> simp [bitsToEVal, hu, toEVal] at h
+  | zero s =>
+    show hiR (bitsToEVal a.toBits) _
+    rw [h, zero_of_unpack_zero hu h]; simp
+  | finite s m e hm =>
+    simp only [bitsToRat?_of_finite hu]
+    rw [val_of_unpack_finite hu h, if_pos (ratAbs_le_one hq)]
+    exact rndD_up_hiR (fun p => (asinBounds_spec hq p).2)
+
+theorem acosDown_loR {a : Float} {q : ℚ} (h : bitsToEVal a.toBits = some (.rat q))
+    (hq : |(q : ℝ)| ≤ 1) : loR (bitsToEVal (Directed.acosDown a).toBits) (Real.arccos q) := by
+  apply loR_ofBits
+  unfold acosDownBits acosBitsD
+  cases hu : unpackBits a.toBits with
+  | notANumber => simp [bitsToEVal, hu, toEVal] at h
+  | infinity s => cases s <;> simp [bitsToEVal, hu, toEVal] at h
+  | zero s =>
+    rw [zero_of_unpack_zero hu h]
+    refine rndD_down_loR (fun p => ?_)
+    have := (piMul_spec (1 / 2) p).1
+    push_cast at this ⊢; rw [Real.arccos_zero]; linarith
+  | finite s m e hm =>
+    simp only [bitsToRat?_of_finite hu]
+    rw [val_of_unpack_finite hu h, if_pos (ratAbs_le_one hq)]
+    exact rndD_down_loR (fun p => (acosBounds_spec hq p).1)
+
+theorem acosUp_hiR {a : Float} {q : ℚ} (h : bitsToEVal a.toBits = some (.rat q))
+    (hq : |(q : ℝ)| ≤ 1) : hiR (bitsToEVal (Directed.acosUp a).toBits) (Real.arccos q) := by
+  apply hiR_ofBits
+  unfold acosUpBits acosBitsD
+  cases hu : unpackBits a.toBits with
+  | notANumber => simp [bitsToEVal, hu, toEVal] at h
+  | infinity s => cases s <;> simp [bitsToEVal, hu, toEVal] at h
+  | zero s =>
+    rw [zero_of_unpack_zero hu h]
+    refine rndD_up_hiR (fun p => ?_)
+    have := (piMul_spec (1 / 2) p).2
+    push_cast at this ⊢; rw [Real.arccos_zero]; linarith
+  | finite s m e hm =>
+    simp only [bitsToRat?_of_finite hu]
+    rw [val_of_unpack_finite hu h, if_pos (ratAbs_le_one hq)]
+    exact rndD_up_hiR (fun p => (acosBounds_spec hq p).2)
+
 end RealFP.Asin
