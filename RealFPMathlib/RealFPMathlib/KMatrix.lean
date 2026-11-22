@@ -262,4 +262,20 @@ theorem posDef_of_ratMat {n : ℕ} {A : Array KI} {c : PDCert} {f : ℕ → ℕ 
   · simp only [ratMatOK, List.all_eq_true, List.mem_range] at hf
     exact memQK_sound (hf i i.2 j j.2)
 
+/-- Every eigenvalue of `A` exceeds `s` when `A - s • 1` is positive definite. -/
+theorem lt_eigenvalue_of_posDef_sub {n : ℕ} {A : Matrix (Fin n) (Fin n) ℝ} {s : ℝ}
+    (h : (A - s • (1 : Matrix (Fin n) (Fin n) ℝ)).PosDef) {μ : ℝ}
+    (hμ : Module.End.HasEigenvalue (Matrix.toLin' A) μ) : s < μ := by
+  obtain ⟨v, hv⟩ := hμ.exists_hasEigenvector
+  have hAv : A *ᵥ v = μ • v := by
+    have := Module.End.mem_eigenspace_iff.1 hv.1
+    rwa [Matrix.toLin'_apply] at this
+  have hlt := (posDef_iff_dotProduct_mulVec.1 h).2 hv.2
+  simp only [star_trivial, Matrix.sub_mulVec, Matrix.smul_mulVec, Matrix.one_mulVec,
+    dotProduct_sub, dotProduct_smul, smul_eq_mul, hAv] at hlt
+  have hd : 0 ≤ v ⬝ᵥ v := Finset.sum_nonneg fun i _ => mul_self_nonneg (v i)
+  by_contra hc
+  push Not at hc
+  nlinarith
+
 end RealFP.KM
