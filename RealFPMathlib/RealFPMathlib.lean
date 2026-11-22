@@ -30,3 +30,4 @@ import RealFPMathlib.Quad
 import RealFPMathlib.KMatrix
 import RealFPMathlib.TaylorBound
 import RealFPMathlib.KQuad
+import RealFPMathlib.Bern
