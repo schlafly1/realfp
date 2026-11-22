@@ -884,6 +884,53 @@ Native widths for `∫₀¹ e^{-x²}`:
 - Native result for `∫∫_{[0,1]²} e^{-x²-y²}` = 0.5577…: E0 gives `[0.5504, 0.5651]`; E1 gives
   `[0.5559, 0.5596]`.
 
+### C kernels for polynomials, Bernstein and quadrature (`c/iv64_poly.{h,c}`, `c/iv64_quad.h`)
+
+The Lean definitions stay the specifications (the proofs and `decide +kernel` use them). At
+runtime, these routines run as single C functions attached with `@[implemented_by]`:
+
+- **Polynomials:** `IPoly.eval`, `evalMV`, `rangeAux` (so `range`), `checkGe`/`Gt`/`Le`/`Lt`,
+  `IPoly2.eval2`, `checkGe2`/`Gt2`.
+- **Bernstein:** `bernOn`, `bernRange`, `checkGtB`/`GeB`, `bern2On`, `checkGt2B`. These need
+  Bernstein degree ≤ 56, so that the binomials are exact doubles and `ofRat (C(k,i)/C(N,i))`
+  equals `[÷↓, ÷↑]`. Larger degrees run the Lean definition.
+- **Quadrature:** `Quad.integrateE0`/`E1` and `integrate2E0`/`E1`. These run the whole adaptive
+  rule in C.
+- **Taylor quadrature:** `KQ.quadF`, the `Interval64` mirror of the kernel rule `quadK`, used by
+  `integral_bound`'s search.
+
+For the quadrature routines, the integrand `IExpr` is compiled to a *tape* (`Interval64/Tape.lean`):
+straight-line code with shared subexpressions. The C evaluator does the arithmetic (`+ − × ÷`,
+`inv`, `√`, `|·|`, `xⁿ`) with the same `Interval64` operations. Elementary functions call back
+the Lean closures (`Interval64.exp`, `sin`, …), so they are the same functions.
+
+The C code uses the existing backends: AVX-512 embedded rounding on x86-64, and RN + exact error
+term on arm64. It performs the same `Interval64` operations in the same order, including the
+literal `[0, 0]` padding of the spec, so the results are bit-identical. This is checked by the
+differential tests (`interval64_tests`, section "C poly / Bernstein / quadrature kernels"). They
+compare the C results with Lean-only copies of the specifications (`Interval64CSpec.lean`) on
+400 random 1D and 150 random 2D polynomials (with special boxes), on 600 random expressions × 4
+boxes for the tape evaluator, and on the quadrature routines. They also check `quadF` against
+both `quadFSpec` and the kernel `quadK`.
+
+Benchmarks (`interval64_bench`, x86-64 box, one call each):
+
+| routine | C | Lean-compiled spec | speedup |
+|---|---|---|---|
+| `eval`, degree 20 | 0.20 µs | 3.3 µs | ×17 |
+| `evalMV`, degree 20 | 0.53 µs | 10 µs | ×19 |
+| `range`, 2⁸ boxes | 0.26 ms | 2.5 ms | ×10 |
+| `checkGt` e4 on [0,4], fuel 12 | 31 µs | 54 µs | ×1.7 |
+| `bernRange`, degree 20, 16 boxes | 0.32 ms | 7.2 s | ×2·10⁴ (the spec rounds rationals with `ofRat`) |
+| `checkGtB` e4, degree 6, fuel 4 | 0.85 µs | 0.22 ms | ×260 |
+| `bern2On`, 3×3, degree 6 | 4.7 µs | 2.2 ms | ×475 |
+| `integrateE0` ∫₀¹e^(−x²), 2¹⁰ cells | 0.11 ms | 0.90 ms | ×8 |
+| `integrateE1` ∫₀¹e^(−x²), 2¹⁰ cells | 0.33 ms | 34 ms | ×100 |
+| `integrate2E1` ∫∫e^(−x²−y²), 2⁶×2⁶ | 3.0 ms | 295 ms | ×98 |
+| Taylor `quadF`, K=4, 16 cells | 0.13 ms | 2.4 ms (KF Nat path natively: 202 ms) | ×19 (×1600) |
+| Taylor `quadF`, K=8, 16 cells | 9.3 ms | 144 ms (KF Nat path natively: 10 s) | ×15 (×1000) |
+| Taylor `quadF` ∫₀³ sin(x²), K=8, 64 cells | 13 ms | 1.7 s | ×136 |
+
 ### `integral_bound` tactic (`RealFPMathlib/IntegralTactic.lean`)
 
 It proves `c ≤ ∫ x in a..b, f x`, `∫ … ≤ c`, `<`, conjunctions, and `∈ Set.Icc`.
