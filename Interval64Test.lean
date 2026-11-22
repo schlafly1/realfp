@@ -569,6 +569,134 @@ def opsTests : IO Nat := do
   IO.println s!"unbounded mul/div/divSplit/sqrt + Ops (neg abs square pown0-7 min max inv intersect hull mid width mag mig bisect subset contains): {n} random point pairs (exact rationals), failures: {bad}"
   return bad
 
+/-! ## Navier–Stokes features: PD certificates, polynomials, quadrature -/
+
+/-- `q ∈ I`, checked with exact rationals (infinite endpoints are unbounded). -/
+def ivContains (I : Interval64) (q : Rat) : Bool :=
+  let okLo := match Spec.bitsToRat? I.lo.toBits with
+    | some a => decide (a ≤ q)
+    | none => I.lo == -Float.inf
+  let okHi := match Spec.bitsToRat? I.hi.toBits with
+    | some b => decide (q ≤ b)
+    | none => I.hi == Float.inf
+  okLo && okHi
+
+def randFloat (s : UInt64) (special : Bool) : Float :=
+  if special && s % 13 == 0 then Float.ofBits specials[(s >>> 8).toNat % specials.size]!
+  else Float.ofInt (Int.ofNat ((s >>> 11).toNat % 2001) - 1000) / 256.0
+
+def nsTests : IO Nat := do
+  let mut fails := 0
+  -- 1. pdMargins: C vs Lean spec, bit-exact.
+  let mut s : UInt64 := 0xFEEDFACE
+  let mut nCases := 0
+  for n in [0, 1, 2, 3, 4, 5, 7, 8, 13, 31] do
+    for rep in [0:6] do
+      let special := rep % 2 == 1
+      let mut lo : Array Float := #[]
+      let mut hi : Array Float := #[]
+      for _ in [0:n*n] do
+        s := xorshift s; let a := randFloat s special
+        s := xorshift s; let b := randFloat s special
+        lo := lo.push (min a b); hi := hi.push (max a b)
+      let M : IMat := ⟨n, ⟨lo⟩, ⟨hi⟩⟩
+      let mut xs : Array Float := #[]
+      for _ in [0:n*n] do
+        s := xorshift s; xs := xs.push (randFloat s special)
+      for X in [FloatArray.mk xs, Mat.approxX M] do
+        let c := Mat.pdMargins M X
+        let r := Mat.pdMarginsSpec M X
+        nCases := nCases + 1
+        if c.size != r.size then fails := fails + 1
+        else
+          for k in [0:c.size] do
+            if !sameBitsOrNaN c[k]! r[k]! then fails := fails + 1
+  IO.println s!"pdMargins C vs spec: {nCases} matrices, {fails} mismatches"
+  -- 2. PD decisions.
+  let hilb := fun n => IMat.ofFn n fun i j => ofRat (1 / (i + j + 1 : Rat))
+  let mut pdFails := 0
+  for n in [1:13] do
+    if !Mat.isPD (hilb n) then pdFails := pdFails + 1
+  let bad := IMat.ofFn 2 fun i j => if i = j then ofRat 1 else ofRat 2
+  let sing := IMat.ofFn 2 fun _ _ => ofRat 1
+  if Mat.isPD bad then pdFails := pdFails + 1
+  if Mat.isPD sing then pdFails := pdFails + 1
+  if !Mat.lamMinGt (hilb 5) 3.2e-6 then pdFails := pdFails + 1
+  if Mat.lamMinGt (hilb 5) 3.3e-6 then pdFails := pdFails + 1
+  if !Mat.isGt (hilb 3) (IMat.ofFn 3 fun i j => if i = j then ofRat (1/1000) else ofRat 0) then
+    pdFails := pdFails + 1
+  IO.println s!"PD certificates (Hilbert 1..12, indefinite, singular, λ_min, Loewner): {pdFails} failures"
+  fails := fails + pdFails
+  -- 3. Polynomials vs exact rationals.
+  let mut polyFails := 0
+  let mut r : UInt64 := 0xABCDEF
+  let qeval := fun (c : Array Rat) (x : Rat) => c.foldr (fun a acc => a + x * acc) 0
+  let qmul := fun (a b : Array Rat) => Id.run do
+    let mut out := Array.replicate (a.size + b.size - 1) (0 : Rat)
+    for i in [0:a.size] do
+      for j in [0:b.size] do
+        out := out.set! (i+j) (out[i+j]! + a[i]! * b[j]!)
+    return out
+  let qder := fun (a : Array Rat) => (Array.range (a.size - 1)).map fun (k : Nat) => ((k : Rat) + 1) * a[k+1]!
+  let qint := fun (a : Array Rat) => #[(0 : Rat)] ++ (Array.range a.size).map fun (k : Nat) => a[k]! / ((k : Rat) + 1)
+  for _ in [0:300] do
+    r := xorshift r; let d1 := (r % 6).toNat + 1
+    r := xorshift r; let d2 := (r % 5).toNat + 1
+    let mut a : Array Rat := #[]
+    for _ in [0:d1] do
+      r := xorshift r; a := a.push ((((r % 2001).toNat : Int) - 1000 : Rat) / 7)
+    let mut b : Array Rat := #[]
+    for _ in [0:d2] do
+      r := xorshift r; b := b.push ((((r % 2001).toNat : Int) - 1000 : Rat) / 3)
+    r := xorshift r; let x : Rat := (((r % 2001).toNat : Int) - 1000 : Rat) / 333
+    r := xorshift r; let t : Rat := (((r % 201).toNat : Int) - 100 : Rat) / 17
+    let A : IPoly := a.map ofRat
+    let B : IPoly := b.map ofRat
+    let X := ofRat x
+    let checks : List (IPoly × Rat) := [
+      (A, qeval a x), (A.add B, qeval a x + qeval b x), (A.sub B, qeval a x - qeval b x),
+      (A.mul B, qeval (qmul a b) x), (A.deriv, qeval (qder a) x), (A.integ, qeval (qint a) x),
+      (A.comp B, qeval a (qeval b x)), (A.shift (ofRat t), qeval a (x + t))]
+    for (P, v) in checks do
+      if !ivContains (P.eval X) v then polyFails := polyFails + 1
+      if !ivContains (P.evalMV P.deriv X) v then polyFails := polyFails + 1
+    -- range enclosure on [x, x + 1] contains the value at the midpoint rational
+    if !ivContains (A.range (ofRatInterval x (x + 1)) 4) (qeval a (x + 1/2)) then
+      polyFails := polyFails + 1
+    -- exact integral ∫_x^{x+t} a
+    let ex := qeval (qint a) (x + t) - qeval (qint a) x
+    if !ivContains (Quad.polyIntegral A X (ofRat (x + t))) ex then polyFails := polyFails + 1
+  -- sign certificates
+  let e4 : IPoly := #[ofRat 1, ofRat (-1), ofRat (1/2), ofRat (-1/6), ofRat (1/24)]
+  if !e4.checkGt 0 (ofRatInterval 0 4) 20 then polyFails := polyFails + 1
+  let sq : IPoly := #[ofRat 0, ofRat 0, ofRat 1]   -- x² ≥ 0 but not > 0 on [-1, 1]
+  if !sq.checkGe 0 (ofRatInterval (-1) 1) 20 then polyFails := polyFails + 1
+  if sq.checkGt 0 (ofRatInterval (-1) 1) 20 then polyFails := polyFails + 1
+  IO.println s!"polynomials vs exact rationals (300 random × 18 checks + sign certs): {polyFails} failures"
+  fails := fails + polyFails
+  -- 4. Quadrature.
+  let mut qFails := 0
+  let g : KF.IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
+  -- ∫₀¹ e^{-x²} = 0.74682413281242702539946743613185300535449968681...
+  let gv : Rat := 74682413281242702539946743613185 / 100000000000000000000000000000000
+  let gLo : Rat := gv - 1 / 10^30
+  let gHi : Rat := gv + 1 / 10^30
+  let R0 := Quad.integrateE0 g 0 1 1e-4 16
+  let R1 := Quad.integrateE1 g 0 1 1e-10 12
+  for R in [R0, R1] do
+    if !(ivContains R gLo && ivContains R gHi) then qFails := qFails + 1
+  if !(R1.hi - R1.lo < 1e-7) then qFails := qFails + 1
+  let x2 : KF.IExpr := .mul (.var 0) (.var 0)
+  if !ivContains (Quad.integrateE1 x2 0 1 1e-8 12) (1/3) then qFails := qFails + 1
+  -- ∫_0^2 x³ = 4, exact interval polynomial
+  if !ivContains (Quad.polyIntegral (#[(0 : Rat), 0, 0, 1].map ofRat) (ofRat 0) (ofRat 2)) 4 then
+    qFails := qFails + 1
+  if (Quad.integrate (fun _ _ => ofRat 0) 1 0 1e-3 3).lo != -Float.inf then qFails := qFails + 1
+  IO.println s!"quadrature: ∫₀¹e^(-x²) ∈ [{R1.lo}, {R1.hi}] (width {R1.hi - R1.lo}); {qFails} failures"
+  fails := fails + qFails
+  return fails
+
+
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
   IO.println s!"C backend: {backendName}"
@@ -761,11 +889,13 @@ def main : IO UInt32 := do
   let fn1Fails ← fn1Tests
   let splitFails ← splitTests
   let opsFails ← opsTests
-  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + fn1Fails + splitFails + opsFails
+  IO.println "----- PD / polynomials / quadrature -----"
+  let nsFails ← nsTests
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + fn1Fails + splitFails + opsFails + nsFails
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} fn1={fn1Fails} split={splitFails} ops={opsFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} fn1={fn1Fails} split={splitFails} ops={opsFails} ns={nsFails}"
     return 1

@@ -83,6 +83,68 @@ def transcBench : IO Unit := do
   benchScalar "Float.sin (libm RN)" Float.sin sx 200
   benchScalar "Float.cos (libm RN)" Float.cos sx 200
 
+/-- KMS matrix `ρ^|i-j|` (`ρ = 1/2`, `λ_min ≥ 1/3`), entries widened by `1e-12`. -/
+def kms (n : Nat) : IMat :=
+  IMat.ofFn n fun i j =>
+    let v := Float.pow 0.5 (Float.ofNat (if i ≤ j then j - i else i - j))
+    ⟨v - 1e-12, v + 1e-12⟩
+
+def msSince (t0 : Nat) : IO Float := do
+  let t1 ← IO.monoNanosNow
+  return (t1 - t0).toFloat / 1e6
+
+def nsBench : IO Unit := do
+  IO.println "----- PD certificate (n×n KMS interval matrix) -----"
+  for n in [50, 100, 200, 400] do
+    let M := kms n
+    let t0 ← IO.monoNanosNow
+    let X := Mat.approxX M
+    let tX ← msSince t0
+    let t1 ← IO.monoNanosNow
+    let m := Mat.pdMargins M X
+    let tC ← msSince t1
+    let ok := Mat.marginsPos n m && Mat.xFinite n X
+    let tS ← if n ≤ 100 then do
+        let t2 ← IO.monoNanosNow
+        let r := Mat.pdMarginsSpec M X
+        let t ← msSince t2
+        pure s!"{t} ms (sink {r.size})"
+      else pure "skipped"
+    IO.println s!"  n={n}: approxX (Lean, untrusted) {tX} ms; pdMargins C {tC} ms; Lean spec {tS}; PD={ok}"
+  IO.println "----- polynomials (degree 10) -----"
+  let P : IPoly := (Array.range 11).map fun (k : Nat) => ofRat ((if k % 2 = 0 then 1 else -1) / ((k : Rat) + 1))
+  let xs := (Array.range 1000).map fun (k : Nat) => ofRatInterval ((k : Rat) / 1000) ((k : Rat) / 1000 + 1 / 10000)
+  let reps := 200
+  let t0 ← IO.monoNanosNow
+  let mut acc : Float := 0
+  for _ in [0:reps] do
+    for x in xs do acc := acc + (P.eval x).lo
+  let te ← msSince t0
+  IO.println s!"  Horner eval: {te * 1e6 / Float.ofNat (reps * xs.size)} ns/call (sink {acc})"
+  let dP := P.deriv
+  let t1 ← IO.monoNanosNow
+  for _ in [0:reps] do
+    for x in xs do acc := acc + (P.evalMV dP x).lo
+  let tm ← msSince t1
+  IO.println s!"  mean-value eval: {tm * 1e6 / Float.ofNat (reps * xs.size)} ns/call (sink {acc})"
+  for fuel in [4, 8, 12] do
+    let t2 ← IO.monoNanosNow
+    let R := P.range (ofRatInterval 0 1) fuel
+    let tr ← msSince t2
+    IO.println s!"  range on [0,1], bisection depth {fuel}: [{R.lo}, {R.hi}] in {tr} ms"
+  IO.println "----- quadrature ∫₀¹ e^(-x²) -----"
+  let g : KF.IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
+  for d in [6, 10, 14] do
+    let t3 ← IO.monoNanosNow
+    let R := Quad.integrateE1 g 0 1 0 d
+    let tq ← msSince t3
+    IO.println s!"  cell1, 2^{d} cells: width {R.hi - R.lo} in {tq} ms"
+  for d in [10, 14] do
+    let t3 ← IO.monoNanosNow
+    let R := Quad.integrateE0 g 0 1 0 d
+    let tq ← msSince t3
+    IO.println s!"  cell0, 2^{d} cells: width {R.hi - R.lo} in {tq} ms"
+
 def main : IO Unit := do
   IO.println "Interval64 benches"
   IO.println s!"C backend: {backendName}  AVX-512F available: {avx512fAvailable}"
@@ -108,3 +170,4 @@ def main : IO Unit := do
   let ns := (t1 - t0).toFloat / (Float.ofNat (reps * n))
   IO.println s!"Lean Interval64 (AVX externs, allocated structs): {ns} ns/kernel  sink={acc}"
   transcBench
+  nsBench

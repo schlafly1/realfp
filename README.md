@@ -733,6 +733,95 @@ upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.
 * `Ops.lean` — `square` vs `*` on `[-1, 2]`, `pown`, and the other new operations,
   all by `decide +kernel`.
 
+## Computer-assisted-proof toolkit: PD matrices, polynomials, quadrature
+
+Aimed at proofs like Alpöge–Buckmaster (Navier–Stokes), which reduce to checking many matrix
+positivity, polynomial-sign, and integral bounds. Interval64 only. The Lean definitions are the
+specification. The PD kernel also has a C runtime (`@[implemented_by]`, bit-identical to the spec
+and tested). Soundness theorems over `ℝ` are in the Mathlib layer.
+
+### Positive definiteness (`Interval64/Matrix.lean`, `c/iv64_matrix.{h,c}`, `RealFPMathlib/Matrix.lean`, `MatrixPD.lean`)
+
+`IMat` is an `n × n` interval matrix stored as row-major `lo`/`hi` `FloatArray`s. The certificate
+works like this:
+
+1. Compute an *untrusted* `X ≈ L⁻¹` from a float Cholesky of `mid M` (`approxX`).
+2. Compute the lower triangle of the interval matrix `B = X M Xᵀ` with directed rounding.
+3. Check that every Gershgorin margin `B_ii − Σ_{l≠i} |B_il|` has `lo > 0`, and that `X` is
+   finite.
+
+A strictly diagonally dominant symmetric `B` is PD. That forces `X` to be invertible, so `A` is
+PD as well. The check is fast and sound: no validity checks are added to the basic interval ops.
+
+| check | theorem (Mathlib conclusion, for every symmetric real `A ∈ M`) |
+|---|---|
+| `isPD M`, `pdCheck M X` | `posDef_of_isPD`, `posDef_of_pdCheck` : `A.PosDef` |
+| `lamMinGt M s`, `lamMinCheck M X s` | `posDef_sub_of_lamMinGt` : `(A − s•1).PosDef`; `lt_eigenvalue_of_lamMinCheck` : `s < μ` for every eigenvalue `μ` |
+| `isGt M N`, `gtCheck M N X` | `posDef_sub_of_isGt`, `posDef_sub_of_gtCheck` : `(A − B).PosDef` (Loewner `A > B`) |
+
+The C kernel `iv64_pd_margins` costs `O(n³)`. On a KMS interval matrix
+(`interval64_bench`, x86-64 box) it takes:
+
+| n | 50 | 100 | 200 | 400 |
+|---|---|---|---|---|
+| `pdMargins` (C) | 0.65 ms | 5.6 ms | 44 ms | 363 ms |
+| `approxX` (Lean, untrusted) | 0.33 ms | 2.1 ms | 13 ms | 90 ms |
+| Lean spec (for comparison) | 18 ms | 141 ms | — | — |
+
+### Polynomials (`Interval64/Poly.lean`, `RealFPMathlib/Poly.lean`)
+
+`IPoly := Array Interval64` holds coefficients, low degree first. `Contains P p` means every
+`p.coeff k ∈ P.coeff k`.
+
+- **Constructors:** `ofFn`, and `ofRats` together with `ratPoly` (`contains_ofRats`).
+- **Evaluation:**
+  - `eval` (Horner), theorem `mem_eval`.
+  - `evalMV` (Horner ∩ mean-value form), theorem `mem_evalMV`.
+- **Arithmetic:** `add`, `sub`, `neg`, `smul`, `mul`, `deriv`, `integ`, `comp`, `shift`, with
+  theorems `contains_add`, …, `contains_integ`, `contains_comp`, and `contains_shift`
+  (`p.comp (X + C a)`).
+- **Range enclosure by bisection:** `range`, theorem `mem_range`.
+- **Sign certificates:**
+  - `checkGe` / `checkGt` / `checkLe` / `checkLt`, theorems `le_of_checkGe`, `lt_of_checkGt`,
+    `ge_of_checkLe`, `gt_of_checkLt`.
+  - Bivariate: `IPoly2`, `eval2`, `checkGe2` / `checkGt2`, theorems `mem_eval2`,
+    `le_of_checkGe2`, `lt_of_checkGt2` (for `eval2R x y p = (p.eval (C y)).eval x`).
+
+### Quadrature (`Interval64/Quad.lean`, `RealFPMathlib/Quad.lean`)
+
+- `polyIntegral P A B`: exact antiderivative. Theorem `integral_mem_polyIntegral`:
+  `∫ x in a..b, p.eval x ∈ polyIntegral P A B`.
+- `integrate (cell0 F) a b tol fuel`: adaptive bisection with cells `F([lo,hi])·(hi−lo)`.
+  Theorem `integral_mem_integrate0`; `f` only needs to be continuous.
+- `integrate (cell1 F D) a b tol fuel`: second-order cells
+  `F(m)(hi−lo) + D(X)(hi−m)²/2 − D(X)(m−lo)²/2`, intersected with `cell0`. `D` encloses `f'`.
+  Theorem `integral_mem_integrate1`.
+- `IExpr` front ends `integrateE0` / `integrateE1` (derivative by `IExpr.diff`). Theorems
+  `integral_mem_integrateE0` (needs continuity) and `integral_mem_integrateE1` (needs `Dom`).
+
+All conclusions are statements about Mathlib's `intervalIntegral`. Measured widths for
+`∫₀¹ e^{-x²}`: `cell1` gives 1.4e-4 with 2⁶ cells (2 ms), 1e-6 with 2¹⁰ (33 ms), and 2e-9 with
+2¹⁴ (0.5 s). `cell0` gives 3.9e-5 with 2¹⁴ cells (14 ms).
+
+### Examples (kernel-checked with `decide +kernel`, standard axioms only)
+
+- `Examples/MatrixPD.lean`:
+  - `hilbert_posDef`: the 6×6 Hilbert matrix is `PosDef`.
+  - `hilbert3_eigen_gt`: every eigenvalue of H₃ is `> 0.0026`.
+- `Examples/PolyQuad.lean`:
+  - `taylor_exp_pos`: `0 < 1 − x + x²/2 − x³/6 + x⁴/24` on `[0,4]`.
+  - `gauss_integral_bounds`: `763/1024 ≤ ∫₀¹ e^{-x²} ≤ 383/512`.
+
+The kernel runs the Lean specification, which is slow. For larger instances, run the same checks
+compiled, with the C kernel, through `native_decide`. That adds the `native_decide` trust
+assumption.
+
+**Tests** (`interval64_tests`):
+- `pdMargins` C vs Lean spec, bit-exact, on 120 random/special matrices.
+- PD decisions on Hilbert 1–12, indefinite and singular matrices, λ_min, and Loewner.
+- Polynomial ops and range enclosures vs exact rationals.
+- Quadrature enclosures vs known values.
+
 ## Interval128: double-double intervals (`Interval128/`, `RealFPMathlib/I128*.lean`)
 
 `Interval128` has endpoints that are double-doubles: `[lh + ll, uh + ul]`,
