@@ -7,7 +7,7 @@ enclosure is
 
   `Σ_{j<K} d_j(m) · ∫_lo^hi (x-m)^j/j! dx  +  d_K([lo, hi]) · ∫_lo^hi (x-m)^K/K! dx`
 
-(Taylor with Lagrange remainder; `K` even so the remainder weight is `≥ 0`). The moments are
+(Taylor with Lagrange remainder; `K > 0` even so the remainder weight is `≥ 0`). The moments are
 `((hi-m)^{j+1} - (lo-m)^{j+1}) / (j+1)!`, enclosed with outward rounding. The error per cell is
 `O(width(d_K([lo,hi])) · h^{K+1})`, i.e. `O(h^{K+2})`; the total `O(h^{K+1})`.
 Soundness: `RealFP.KQ.integral_mem_quadK` (Mathlib layer). The partition is untrusted
@@ -68,13 +68,27 @@ def sumCells (ds : List IExpr) (K : Nat) (dK : IExpr) : List (Nat × Nat × Nat)
 def quadK (e : IExpr) (K : Nat) (a b : Nat) (cs : List (Nat × Nat × Nat)) : Option KI :=
   let ds := derivs e K
   let dK := ds.getLastD e
-  if Nat.beq (K % 2) 0 && chainOK a b cs && cs.all (cellOK ds) then some (sumCells ds K dK cs)
+  if Nat.beq (K % 2) 0 && Nat.blt 0 K && chainOK a b cs && cs.all (cellOK ds) then some (sumCells ds K dK cs)
   else none
 
 /-- Check `lo ≤ ∫ ≤ hi` style goals: `g` applied to the enclosure. -/
 def quadCheck (e : IExpr) (K a b : Nat) (cs : List (Nat × Nat × Nat)) (g : KI → Bool) : Bool :=
   match quadK e K a b cs with
   | some R => g R
+  | none => false
+
+/-- The rational value of a finite, non-NaN bit pattern. -/
+def ratOf (p : Nat) : Option Rat :=
+  if Nat.blt p (2 ^ 64) && !isNaN p then Spec.bitsToRat? (UInt64.ofNat p) else none
+
+/-- `ql ≤ ∫_qa^qb e ≤ qh`, with `a`, `b` bit patterns of `qa`, `qb` (checked). -/
+def quadBound (e : IExpr) (K a b : Nat) (cs : List (Nat × Nat × Nat)) (qa qb ql qh : Rat) : Bool :=
+  decide (ratOf a = some qa) && decide (ratOf b = some qb) &&
+  match quadK e K a b cs with
+  | some R =>
+    match ratOf R.lo, ratOf R.hi with
+    | some l, some h => decide (ql ≤ l) && decide (h ≤ qh)
+    | _, _ => false
   | none => false
 
 /-! ### Untrusted helpers -/

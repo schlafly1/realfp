@@ -28,3 +28,5 @@ import RealFPMathlib.Matrix
 import RealFPMathlib.Poly
 import RealFPMathlib.Quad
 import RealFPMathlib.KMatrix
+import RealFPMathlib.TaylorBound
+import RealFPMathlib.KQuad
