@@ -60,6 +60,10 @@ echo "== 4. lake build (library; C backend chosen by architecture)"
 lake build
 echo "== 5. lake exe interval64_tests (C runtime vs Lean spec, bit-exact; incl. exp/log/sin/cos Ziv spec, pi certificate, interval sin/cos)"
 lake exe interval64_tests
+echo "== 5b. lake exe interval128_tests (Interval128: C vs Lean spec bit-exact, enclosure vs exact rationals, tightness)"
+lake build interval128_tests && lake exe interval128_tests
+echo "== 5c. Interval128 C benchmark (vs Interval64 kernels; vs Arb if libflint-dev is installed)"
+bench/i128/run.sh
 echo "== 6. lake lean Examples.lean"
 lake lean Examples.lean
 echo "== 7. proofs + axiom report"

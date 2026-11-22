@@ -38,6 +38,18 @@ target interval64.o pkg : FilePath := do
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval64.h"))
     return h1.mix h2)
 
+/-- Interval128 C kernels (double-double; same backend selection as Interval64). -/
+target interval128.o pkg : FilePath := do
+  let oFile := pkg.buildDir / "c" / "interval128.o"
+  let srcJob ← inputTextFile <| pkg.dir / "c" / "interval128.c"
+  let weakArgs := #["-I", (← getLeanIncludeDir).toString]
+  let args := #["-fPIC", "-O2"] ++ cArchArgs ++ (if isX86_64 then #["-mfma"] else #[]) ++
+    #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
+  buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
+    let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
+    let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval128.h"))
+    return h1.mix h2)
+
 /-- Flags for the CORE-MATH objects (correctly rounded in the current rounding
     mode; must not be contracted or constant-folded across mode switches). -/
 def coreMathArgs : Array String :=
@@ -79,17 +91,26 @@ extern_lib libleaninterval64 pkg := do
     ← cm_atan.o.fetch, ← cm_atan2.o.fetch,
     ← cm_tan.o.fetch, ← cm_asin.o.fetch, ← cm_acos.o.fetch, ← cm_sinh.o.fetch, ← cm_cosh.o.fetch,
     ← cm_tanh.o.fetch, ← cm_log2.o.fetch, ← cm_log10.o.fetch, ← cm_pow.o.fetch,
-    ← iv64_transc.o.fetch]
+    ← iv64_transc.o.fetch, ← interval128.o.fetch]
   let name := nameToStaticLib "leaninterval64"
   buildStaticLib ((pkg : Package).staticLibDir / name) objs
 
 @[default_target]
 lean_lib Interval64
 
+@[default_target]
+lean_lib Interval128
+
 -- C code comes from `extern_lib libleaninterval64`, so executables must not
 -- also list `moreLinkObjs` (that would duplicate symbols).
 lean_exe interval64_tests where
   root := `Interval64Test
+  moreLeancArgs := #["-O3"]
+
+lean_lib Interval128Tests
+
+lean_exe interval128_tests where
+  root := `Interval128Test
   moreLeancArgs := #["-O3"]
 
 lean_exe interval64_bench where

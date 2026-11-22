@@ -732,3 +732,104 @@ upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.
   Nothing in this file uses `native_decide` any more.
 * `Ops.lean` — `square` vs `*` on `[-1, 2]`, `pown`, and the other new operations,
   all by `decide +kernel`.
+
+## Interval128: double-double intervals (`Interval128/`, `RealFPMathlib/I128*.lean`)
+
+`Interval128` has endpoints that are double-doubles: `[lh + ll, uh + ul]`,
+about 106 bits (relative width ≈ 2^-104 on point inputs). It uses the same
+architecture as Interval64:
+
+* **The spec is the definition.** The spec is `Interval128/DD.lean` (pair
+  kernels) plus `Interval128/Interval.lean` (interval ops and conversions),
+  built from core RN `Float` ops and Interval64's directed ops. Both have
+  logical models.
+* **One C kernel per op.** Each op is attached by `@[implemented_by]`; the
+  kernels are in `c/interval128.h` and `c/interval128.c` and are
+  bit-identical to the spec.
+* **Directed FMA.** `fmaDown` / `fmaUp` are new (`Interval128/Fma.lean`).
+  The spec feeds the exact product into Interval64's `addU`. At runtime the
+  x86 path uses AVX-512 embedded rounding, and the arm64 path uses RN `fma`
+  (exact in a guarded range) with an `fesetround` fallback.
+
+**Soundness method.** Approximations (`s = a+b`, `q₁ = a/b`, `√a`, ...)
+are plain RN results and are never trusted. Only the error terms use
+directed ops. Each error term is a one-sided bound of an exact real
+identity that holds for *any* value of the approximations. For example:
+
+    ah + bh − s = (ah − (s − bb)) + (bh − bb)
+    A/B = q₁ + q₂ + (A − (q₁+q₂)B)/B
+    √A = s + (A − s²)/(√A + s)
+
+So the proofs need only "directed rounding is one-sided". Nothing about
+round-to-nearest is used. In the normal range the error terms are exact
+(TwoSum, FastTwoSum, FMA TwoProd), so directed rounding loses no accuracy.
+
+**Policy, per endpoint.** The double-double result is used when the
+computed endpoint words are finite (and, for mul/div/sqrt, all input words
+are finite). Otherwise that endpoint comes from the Interval64 op on the
+outward hull `toInterval64`. There are no validity checks: a reversed
+interval is the empty set.
+
+* `div`: if the divisor contains 0, the result is `whole`.
+* `sqrt`: an upper endpoint below 0 gives `invalid`; a negative lower
+  endpoint is clipped to 0.
+
+**Operations and conversions.**
+
+* Ops: `+ - * /`, `sqrt`, `neg`, `width`.
+* Conversions: `point`, `ofInterval64`, `toInterval64` (outward), and
+  `ofRat`, `ofNat`, `ofInt`, `ofScientific`, each tight to about 2^-106.
+
+**Tests.** Run `lake exe interval128_tests`. It checks:
+
+* the C runtime against the Lean spec, bit-exact: 400k fma cases, plus
+  20k random cases per op in four exponent regimes, specials, and reversed
+  intervals;
+* enclosure of exact rational points, about 160k per op;
+* a tightness report.
+
+On AVX-512 and on the RN+err backend: 0 mismatches and 0 enclosure
+failures. Tightness, in units of 2^-106 relative to the result magnitude:
+
+| op | max | mean |
+|---|---|---|
+| add | 3.0 | 0.68 |
+| mul | 9.2 | 2.2 |
+| div | 7.2 | 1.6 |
+| sqrt | 7.9 | 1.5 |
+
+**Proofs** (Mathlib layer, `RealFP.I128`, no `sorry`, only `propext`,
+`Classical.choice`, `Quot.sound`).
+
+* **Semantics.** The lower endpoint `(h, l)` admits `x` when both words are
+  finite with `h + l ≤ x`, or when `l` is a zero and `h ≤ x` in `EReal`.
+  The upper endpoint is symmetric. This set is `toSet`.
+* **`I128Prims`.** "A finite directed result implies finite operands and a
+  one-sided bound" for `add`/`sub`/`mul`/`fma`/`div`/`sqrt` Down/Up. Also
+  directed-FMA enclosure at the bit level, exact negation, and
+  comparisons.
+* **`I128DD`.** Every pair kernel is one-sided: `addLo_le`/`addHi_ge`,
+  `mulLo_le`/`mulHi_ge`, `divLo_le`/`divHi_ge` (B > 0), `sqrtLo_le`/
+  `sqrtHi_ge` (A ≥ 0), `minLo_le`/`maxHi_ge`, `quotLo_le`/`quotHi_ge`,
+  and the exact sign tests.
+* **`I128Mem`.** The interval theorems:
+  * `mem_add`, `mem_sub`, `mem_mul`, `mem_neg`;
+  * `mem_div` (`y ≠ 0`), `mem_sqrt` (`0 ≤ x`);
+  * `mem_point`, `mem_ofRat`, `mem_ofNat`, `mem_ofInt`, `mem_ofInterval64`,
+    `mem_toInterval64`, `mem_whole`.
+
+  Each is of the form `x ∈ toSet X → y ∈ toSet Y → x ⋆ y ∈ toSet (X ⋆ Y)`.
+
+As with Interval64, the compiled C kernels are a trust assumption. They are
+checked differentially against the spec that the theorems are about.
+
+**Benchmark.** Run `bench/i128/run.sh`. It reports C-level throughput in
+ns/op for independent random intervals. The machine is an x86 Xeon with
+AVX-512. Arb is FLINT 3.1.3.
+
+| op | Interval64 | Interval128 | Arb p=106 | Arb p=128 |
+|---|---|---|---|---|
+| add | 0.85 | 9.3 | 42 | 38 |
+| mul | 5.2 | 12.6 | 21 | 21 |
+| div | 13.1 | 29.5 | 61 | 62 |
+| sqrt | 3.1 | 12.6 | 95 | 96 |

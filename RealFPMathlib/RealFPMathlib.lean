@@ -20,3 +20,6 @@ import RealFPMathlib.Pow
 import RealFPMathlib.IntervalSound
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.IntervalTactic
+import RealFPMathlib.I128Prims
+import RealFPMathlib.I128DD
+import RealFPMathlib.I128Mem
