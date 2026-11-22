@@ -191,18 +191,10 @@ static int ivp_check_aux2(ivp2_t P, int mode, double c, size_t fuel, ivp_t x, iv
 
 /* Exact binomials C(k, i), 0 <= i <= k <= IVP_BERN_MAX, as doubles. */
 static inline double ivp_choose(size_t k, size_t i) {
-  static double tab[IVP_BERN_MAX + 1][IVP_BERN_MAX + 1];
-  static int init = 0;
-  if (!init) {
-    uint64_t t[IVP_BERN_MAX + 1][IVP_BERN_MAX + 1];
-    for (size_t a = 0; a <= IVP_BERN_MAX; a++)
-      for (size_t b = 0; b <= IVP_BERN_MAX; b++)
-        t[a][b] = b == 0 ? 1 : (a == 0 ? 0 : t[a - 1][b - 1] + t[a - 1][b]);
-    for (size_t a = 0; a <= IVP_BERN_MAX; a++)
-      for (size_t b = 0; b <= IVP_BERN_MAX; b++) tab[a][b] = (double)t[a][b];
-    __atomic_store_n(&init, 1, __ATOMIC_RELEASE);
-  }
-  return tab[k][i];
+  if (i > k) return 0.0;
+  uint64_t r = 1;
+  for (size_t j = 0; j < i; j++) r = r * (k - j) / (j + 1);
+  return (double)r;
 }
 
 /* IPoly.comp P #[A, B] (compAux: Horner over polynomials, literal `add` / `mul` / `idot`).

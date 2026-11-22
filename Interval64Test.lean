@@ -792,6 +792,194 @@ def nsTests : IO Nat := do
   return fails
 
 
+/-! ### C kernels (poly / Bernstein / quadrature) vs the Lean specifications
+
+The `…S` functions below are literal copies of the specification bodies of the definitions
+that carry `@[implemented_by]` (with every nested attached call replaced by its copy), so they
+run in Lean only; the C results must agree bit for bit (`sameIv`). -/
+
+namespace CSpec
+open Interval64.IPoly Interval64.KF
+
+def evalS (P : IPoly) (X : Interval64) : Interval64 := hornerAux P.coeff X 0 P.size
+def evalMVS (P dP : IPoly) (X : Interval64) : Interval64 :=
+  let m := mid X
+  let H := evalS P X
+  if m.isInf then H else intersect H (evalS P (point m) + evalS dP X * (X - point m))
+def rangeAuxS (P dP : IPoly) : Nat → Interval64 → Interval64
+  | 0, X => evalMVS P dP X
+  | fuel + 1, X => hull (rangeAuxS P dP fuel (bisect X).1) (rangeAuxS P dP fuel (bisect X).2)
+def checkAuxS (P dP : IPoly) (g : Interval64 → Bool) : Nat → Interval64 → Bool
+  | 0, X => g (evalMVS P dP X)
+  | fuel + 1, X => g (evalMVS P dP X) || (checkAuxS P dP g fuel (bisect X).1 && checkAuxS P dP g fuel (bisect X).2)
+def goal (mode : Nat) (c : Float) (R : Interval64) : Bool :=
+  match mode with
+  | 0 => decide (c ≤ R.lo) | 1 => decide (c < R.lo) | 2 => decide (R.hi ≤ c) | _ => decide (R.hi < c)
+def checkS (mode : Nat) (P : IPoly) (c : Float) (X : Interval64) (fuel : Nat) : Bool :=
+  !c.isNaN && !c.isInf && checkAuxS P (deriv P) (goal mode c) fuel X
+def eval2S (P : IPoly2) (X Y : Interval64) : Interval64 :=
+  hornerAux (fun j => evalS (P.coeff j) X) Y 0 P.size
+def checkAux2S (P : IPoly2) (g : Interval64 → Bool) : Nat → Interval64 → Interval64 → Bool
+  | 0, X, Y => g (eval2S P X Y)
+  | fuel + 1, X, Y => g (eval2S P X Y) ||
+      (if decide (width Y ≤ width X) then checkAux2S P g fuel (bisect X).1 Y && checkAux2S P g fuel (bisect X).2 Y
+       else checkAux2S P g fuel X (bisect Y).1 && checkAux2S P g fuel X (bisect Y).2)
+def bernOnS (P : IPoly) (X : Interval64) (n : Nat) : Interval64 :=
+  if Quad.finite X.lo && Quad.finite X.hi then bern01 (P.comp #[point X.lo, point X.hi - point X.lo]) n
+  else evalS P X
+def bernRangeS (P : IPoly) (n : Nat) : Nat → Interval64 → Interval64
+  | 0, X => bernOnS P X n
+  | fuel + 1, X => hull (bernRangeS P n fuel (bisect X).1) (bernRangeS P n fuel (bisect X).2)
+def checkAuxBS (P : IPoly) (n : Nat) (g : Interval64 → Bool) : Nat → Interval64 → Bool
+  | 0, X => g (bernOnS P X n)
+  | fuel + 1, X => g (bernOnS P X n) || (checkAuxBS P n g fuel (bisect X).1 && checkAuxBS P n g fuel (bisect X).2)
+def bern2OnS (P : IPoly2) (X Y : Interval64) (n m : Nat) : Interval64 :=
+  if Quad.finite X.lo && Quad.finite X.hi then
+    let Q : IPoly2 := P.map fun Pj => Pj.comp #[point X.lo, point X.hi - point X.lo]
+    let N := max n (IPoly2.maxSize Q - 1)
+    hullUpTo (fun k => bernOnS (ofFn Q.size fun j => bernCoeffF (Q.coeff j).coeff N k) Y m) N
+  else eval2S P X Y
+def checkAux2BS (P : IPoly2) (n m : Nat) (g : Interval64 → Bool) : Nat → Interval64 → Interval64 → Bool
+  | 0, X, Y => g (bern2OnS P X Y n m)
+  | fuel + 1, X, Y => g (bern2OnS P X Y n m) ||
+      (checkAux2BS P n m g fuel (bisect X).1 (bisect Y).1 && checkAux2BS P n m g fuel (bisect X).1 (bisect Y).2 &&
+       checkAux2BS P n m g fuel (bisect X).2 (bisect Y).1 && checkAux2BS P n m g fuel (bisect X).2 (bisect Y).2)
+def integrateE0S (e : IExpr) (a b tol : Float) (fuel : Nat) : Interval64 :=
+  Quad.integrate (Quad.cell0 fun X => evalI [X] e) a b tol fuel
+def integrateE1S (e : IExpr) (a b tol : Float) (fuel : Nat) : Interval64 :=
+  Quad.integrate (Quad.cell1 (fun X => evalI [X] e) (fun X => evalI [X] (e.diff 0))) a b tol fuel
+def integrate2E0S (e : IExpr) (a b c d tol : Float) (fuel : Nat) : Interval64 :=
+  Quad.integrate2 (fun X Y => evalI [X, Y] e) a b c d tol fuel
+def integrate2E1S (e : IExpr) (a b c d tol : Float) (fuel : Nat) : Interval64 :=
+  Quad.integrate (Quad.cell0 fun X =>
+    Quad.integrate (Quad.cell1 (fun Y => evalI [X, Y] e) (fun Y => evalI [X, Y] (e.diff 1))) c d tol fuel) a b tol fuel
+
+/-- Random expression in variables `0 .. nv-1`. -/
+partial def randExpr (nv : Nat) (s : UInt64) : Nat → IExpr × UInt64
+  | 0 =>
+    let s := xorshift s
+    if s % 3 == 0 then (.rat ((((xorshift s) % 41).toNat : Rat) / 8 - 2), xorshift s)
+    else (.var ((s / 3 % nv.toUInt64).toNat), s)
+  | d + 1 =>
+    let s := xorshift s
+    let k := (s % 22).toNat
+    let (a, s) := randExpr nv s d
+    let (b, s) := randExpr nv s (d / 2)
+    let e : IExpr := match k with
+      | 0 => .add a b | 1 => .sub a b | 2 => .mul a b | 3 => .div a b | 4 => .neg a
+      | 5 => .inv a | 6 => .sqrt a | 7 => .abs a | 8 => .pow a ((s % 5).toNat) | 9 => .exp a
+      | 10 => .log a | 11 => .sin a | 12 => .cos a | 13 => .atan a | 14 => .sinh a
+      | 15 => .tanh a | 16 => .tan a | 17 => .asin a | 18 => .atan2 a b | 19 => .add a .pi
+      | 20 => .mul a a | _ => .cosh a
+    (e, s)
+end CSpec
+
+def sameIv (a b : Interval64) : Bool := a == b
+
+def cTests : IO Nat := do
+  let mut fails := 0
+  let mut r : UInt64 := 0xC0FFEE
+  let rnd := fun (s : UInt64) (den : Nat) => (((s % 2001).toNat : Int) - 1000 : Rat) / den
+  -- polynomials
+  for _ in [0:400] do
+    r := xorshift r; let d := (r % 9).toNat
+    let mut a : IPoly := #[]
+    for _ in [0:d] do
+      r := xorshift r; a := a.push (ofRatInterval (rnd r 7) (rnd r 7 + 1/1000))
+    r := xorshift r; let lo := rnd r 300
+    r := xorshift r; let w := ((r % 1000).toNat : Rat) / 400
+    let X := ofRatInterval lo (lo + w)
+    let specialX := [X, whole, ⟨-Float.inf, 1⟩, ⟨0, Float.inf⟩, invalid, ⟨1, 1⟩]
+    for Y in specialX do
+      if !sameIv (a.eval Y) (CSpec.evalS a Y) then fails := fails + 1
+      if !sameIv (a.evalMV a.deriv Y) (CSpec.evalMVS a a.deriv Y) then fails := fails + 1
+    if !sameIv (a.range X 3) (CSpec.rangeAuxS a a.deriv 3 X) then fails := fails + 1
+    r := xorshift r; let c := Float.ofScientific ((r % 2000).toNat) true 2 - 10
+    if a.checkGe c X 5 != CSpec.checkS 0 a c X 5 then fails := fails + 1
+    if a.checkGt c X 5 != CSpec.checkS 1 a c X 5 then fails := fails + 1
+    if a.checkLe c X 5 != CSpec.checkS 2 a c X 5 then fails := fails + 1
+    if a.checkLt c X 5 != CSpec.checkS 3 a c X 5 then fails := fails + 1
+    -- Bernstein
+    for (n, fuel) in [(0, 0), (d + 3, 0), (d, 2), (12, 1)] do
+      if !sameIv (a.bernOn X n) (CSpec.bernOnS a X n) then fails := fails + 1
+      if !sameIv (a.bernRange n fuel X) (CSpec.bernRangeS a n fuel X) then fails := fails + 1
+      if a.checkGtB c X n fuel != (!c.isNaN && !c.isInf && CSpec.checkAuxBS a n (CSpec.goal 1 c) fuel X) then
+        fails := fails + 1
+      if a.checkGeB c X n fuel != (!c.isNaN && !c.isInf && CSpec.checkAuxBS a n (CSpec.goal 0 c) fuel X) then
+        fails := fails + 1
+    for Y in specialX do
+      if !sameIv (a.bernOn Y 4) (CSpec.bernOnS a Y 4) then fails := fails + 1
+  -- bivariate
+  for _ in [0:150] do
+    r := xorshift r; let ny := (r % 4).toNat
+    let mut P : IPoly2 := #[]
+    for _ in [0:ny] do
+      r := xorshift r; let nx := (r % 4).toNat
+      let mut row : IPoly := #[]
+      for _ in [0:nx] do
+        r := xorshift r; row := row.push (ofRat (rnd r 9))
+      P := P.push row
+    r := xorshift r; let x0 := rnd r 400
+    r := xorshift r; let y0 := rnd r 400
+    let X := ofRatInterval x0 (x0 + 1/2)
+    let Y := ofRatInterval y0 (y0 + 1/3)
+    r := xorshift r; let c := Float.ofScientific ((r % 2000).toNat) true 2 - 10
+    for (X', Y') in [(X, Y), (whole, Y), (X, whole), (invalid, Y)] do
+      if !sameIv (P.eval2 X' Y') (CSpec.eval2S P X' Y') then fails := fails + 1
+      if !sameIv (P.bern2On X' Y' 3 2) (CSpec.bern2OnS P X' Y' 3 2) then fails := fails + 1
+    if P.checkGe2 c X Y 4 != (!c.isNaN && !c.isInf && CSpec.checkAux2S P (CSpec.goal 0 c) 4 X Y) then fails := fails + 1
+    if P.checkGt2 c X Y 4 != (!c.isNaN && !c.isInf && CSpec.checkAux2S P (CSpec.goal 1 c) 4 X Y) then fails := fails + 1
+    if P.checkGt2B c X Y 2 2 2 != (!c.isNaN && !c.isInf && CSpec.checkAux2BS P 2 2 (CSpec.goal 1 c) 2 X Y) then
+      fails := fails + 1
+  let polyFails := fails
+  IO.println s!"C poly/Bernstein kernels vs Lean spec (400 random 1D, 150 random 2D, specials): {polyFails} mismatches"
+  -- tapes: random expressions, evalI vs C tape evaluator
+  let mut tFails := 0
+  let mut rt : UInt64 := 0x7A9E
+  for _ in [0:600] do
+    rt := xorshift rt
+    let (e, s) := CSpec.randExpr 2 rt ((rt % 6).toNat + 1)
+    rt := s
+    rt := xorshift rt; let x0 := rnd rt 400
+    rt := xorshift rt; let y0 := rnd rt 400
+    rt := xorshift rt; let w := ((rt % 100).toNat : Rat) / 64
+    for env in [[ofRatInterval x0 (x0 + w), ofRatInterval y0 (y0 + w)], [ofRat x0, ofRat y0], [whole, ofRat y0],
+        [ofRat x0]] do
+      if !sameIv (KF.Tape.evalTape env e) (KF.evalI env e) then tFails := tFails + 1
+  IO.println s!"C tape evaluator vs evalI (600 random expressions × 4 boxes): {tFails} mismatches"
+  fails := fails + tFails
+  -- quadrature
+  let mut qFails := 0
+  let g : KF.IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
+  let exprs : List KF.IExpr := [g, .mul (.var 0) (.var 0), .sin (.mul (.rat 3) (.var 0)), .inv (.add (.var 0) (.rat 1)),
+    .sqrt (.var 0), .div (.rat 1) (.var 0), .atan2 (.var 0) (.rat 1)]
+  for e in exprs do
+    for (a, b, tol, fuel) in [((0 : Float), (1 : Float), (1e-3 : Float), 6), (0.5, 2, 1e-6, 8), (1, 0, 1e-3, 3),
+        (0, Float.inf, 1e-3, 3), (-1, 1, 1e-2, 5)] do
+      if !sameIv (Quad.integrateE0 e a b tol fuel) (CSpec.integrateE0S e a b tol fuel) then qFails := qFails + 1
+      if !sameIv (Quad.integrateE1 e a b tol fuel) (CSpec.integrateE1S e a b tol fuel) then qFails := qFails + 1
+  let g2 : KF.IExpr := .exp (.neg (.add (.mul (.var 0) (.var 0)) (.mul (.var 1) (.var 1))))
+  for e in [g2, .mul (.var 0) (.var 1), .sin (.add (.var 0) (.mul (.rat 2) (.var 1)))] do
+    for (a, b, c, d) in [((0 : Float), (1 : Float), (0 : Float), (1 : Float)), (0, 2, -1, 3), (1, 0, 0, 1)] do
+      if !sameIv (Quad.integrate2E0 e a b c d 1e-2 4) (CSpec.integrate2E0S e a b c d 1e-2 4) then qFails := qFails + 1
+      if !sameIv (Quad.integrate2E1 e a b c d 1e-2 4) (CSpec.integrate2E1S e a b c d 1e-2 4) then qFails := qFails + 1
+  -- Taylor cells: C (quadF) vs Lean (quadFSpec) vs kernel bit patterns (quadK)
+  let toIv := fun (R : KF.KI) => (⟨KF.KQ.toFl R.lo, KF.KQ.toFl R.hi⟩ : Interval64)
+  for e in exprs.take 6 do
+    for (K, N) in [(2, 3), (4, 8), (6, 4), (8, 2)] do
+      let a : Float := if e matches .sqrt _ || e matches .div .. then 0.5 else 0
+      let csB := KF.KQ.uniformCells a 2 N
+      let cs := csB.map fun c => (KF.KQ.toFl c.1, KF.KQ.toFl c.2.1, KF.KQ.toFl c.2.2)
+      let F := KF.KQ.quadF e K cs
+      if !sameIv F (KF.KQ.quadFSpec e K cs) then qFails := qFails + 1
+      match KF.KQ.quadK e K (KF.KQ.bitsOf a) (KF.KQ.bitsOf 2) csB with
+      | some R => if !sameIv F (toIv R) then qFails := qFails + 1
+      | none => qFails := qFails + 1
+  IO.println s!"C quadrature vs Lean spec (integrateE0/E1, integrate2E0/E1, Taylor quadF vs quadFSpec vs quadK): {qFails} mismatches"
+  fails := fails + qFails
+  return fails
+
+
 def main : IO UInt32 := do
   IO.println "Interval64 tests (Lean 4.36, compiled exe)"
   IO.println s!"C backend: {backendName}"
@@ -986,11 +1174,13 @@ def main : IO UInt32 := do
   let opsFails ← opsTests
   IO.println "----- PD / polynomials / quadrature -----"
   let nsFails ← nsTests
-  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + fn1Fails + splitFails + opsFails + nsFails
+  IO.println "----- C poly / Bernstein / quadrature kernels -----"
+  let cFails2 ← cTests
+  let leanFails := fails.size + ivFails + specFails.size + ratFails + transcFails + funcFails + fn1Fails + splitFails + opsFails + nsFails + cFails2
   if leanFails == 0 then
     IO.println "ALL LEAN DIFFERENTIAL / POLICY TESTS PASSED"
     IO.println "  (backend vs fesetround, and C runtime vs Lean Spec, bit-identical on specials+randoms)"
     return 0
   else
-    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} fn1={fn1Fails} split={splitFails} ops={opsFails} ns={nsFails}"
+    IO.println s!"FAILED leanFails={leanFails} avxVsFe={fails.size} policy={ivFails} vsSpec={specFails.size} transc={transcFails} func={funcFails} fn1={fn1Fails} split={splitFails} ops={opsFails} ns={nsFails} ckern={cFails2}"
     return 1
