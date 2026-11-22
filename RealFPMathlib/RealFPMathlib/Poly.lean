@@ -445,4 +445,32 @@ theorem lt_of_checkGt2 {P : IPoly2} {p : ℝ[X][X]} (hP : Contains2 P p) {c : Fl
   obtain ⟨R, hR, hv⟩ := checkAux2_sound hP fuel h hx hy
   exact lt_of_lo hn hi hv (of_decide_eq_true hR)
 
+/-! ### Rational-coefficient polynomials -/
+
+/-- The real polynomial `Σ l[k] X^k`. -/
+noncomputable def ratPoly (l : Array ℚ) : ℝ[X] :=
+  ∑ k ∈ range l.size, C ((l.getD k 0 : ℚ) : ℝ) * X ^ k
+
+theorem coeff_ratPoly (l : Array ℚ) (k : ℕ) :
+    (ratPoly l).coeff k = if k < l.size then ((l.getD k 0 : ℚ) : ℝ) else 0 := by
+  simp only [ratPoly, finsetSum_coeff, coeff_C_mul_X_pow]
+  rw [Finset.sum_ite_eq]
+  simp [Finset.mem_range]
+
+theorem eval_ratPoly (l : Array ℚ) (x : ℝ) :
+    (ratPoly l).eval x = ∑ k ∈ range l.size, ((l.getD k 0 : ℚ) : ℝ) * x ^ k := by
+  simp [ratPoly, eval_finsetSum]
+
+theorem contains_ofRats (l : Array ℚ) : Contains (IPoly.ofRats l) (ratPoly l) := by
+  intro k
+  rw [coeff_ratPoly]
+  by_cases hk : k < l.size
+  · simp only [hk, ↓reduceIte]
+    have : (IPoly.ofRats l).coeff k = ofRat (l.getD k 0) := by
+      simp [IPoly.coeff, IPoly.ofRats, Array.getD, hk]
+    rw [this]; exact mem_toSet_ofRat _
+  · simp only [hk, ↓reduceIte]
+    rw [coeff_getD_of_le (by simpa [IPoly.ofRats] using hk)]
+    exact RealFP.Mat.zeroI_mem
+
 end RealFP.Poly

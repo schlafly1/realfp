@@ -40,6 +40,9 @@ def eval (P : IPoly) (X : Interval64) : Interval64 := hornerAux P.coeff X 0 P.si
 /-- Build from a coefficient function. -/
 def ofFn (m : Nat) (f : Nat → Interval64) : IPoly := Array.ofFn (n := m) fun k => f k.val
 
+/-- Outward enclosure of a polynomial with rational coefficients `l[0] + l[1] X + …`. -/
+def ofRats (l : Array Rat) : IPoly := l.map ofRat
+
 def add (P Q : IPoly) : IPoly := ofFn (max P.size Q.size) fun k => P.coeff k + Q.coeff k
 def neg (P : IPoly) : IPoly := P.map Interval64.neg
 def sub (P Q : IPoly) : IPoly := ofFn (max P.size Q.size) fun k => P.coeff k - Q.coeff k
