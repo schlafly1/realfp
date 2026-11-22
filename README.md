@@ -884,6 +884,42 @@ Native widths for `∫₀¹ e^{-x²}`:
 - Native result for `∫∫_{[0,1]²} e^{-x²-y²}` = 0.5577…: E0 gives `[0.5504, 0.5651]`; E1 gives
   `[0.5559, 0.5596]`.
 
+### Higher-order 2D quadrature (`Interval64/Quad2.lean`, `Interval64/Kernel/Quad2.lean`, `RealFPMathlib/{Taylor2,KTaylor2}.lean`)
+
+`Quad.taylor2 e K a b c d xs ys` (even `K > 0`, grids `xs`, `ys` of cells `(lo, m, hi)`): on each
+cell, Taylor of order `K` in `y` around `m_y` with the Lagrange remainder enclosed on the cell,
+then Taylor of order `K` in `x` for each `y`-coefficient `∫ ∂ᵧⁱ f (x, m_y) dx`; cells are summed
+over the grid. Per-cell error `O(h^{K+1})` per unit area. At runtime it runs in C over one
+derivative tape (`iv64_quad_taylor2`, ×69 vs the Lean-compiled spec for `K=4`, 8×8 cells).
+`KF.KQ.taylor2K` / `taylor2Bound` is the bit-pattern (`KI`) mirror for `decide +kernel`.
+
+* `RealFP.Taylor2.integral2_mem_t2Cell` (one cell), `integral2_mem_taylor2` (grid, iterated
+  Mathlib integral; `Dom` of all `∂ₓʲ∂ᵧⁱ e`, `i, j ≤ K`, and continuity on the rectangle),
+  `integral_rect_mem_taylor2` (Bochner integral over `[a,b]×[c,d]`, Fubini),
+  `integral2_mem_taylor2_smooth` (side conditions from `allSmooth e K = true`).
+* `RealFP.KTaylor2.integral2_mem_taylor2K`, `integral2_bounds_of_taylor2Bound` (no side
+  conditions: the certificate checks `allSmooth`).
+* Example `RealFP.Examples.Taylor2.gauss2_bounds` / `gauss2_rect_bounds`:
+  `0.5566 ≤ ∫₀¹∫₀¹ e^{-x²-y²} ≤ 0.5585` with `K = 4` on 2×2 cells (kernel ≈ 15 s, enclosure width
+  1.7e-3). Slow lib: `gauss2_bounds_tight`, `[0.557715, 0.55777]`, 4×4 cells (≈ 65 s, 7 GB).
+
+∫∫_{[0,1]²} e^{-x²-y²} (true 0.557746), enclosure widths:
+
+| rule | cells | width | time (C) |
+|---|---|---|---|
+| `integrate2E1` (first order) | 2^4×2^4 | 3.2e-2 | 0.2 ms |
+| `integrate2E1` | 2^8×2^8 | 1.9e-3 | 47 ms |
+| `taylor2` K=2 | 16×16 | 8.8e-5 | 0.19 ms |
+| `taylor2` K=4 | 2×2 | 1.7e-3 | 1.3 ms |
+| `taylor2` K=4 | 4×4 | 4.9e-5 | 1.3 ms |
+| `taylor2` K=4 | 8×8 | 1e-6 | 1.4 ms |
+| `taylor2` K=6 | 4×4 | < 1e-6 | 51 ms |
+
+Times are dominated by building the derivative tape (symbolic `∂ₓʲ∂ᵧⁱ`, no CSE in `dxy`); `K = 8`
+takes ≈ 3.8 s. Limits: `allSmooth` covers polynomial operations, `exp`, `sin`, `cos`, `atan`,
+`sinh`, `cosh` (other integrands use `integral2_mem_taylor2` with explicit `Dom`); C needs
+`K ≤ 17`.
+
 ### C kernels for polynomials, Bernstein and quadrature (`c/iv64_poly.{h,c}`, `c/iv64_quad.h`)
 
 The Lean definitions stay the specifications (the proofs and `decide +kernel` use them). At
