@@ -50,6 +50,19 @@ target interval128.o pkg : FilePath := do
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval128.h"))
     return h1.mix h2)
 
+/-- Interval64 matrix / polynomial kernels (same backend selection). -/
+target iv64_matrix.o pkg : FilePath := do
+  let oFile := pkg.buildDir / "c" / "iv64_matrix.o"
+  let srcJob ← inputTextFile <| pkg.dir / "c" / "iv64_matrix.c"
+  let weakArgs := #["-I", (← getLeanIncludeDir).toString]
+  let args := #["-fPIC", "-O2"] ++ cArchArgs ++ (if isX86_64 then #["-mfma"] else #[]) ++
+    #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
+  buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
+    let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
+    let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval128.h"))
+    let h3 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_matrix.h"))
+    return (h1.mix h2).mix h3)
+
 /-- Flags for the CORE-MATH objects (correctly rounded in the current rounding
     mode; must not be contracted or constant-folded across mode switches). -/
 def coreMathArgs : Array String :=
@@ -91,7 +104,7 @@ extern_lib libleaninterval64 pkg := do
     ← cm_atan.o.fetch, ← cm_atan2.o.fetch,
     ← cm_tan.o.fetch, ← cm_asin.o.fetch, ← cm_acos.o.fetch, ← cm_sinh.o.fetch, ← cm_cosh.o.fetch,
     ← cm_tanh.o.fetch, ← cm_log2.o.fetch, ← cm_log10.o.fetch, ← cm_pow.o.fetch,
-    ← iv64_transc.o.fetch, ← interval128.o.fetch]
+    ← iv64_transc.o.fetch, ← interval128.o.fetch, ← iv64_matrix.o.fetch]
   let name := nameToStaticLib "leaninterval64"
   buildStaticLib ((pkg : Package).staticLibDir / name) objs
 
