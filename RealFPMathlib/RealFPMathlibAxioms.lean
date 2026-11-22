@@ -999,3 +999,13 @@ import RealFPMathlib.Tests.IntervalTest
 #print axioms RealFP.Examples.Bernstein.contains_q2
 #print axioms RealFP.Examples.Bernstein.q2_check
 #print axioms RealFP.Examples.Bernstein.bilinear_pos
+#print axioms RealFP.Quad2.integral_mem_cell0'
+#print axioms RealFP.Quad2.integral_mem_integrate0'
+#print axioms RealFP.Quad2.continuous_clamp
+#print axioms RealFP.Quad2.clamp_mem
+#print axioms RealFP.Quad2.clamp_eq
+#print axioms RealFP.Quad2.continuousOn_inner
+#print axioms RealFP.Quad2.integral2_mem_integrate2
+#print axioms RealFP.Quad2.integral2_mem_integrate2E0
+#print axioms RealFP.Quad2.integral2_mem_integrate2E1
+#print axioms RealFP.Quad2.setIntegral_rect_eq
