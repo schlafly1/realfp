@@ -23,3 +23,5 @@ import RealFPMathlib.IntervalTactic
 import RealFPMathlib.I128Prims
 import RealFPMathlib.I128DD
 import RealFPMathlib.I128Mem
+
+import RealFPMathlib.Matrix
