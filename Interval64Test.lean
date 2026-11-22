@@ -329,6 +329,12 @@ def checkFn1 (f : Fn1) (x : Float) (st : ZivStats) : ZivStats :=
   let st := checkT (f.name ++ ".down") f.down (fun b => f.spec b false) x st
   checkT (f.name ++ ".up") f.up (fun b => f.spec b true) x st
 
+/-- The exact-rational `tan` spec needs a full-width `π` reduction per Ziv step for huge
+    arguments (seconds each); spec-check those on a sample only (the C result is still
+    compared with the mpmath oracle for every input). -/
+def specSample (f : Fn1) (x : Float) (k : Nat) : Bool :=
+  f.name != "tan" || x.abs < 1.0e6 || k % 64 == 0
+
 def fn1Tests : IO Nat := do
   let t0 ← IO.monoMsNow
   let lines ← (do let c ← IO.FS.readFile "tests/func_oracle.txt"; pure (c.splitOn "\n"))
@@ -342,13 +348,15 @@ def fn1Tests : IO Nat := do
       | [fn, hx, d, u] =>
         if fn == f.name then
           let x := Float.ofBits (hexVal hx)
-          st := checkFn1 f x st; orc := orc + 1
+          if specSample f x orc then st := checkFn1 f x st
+          orc := orc + 1
           if !(oracleSame (f.down x) d && oracleSame (f.up x) u) then bad := bad.push line
       | _ => pure ()
     for hb in specials do st := checkFn1 f (Float.ofBits hb) st
     let mut s : UInt64 := 0xF00D
-    for _ in [0:500] do
-      s := xorshift s; st := checkFn1 f (Float.ofBits s) st
+    for k in [0:500] do
+      s := xorshift s
+      if specSample f (Float.ofBits s) k then st := checkFn1 f (Float.ofBits s) st
       s := xorshift s; st := checkFn1 f (unitF s * 40.0 - 20.0) st
       s := xorshift s
       st := checkFn1 f ((unitF s * 2.0 - 1.0) * Float.exp2 (Float.ofNat ((s % 80).toNat) - 70.0)) st
