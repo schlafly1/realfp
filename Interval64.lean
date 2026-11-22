@@ -20,6 +20,7 @@ import Interval64.InvTrig
 import Interval64.Hyp
 import Interval64.Tan
 import Interval64.Asin
+import Interval64.Pow
 import Interval64.Ops
 import Interval64.Kernel.Nat
 import Interval64.Kernel.Interval

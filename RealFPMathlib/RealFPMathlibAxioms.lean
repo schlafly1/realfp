@@ -8,6 +8,7 @@ import RealFPMathlib.Demo
 import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Transc
+import RealFPMathlib.Examples.Pow
 import RealFPMathlib.Trig
 import RealFPMathlib.Examples.Trig
 import RealFPMathlib.Examples.Conv
@@ -624,3 +625,33 @@ import RealFPMathlib.Tests.IntervalTest
 #print axioms RealFP.IntervalTests.f06
 #print axioms RealFP.IntervalTests.f07
 #print axioms RealFP.IntervalTests.f08
+#print axioms RealFP.IntervalTests.h01
+#print axioms RealFP.IntervalTests.h02
+#print axioms RealFP.IntervalTests.h03
+#print axioms RealFP.IntervalTests.h04
+#print axioms RealFP.IntervalTests.h05
+#print axioms RealFP.IntervalTests.h06
+#print axioms RealFP.IntervalTests.h07
+#print axioms RealFP.IntervalTests.h08
+#print axioms RealFP.IntervalTests.a01
+#print axioms RealFP.IntervalTests.a02
+#print axioms RealFP.IntervalTests.a03
+#print axioms RealFP.IntervalTests.a04
+#print axioms RealFP.IntervalTests.a05
+#print axioms RealFP.Pow.rpow_mem_toSet
+#print axioms RealFP.Iv.pi_mem
+#print axioms RealFP.Iv.atan_mem
+#print axioms RealFP.Iv.atan2_mem
+#print axioms RealFP.Iv.sinh_mem
+#print axioms RealFP.Iv.cosh_mem
+#print axioms RealFP.Iv.tanh_mem
+#print axioms RealFP.Iv.log2_mem
+#print axioms RealFP.Iv.log10_mem
+#print axioms RealFP.Iv.tan_mem
+#print axioms RealFP.Iv.asin_mem
+#print axioms RealFP.Iv.acos_mem
+#print axioms RealFP.Iv.rpow_mem
+#print axioms RealFP.Examples.Pow.R_lo
+#print axioms RealFP.Examples.Pow.R_hi
+#print axioms RealFP.Examples.Pow.rpow_two_half_mem
+#print axioms RealFP.Examples.Pow.rpow_two_half_bounds
