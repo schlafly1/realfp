@@ -5,14 +5,16 @@ representable as floats) and `f` built from the `interval` tactic's operations.
 
 It searches (C kernels over a derivative tape) for an order `K ∈ {2, 4, 6, 8}` and an adaptive
 partition (bisecting the cells with the widest enclosures) such that the kernel Taylor
-quadrature certificate `quadBound` succeeds, then proves it by one `decide +kernel` and
-`RealFP.KQ.integral_bounds_of_quadBound` (standard axioms only).
+quadrature certificate succeeds, then proves it by one `decide +kernel` on `quadBoundS` (the
+derivatives as shared lets, so each `sin x`, `cos x`, … is evaluated once per cell environment)
+and `RealFP.KQS.integral_bounds_of_quadBoundS` (standard axioms only).
 
 ```
 example : (0.7468 : ℝ) ≤ ∫ x in (0:ℝ)..1, Real.exp (-x^2) := by integral_bound
 ```
 -/
 import RealFPMathlib.KQuad
+import RealFPMathlib.KQuadShare
 import RealFPMathlib.IntervalTactic
 
 open Lean Meta Elab Tactic
@@ -97,15 +99,13 @@ where
   posF (X : Interval64) : Bool := !X.lo.isNaN && !X.hi.isNaN && 0 < X.lo
   nzF (X : Interval64) : Bool := !X.lo.isNaN && !X.hi.isNaN && (0 < X.lo || X.hi < 0)
 
-/-- Tree size (the kernel evaluates derivative trees without sharing). -/
-def nodes : IExpr → Nat
-  | .add a b | .sub a b | .mul a b | .div a b | .atan2 a b => nodes a + nodes b + 1
-  | .neg a | .inv a | .sqrt a | .abs a | .pow a _ | .exp a | .log a | .sin a | .cos a | .atan a
-  | .sinh a | .cosh a | .tanh a | .log2 a | .log10 a | .tan a | .asin a | .acos a => nodes a + 1
-  | _ => 1
+/-- Estimated kernel cost of one shared let (transcendental functions dominate). -/
+def letCost : IExpr → Nat
+  | .add .. | .sub .. | .mul .. | .div .. | .neg _ | .inv _ | .pow .. | .abs _ | .var _ | .rat _ => 1
+  | _ => 30
 
 /-- Search `K ∈ {2, 4, 6, 8}` with adaptive partitions (C kernels), and pick the smallest
-    estimated kernel cost `cells × Σ_j |d_j|` (tree sizes). The certificate is checked only by
+    estimated kernel cost `cells × Σ cost(lets)` (shared subexpressions, `quadBoundS`). The certificate is checked only by
     the kernel; the search checks the same conditions on the `Float` mirror (`quadF` cells are
     bit-identical to `quadK`, `domOKF` mirrors `domOK`). -/
 def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
@@ -113,7 +113,7 @@ def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ �
   let mut best : Option (Nat × Nat × List (Nat × Nat × Nat)) := none
   for K in [2, 4, 6, 8] do
     let ds := derivs e K
-    let cost1 := ds.foldl (fun s d => s + nodes d) 0
+    let cost1 := (shareDerivs e K).1.foldl (fun s d => s + letCost d) 1
     if let some cs := adaptCells e K a b lower upper maxCells then
       let dom := cs.all fun c => ds.dropLast.all fun d => domOKF [⟨KQ.toFl c.1, KQ.toFl c.2.2⟩] d
       let cost := cs.length * cost1
@@ -144,16 +144,18 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
     reify xs body
   let some (K, cs, ql, qh) := searchQ e a b qa qb lower upper 512 |
     throwError "integral_bound: no certificate with K ≤ 8 and ≤ 512 adaptive cells"
-  let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, toExpr qa, toExpr qb,
-    toExpr ql, toExpr qh]
+  let (lets, roots) := shareDerivs e K
+  let lst := fun (l : List IExpr) => mkListLit (mkConst ``IExpr) (l.map iexprToExpr)
+  let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, ← lst lets, ← lst roots,
+    toExpr qa, toExpr qb, toExpr ql, toExpr qh]
   let ty := mkApp2 (mkConst ``Eq [Level.one]) (mkConst ``Bool)
-    (mkAppN (mkConst ``quadBound) args) |>.app (mkConst ``Bool.true)
+    (mkAppN (mkConst ``quadBoundS) args) |>.app (mkConst ``Bool.true)
   let pm ← mkFreshExprMVar ty
   let saved ← getGoals
   setGoals [pm.mvarId!]
   evalTactic (← `(tactic| decide +kernel))
   setGoals saved
-  let pf := mkAppN (mkConst ``RealFP.KQ.integral_bounds_of_quadBound) (args.push pm)
+  let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundS) (args.push pm)
   let goal ← getMainGoal
   let g ← goal.assert `hI (← inferType pf) pf
   let (_, g) ← g.intro1P
