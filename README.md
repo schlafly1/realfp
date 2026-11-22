@@ -850,7 +850,7 @@ Native widths for `∫₀¹ e^{-x²}`:
 | Hilbert 6 PD | 21.5 s / 4.9 GB | `pdCheckK`: 2.6 s / 1.8 GB (core) |
 | Hilbert 8 PD | — (too slow) | `pdCheckL`+`ratMatOK`: 3.6 s / 1.9 GB (core) |
 | Hilbert 10 PD | — | `pdCheckL`+`ratMatOK`: 6.7 s / 2.3 GB (core); theorem `hilbert10_posDef` 9.2 s / 4.2 GB |
-| `1−x+x²/2−x³/6+x⁴/24 > 0` on [0,4] | `checkGt`: 14.8 s / 4.4 GB | `interval` tactic: ≈5 s beyond import; Bernstein `checkGtB`: 12.8 s / 4.5 GB |
+| `1−x+x²/2−x³/6+x⁴/24 > 0` on [0,4] | `checkGt`: 14.8 s / 4.4 GB | `interval` tactic: ≈8 s for two goals incl. import, 3.1 GB; Bernstein `checkGtB`: 12.8 s / 4.5 GB |
 | `∫₀¹ e^{-x²}` bounds | `cell1`, 16 cells, width 3e-3: 49.7 s / 7.1 GB | `quadBound` K=4, 4 cells, `[0.7468, 0.7469]`: 7.2 s / 3.9 GB |
 
 ### Bernstein range enclosures (`Interval64/Bernstein.lean`, `RealFPMathlib/Bern.lean`)
