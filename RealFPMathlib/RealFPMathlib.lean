@@ -32,3 +32,4 @@ import RealFPMathlib.TaylorBound
 import RealFPMathlib.KQuad
 import RealFPMathlib.Bern
 import RealFPMathlib.Quad2
+import RealFPMathlib.IntegralTactic

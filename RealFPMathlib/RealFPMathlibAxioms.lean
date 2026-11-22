@@ -19,6 +19,7 @@ import RealFPMathlib.Examples.MatrixPD
 import RealFPMathlib.Examples.PolyQuad
 import RealFPMathlib.Examples.Bernstein
 import RealFPMathlib.Examples.Quad2
+import RealFPMathlib.Examples.IntegralTactic
 import RealFPMathlib.Tests.IntervalTest
 
 #print axioms RealFP.loR_rat
@@ -1016,3 +1017,5 @@ import RealFPMathlib.Tests.IntervalTest
 #print axioms RealFP.Examples.Quad2.c_lo
 #print axioms RealFP.Examples.Quad2.c_hi
 #print axioms RealFP.Examples.Quad2.xy_rect_bounds
+#print axioms RealFP.Examples.IntegralTactic.gauss_lower
+#print axioms RealFP.Examples.IntegralTactic.gauss_icc
