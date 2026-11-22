@@ -300,6 +300,78 @@ monotonicity/centred certificates through `atan2`; plain bisection). Kernel eval
 `atan` is costly (the spec runs `sin`/`cos` certificates): tests `f01`–`f08`, e.g.
 `x - x^3/3 ≤ arctan x` on `[0,1]` (touching, 24 boxes, ~50 s).
 
+## `sinh`, `cosh`, `tanh`, `log2`, `log10` (`Interval64/Hyp.lean`)
+
+`Directed.{sinh,cosh,tanh,log2,log10}{Down,Up}` are correctly rounded toward −∞ / +∞ (CORE-MATH
+`cr_sinh`, `cr_cosh`, `cr_tanh`, `cr_log2`, `cr_log10` under RD/RU, as for `exp`).
+Interval versions `Interval64.sinh/tanh` (increasing), `cosh` (minimum `1` when `0 ∈ X`),
+`log2/log10` (lower endpoint `-∞` when `lo ≤ 0`).
+
+**Specification.** From the `exp`/`log` enclosures: `sinhBounds = ((a-d)/2, (b-c)/2)`,
+`coshBounds = ((a+c)/2, (b+d)/2)` with `[a,b] ∋ eᑫ`, `[c,d] ∋ e⁻ᑫ` (exact Taylor sums for small
+`|q|`); `tanh = sinh / cosh` (`|q| ≥ 22`: `[1 - 2⁻⁶⁰, 1]`); `log2 = log q / log 2`,
+`log10 = log q / log 10` (exact `k` for `q = 2ᵏ` / `10ᵏ`). Ziv loop as for `exp`.
+
+**Proofs (`RealFPMathlib/Hyp.lean`).** `sinhBounds_spec`, `coshBounds_spec`, `tanhBounds_spec`,
+`log2Bounds_spec`, `log10Bounds_spec`, `sinhDown_loR`/`sinhUp_hiR`, `tanhDown_loR`/`tanhUp_hiR`,
+`coshDown_loR_nonneg` …, and
+
+```lean
+theorem sinh_mem_toSet  (hx : x ∈ X.toSet) : Real.sinh x ∈ (Interval64.sinh X).toSet
+theorem cosh_mem_toSet  (hx : x ∈ X.toSet) : Real.cosh x ∈ (Interval64.cosh X).toSet
+theorem tanh_mem_toSet  (hx : x ∈ X.toSet) : Real.tanh x ∈ (Interval64.tanh X).toSet
+theorem log2_mem_toSet  (hx : x ∈ X.toSet) (hx0 : 0 < x) : Real.logb 2 x ∈ (Interval64.log2 X).toSet
+theorem log10_mem_toSet (hx : x ∈ X.toSet) (hx0 : 0 < x) : Real.logb 10 x ∈ (Interval64.log10 X).toSet
+```
+
+## `tan`, `asin`, `acos` (`Interval64/Tan.lean`, `Interval64/Asin.lean`)
+
+CORE-MATH `cr_tan`, `cr_asin`, `cr_acos` under RD/RU. `Interval64.tan X` is
+`[tan↓ lo, tan↑ hi]` when `X` provably contains no pole `π/2 + kπ`, else the whole line;
+`asin` (increasing) and `acos` (decreasing) follow Mathlib's `Real.arcsin`/`Real.arccos`
+(clamped outside `[-1, 1]`).
+
+**Specification.** `tan q = sin q / cos q` from `trigBounds` once the sign of `cos q` is
+certified (`tanRes`; fallback `±∞` never hit for binary64 inputs). `asin`: tiny `q`:
+`q ≤ asin q ≤ q + q³/5`; otherwise a candidate `≈ atan (q/√(1-q²))` widened to `[a, b]` and
+certified by the `sin` enclosures; odd symmetry, `asin (±1) = ±π/2`; `acos q = π/2 - asin q`
+(64 extra bits, `acos 1 = 0` exactly).
+
+**Proofs (`RealFPMathlib/Tan.lean`, `Asin.lean`).** `tanRes_spec`, `tanBounds_spec`,
+`tanDown_loR`, `tanUp_hiR`, `asinBounds_spec`, `acosBounds_spec`, `asinDown_loR` …, and
+
+```lean
+theorem tan_mem_toSet  (hx : x ∈ X.toSet) : Real.tan x ∈ (Interval64.tan X).toSet
+theorem asin_mem_toSet (hx : x ∈ X.toSet) : Real.arcsin x ∈ (Interval64.asin X).toSet
+theorem acos_mem_toSet (hx : x ∈ X.toSet) : Real.arccos x ∈ (Interval64.acos X).toSet
+```
+
+(`Real.tan` at a pole is `0` in Mathlib; the whole-line result covers it.)
+
+## Real power `rpow` (`Interval64/Pow.lean`, `RealFPMathlib/Pow.lean`)
+
+`Interval64.rpow X Y = exp (Y * log X)`, the composition of the outward-rounded enclosures, so
+
+```lean
+theorem RealFP.Pow.rpow_mem_toSet (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) (hx0 : 0 < x) :
+    x ^ y ∈ (Interval64.rpow X Y).toSet          -- Real.rpow, no finiteness assumption
+```
+
+It is sound but **not correctly rounded**: typically 1–3 ulps wide (`rpow 2 (1/2)` is two
+adjacent doubles, `RealFP.Examples.Pow`), wider when `|y · log x|` is large. The vendored
+CORE-MATH `cr_pow` (`iv64_dir_pow_down/up`) is compiled and linked but not used yet (a correctly
+rounded pointwise `pow` needs its own exact Lean spec). Not supported by the `interval` tactic.
+
+## `∈` forms (`RealFP.Iv`)
+
+`Iv.pi_mem`, `Iv.atan_mem`, `Iv.atan2_mem`, `Iv.sinh_mem`, `Iv.cosh_mem`, `Iv.tanh_mem`,
+`Iv.log2_mem`, `Iv.log10_mem`, `Iv.tan_mem`, `Iv.asin_mem`, `Iv.acos_mem`, `Iv.rpow_mem`
+(`RealFPMathlib/Pow.lean`) restate the theorems above with `x ∈ X`, like `Iv.exp_mem`.
+
+**Tactic.** `interval` understands `Real.sinh`, `Real.cosh`, `Real.tanh`, `Real.logb 2`,
+`Real.logb 10`, `Real.tan`, `Real.arcsin`, `Real.arccos` (kernel path `KI.*`, derivatives in
+`IntervalDeriv`); tests `h01`–`h08`, `a01`–`a05` in `Tests/IntervalTest.lean`.
+
 ## Conversions and literals (`Interval64/Conv.lean`)
 
 No new runtime checks; existing operations are unchanged.
@@ -499,7 +571,8 @@ example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
 * **Goals**: `f ≤ c`, `f < c`, `c ≤ f`, `c < f`, `≥`, `>`, conjunctions, `f ∈ Set.Icc a b`;
   `f ≤ g` / `f < g` with no numeral side becomes `f - g ≤ 0`. Binders are introduced.
 * **Terms**: `+ - * / ⁻¹`, `Real.sqrt`, `|·|`, `^ n` (numeral `n : ℕ`), `Real.exp`, `Real.log`,
-  `Real.sin`, `Real.cos`, `Real.arctan`, `Real.pi`, `Complex.arg (↑x + ↑y * Complex.I)`, rational numerals (anything `norm_num` evaluates to a rational,
+  `Real.sin`, `Real.cos`, `Real.arctan`, `Real.pi`, `Real.sinh`, `Real.cosh`, `Real.tanh`,
+  `Real.logb 2`, `Real.logb 10`, `Real.tan`, `Real.arcsin`, `Real.arccos`, `Complex.arg (↑x + ↑y * Complex.I)`, rational numerals (anything `norm_num` evaluates to a rational,
   e.g. `0.1`, `1/3`), any number of real variables.
 * **Variables** need numeral bounds `a ≤ x`, `x ≤ b` (strict ones are weakened, `∧` and
   `Set.Icc`/`Ioo`/… hypotheses are split) in the context.
