@@ -158,6 +158,17 @@ def nsBench : IO Unit := do
       | none => Float.inf
     let tq ← msSince t3
     IO.println s!"  Taylor K={K} (kernel KF path, run natively), {N} cells: width {w} in {tq} ms"
+  IO.println "----- 2D quadrature ∫∫_{[0,1]²} e^(-x²-y²) -----"
+  let g2 : KF.IExpr := .exp (.neg (.add (.mul (.var 0) (.var 0)) (.mul (.var 1) (.var 1))))
+  for d in [4, 6, 8] do
+    let t3 ← IO.monoNanosNow
+    let R := Quad.integrate2E0 g2 0 1 0 1 0 d
+    let tq ← msSince t3
+    IO.println s!"  E0, 2^{d}×2^{d} cells: width {R.hi - R.lo} in {tq} ms"
+    let t4 ← IO.monoNanosNow
+    let R1 := Quad.integrate2E1 g2 0 1 0 1 0 d
+    let tq1 ← msSince t4
+    IO.println s!"  E1 (inner 2nd order), 2^{d}×2^{d} cells: width {R1.hi - R1.lo} in {tq1} ms"
 
 def main : IO Unit := do
   IO.println "Interval64 benches"

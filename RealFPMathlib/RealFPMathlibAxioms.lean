@@ -18,6 +18,7 @@ import RealFPMathlib.Examples.Ops
 import RealFPMathlib.Examples.MatrixPD
 import RealFPMathlib.Examples.PolyQuad
 import RealFPMathlib.Examples.Bernstein
+import RealFPMathlib.Examples.Quad2
 import RealFPMathlib.Tests.IntervalTest
 
 #print axioms RealFP.loR_rat
@@ -1009,3 +1010,9 @@ import RealFPMathlib.Tests.IntervalTest
 #print axioms RealFP.Quad2.integral2_mem_integrate2E0
 #print axioms RealFP.Quad2.integral2_mem_integrate2E1
 #print axioms RealFP.Quad2.setIntegral_rect_eq
+#print axioms RealFP.Examples.Quad2.R_ok
+#print axioms RealFP.Examples.Quad2.toReal_zero
+#print axioms RealFP.Examples.Quad2.toReal_one
+#print axioms RealFP.Examples.Quad2.c_lo
+#print axioms RealFP.Examples.Quad2.c_hi
+#print axioms RealFP.Examples.Quad2.xy_rect_bounds

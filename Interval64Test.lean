@@ -775,6 +775,20 @@ def nsTests : IO Nat := do
   let Rh := e4.eval (ofRatInterval 0 4)
   IO.println s!"Bernstein (200 random 1D × 15 points, 100 random 2D × 4 points, sign certs): {bFails} failures; e4 on [0,4]: Bernstein deg 12 [{Rb.lo}, {Rb.hi}] vs Horner [{Rh.lo}, {Rh.hi}]"
   fails := fails + bFails
+  -- 7. 2D quadrature over rectangles.
+  let mut q2Fails := 0
+  let g2 : KF.IExpr := .exp (.neg (.add (.mul (.var 0) (.var 0)) (.mul (.var 1) (.var 1))))
+  -- (∫₀¹ e^{-x²})² = 0.557746285351033...
+  let g2v : Rat := 557746285351033 / 1000000000000000
+  let S0 := Quad.integrate2E0 g2 0 1 0 1 1e-3 6
+  let S1 := Quad.integrate2E1 g2 0 1 0 1 1e-4 7
+  for S in [S0, S1] do
+    if !(ivContains S (g2v - 1/10^14) && ivContains S (g2v + 1/10^14)) then q2Fails := q2Fails + 1
+  let xyE : KF.IExpr := .mul (.var 0) (.var 1)
+  if !ivContains (Quad.integrate2E0 xyE 0 2 (-1) 3 1e-3 6) 8 then q2Fails := q2Fails + 1
+  if !ivContains (Quad.integrate2E1 xyE 0 2 (-1) 3 1e-3 6) 8 then q2Fails := q2Fails + 1
+  IO.println s!"2D quadrature (∫∫ e^(-x²-y²) on [0,1]², ∫∫ xy): {q2Fails} failures; E0 [{S0.lo}, {S0.hi}], E1 [{S1.lo}, {S1.hi}]"
+  fails := fails + q2Fails
   return fails
 
 
