@@ -2,3 +2,4 @@
 *.olean
 /build
 RealFPMathlib/.lake
+gpu/build/

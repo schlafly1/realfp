@@ -1,0 +1,61 @@
+GPU: NVIDIA GB10, 48 SMs, compute capability 12.1; CPU threads (OpenMP): 20
+
+## Correctness
+
+f0 grid 2^24 boxes, fp64: GPU vs CPU(rnerr) endpoint mismatches 0 / 16777216; reduced result identical; GPU vs fesetround reference on 262144 sampled boxes: 0 mismatches
+f0 4194304 random boxes, fp64: GPU vs CPU(rnerr) endpoint mismatches 0; GPU vs fesetround on 262144: 0
+f0 grid 2^20 boxes, fp32 (contrast only): GPU vs CPU fp32 fesetround mismatches 0
+
+f1 grid 2^24 boxes, fp64: GPU vs CPU(rnerr) endpoint mismatches 0 / 16777216; reduced result identical; GPU vs fesetround reference on 262144 sampled boxes: 0 mismatches
+f1 4194304 random boxes, fp64: GPU vs CPU(rnerr) endpoint mismatches 0; GPU vs fesetround on 262144: 0
+f1 grid 2^20 boxes, fp32 (contrast only): GPU vs CPU fp32 fesetround mismatches 0
+
+CORRECTNESS: all bit-identical
+
+## f0 grid (claim f >= -0.015625 on [-2,2]^2)
+
+| boxes | failing boxes | GPU kernel | GPU call | CPU 1 thread | CPU 20 threads | GPU fp32 kernel | GPU call vs 1 thread | GPU call vs 20 threads |
+|---|---|---|---|---|---|---|---|---|
+| 2^10 | 120 | 0.00912 ms (0.112 G/s) | 0.0278 ms | 0.0401 ms (25.5 M/s) | 0.00819 ms (125 M/s) | 0.00691 ms | 1.44x | 0.29x |
+| 2^12 | 224 | 0.00982 ms (0.417 G/s) | 0.0277 ms | 0.155 ms (26.5 M/s) | 0.0201 ms (203 M/s) | 0.00598 ms | 5.58x | 0.73x |
+| 2^14 | 408 | 0.0148 ms (1.11 G/s) | 0.0337 ms | 0.608 ms (26.9 M/s) | 0.0606 ms (270 M/s) | 0.00666 ms | 18.02x | 1.80x |
+| 2^16 | 696 | 0.036 ms (1.82 G/s) | 0.0556 ms | 2.41 ms (27.2 M/s) | 0.238 ms (275 M/s) | 0.0139 ms | 43.33x | 4.29x |
+| 2^18 | 928 | 0.113 ms (2.33 G/s) | 0.133 ms | 9.58 ms (27.4 M/s) | 1.58 ms (166 M/s) | 0.0321 ms | 72.00x | 11.84x |
+| 2^20 | 20 | 0.371 ms (2.83 G/s) | 0.39 ms | 38.2 ms (27.4 M/s) | 4.2 ms (249 M/s) | 0.0679 ms | 97.95x | 10.76x |
+| 2^22 | 0 | 1.4 ms (3 G/s) | 1.42 ms | 153 ms (27.4 M/s) | 14.5 ms (290 M/s) | 0.214 ms | 107.61x | 10.19x |
+| 2^24 | 0 | 5.52 ms (3.04 G/s) | 5.54 ms | 611 ms (27.5 M/s) | 51.6 ms (325 M/s) | 0.793 ms | 110.34x | 9.32x |
+| 2^26 | 0 | 22 ms (3.05 G/s) | 22 ms | 2.44e+03 ms (27.5 M/s) | 182 ms (368 M/s) | 3.11 ms | 111.01x | 8.29x |
+
+## f1 grid (claim f <= 0.99 on [-4,4]^2)
+
+| boxes | failing boxes | GPU kernel | GPU call | CPU 1 thread | CPU 20 threads | GPU fp32 kernel | GPU call vs 1 thread | GPU call vs 20 threads |
+|---|---|---|---|---|---|---|---|---|
+| 2^10 | 126 | 0.017 ms (0.0604 G/s) | 0.0358 ms | 0.048 ms (21.3 M/s) | 0.00826 ms (124 M/s) | 0.00685 ms | 1.34x | 0.23x |
+| 2^12 | 260 | 0.017 ms (0.242 G/s) | 0.0358 ms | 0.189 ms (21.7 M/s) | 0.0232 ms (177 M/s) | 0.00691 ms | 5.28x | 0.65x |
+| 2^14 | 348 | 0.0288 ms (0.568 G/s) | 0.0479 ms | 0.752 ms (21.8 M/s) | 0.072 ms (228 M/s) | 0.00867 ms | 15.70x | 1.50x |
+| 2^16 | 159 | 0.0763 ms (0.859 G/s) | 0.0961 ms | 3 ms (21.9 M/s) | 0.27 ms (243 M/s) | 0.0131 ms | 31.20x | 2.81x |
+| 2^18 | 0 | 0.256 ms (1.02 G/s) | 0.276 ms | 12 ms (21.9 M/s) | 1.73 ms (151 M/s) | 0.0336 ms | 43.32x | 6.28x |
+| 2^20 | 0 | 0.918 ms (1.14 G/s) | 0.939 ms | 47.9 ms (21.9 M/s) | 4.9 ms (214 M/s) | 0.0724 ms | 50.98x | 5.22x |
+| 2^22 | 0 | 3.57 ms (1.17 G/s) | 3.59 ms | 191 ms (21.9 M/s) | 17.3 ms (243 M/s) | 0.226 ms | 53.27x | 4.81x |
+| 2^24 | 0 | 14.2 ms (1.18 G/s) | 14.2 ms | 765 ms (21.9 M/s) | 62.3 ms (269 M/s) | 0.848 ms | 53.86x | 4.38x |
+| 2^26 | 0 | 56.7 ms (1.18 G/s) | 56.7 ms | 3.06e+03 ms (21.9 M/s) | 223 ms (301 M/s) | 3.31 ms | 54.06x | 3.94x |
+
+## Arbitrary box list, f1 (H2D 32 B/box + kernel + D2H 16 B/box)
+
+| boxes | GPU call | GPU kernel | CPU 1 thread | CPU 20 threads | GPU vs 1 thread | GPU vs 20 threads |
+|---|---|---|---|---|---|---|
+| 2^0 | 23.4 us | 9.47 us | 0.272 us | 2.46 us | 0.01x | 0.11x |
+| 2^2 | 23.4 us | 9.54 us | 0.4 us | 2.46 us | 0.02x | 0.11x |
+| 2^4 | 23.4 us | 10.5 us | 0.944 us | 2.43 us | 0.04x | 0.10x |
+| 2^6 | 23.4 us | 9.31 us | 3.09 us | 2.74 us | 0.13x | 0.12x |
+| 2^8 | 23.7 us | 15.1 us | 11.7 us | 3.2 us | 0.49x | 0.14x |
+| 2^10 | 23.5 us | 12.4 us | 46.2 us | 6.05 us | 1.97x | 0.26x |
+| 2^12 | 25.5 us | 14.1 us | 188 us | 18.3 us | 7.39x | 0.72x |
+| 2^14 | 52.2 us | 27.2 us | 817 us | 69 us | 15.66x | 1.32x |
+| 2^16 | 126 us | 64.2 us | 3.34e+03 us | 287 us | 26.51x | 2.28x |
+| 2^18 | 437 us | 217 us | 1.35e+04 us | 1.63e+03 us | 30.78x | 3.74x |
+| 2^20 | 1.68e+03 us | 839 us | 5.4e+04 us | 5.14e+03 us | 32.13x | 3.06x |
+| 2^22 | 6.71e+03 us | 3.31e+03 us | 2.16e+05 us | 1.9e+04 us | 32.15x | 2.82x |
+| 2^24 | 2.75e+04 us | 1.32e+04 us | 8.63e+05 us | 6.85e+04 us | 31.40x | 2.49x |
+
+OVERALL: OK (all GPU results bit-identical to CPU)
