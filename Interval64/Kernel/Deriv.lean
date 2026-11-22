@@ -24,6 +24,10 @@ def IExpr.diff (i : Nat) : IExpr → IExpr
   | .add a b => .add (a.diff i) (b.diff i)
   | .sub a b => .sub (a.diff i) (b.diff i)
   | .mul a b => .add (.mul (a.diff i) b) (.mul a (b.diff i))
+  -- `a / b^m` keeps a single power of `b` in the denominator (`(a' b - m a b') / b^(m+1)`),
+  -- so iterated derivatives of `1/x`, `1/(1+x²)`, … do not nest `((b²)²)²`.
+  | .div a (.pow b (n + 1)) =>
+    .div (.sub (.mul (a.diff i) b) (.mul (.mul (.rat (n + 1 : Nat)) a) (b.diff i))) (.pow b (n + 2))
   | .div a b => .div (.sub (.mul (a.diff i) b) (.mul a (b.diff i))) (.pow b 2)
   | .neg a => .neg (a.diff i)
   | .inv a => .neg (.div (a.diff i) (.pow a 2))

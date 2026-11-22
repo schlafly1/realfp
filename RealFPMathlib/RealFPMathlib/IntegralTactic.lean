@@ -3,7 +3,8 @@ The `integral_bound` tactic: proves `c ≤ ∫ x in a..b, f x`, `∫ x in a..b, 
 and conjunctions / `∈ Set.Icc` of these, with `a`, `b`, `c` rational numerals (`a`, `b` exactly
 representable as floats) and `f` built from the `interval` tactic's operations.
 
-It searches natively for an order `K` and a uniform partition such that the kernel Taylor
+It searches (C kernels over a derivative tape) for an order `K ∈ {2, 4, 6, 8}` and an adaptive
+partition (bisecting the cells with the widest enclosures) such that the kernel Taylor
 quadrature certificate `quadBound` succeeds, then proves it by one `decide +kernel` and
 `RealFP.KQ.integral_bounds_of_quadBound` (standard axioms only).
 
@@ -15,7 +16,7 @@ import RealFPMathlib.KQuad
 import RealFPMathlib.IntervalTactic
 
 open Lean Meta Elab Tactic
-open Interval64.KF Interval64.KF.KQ RealFP.IntervalTactic
+open Interval64 Interval64.KF Interval64.KF.KQ RealFP.IntervalTactic
 
 namespace RealFP.IntegralTactic
 
@@ -24,27 +25,108 @@ def exactBits (q : ℚ) : Option Nat :=
   let k := KI.ofRat q
   if k.lo == k.hi && ratOf k.lo == some q then some k.lo else none
 
-/-- Search `(K, N)` (`K ∈ {4, 6, 8}`, `N ≤ 2^maxLog`) with `quadBound` true for `ql`, `qh`. -/
-def searchQ (e : IExpr) (a b : Nat) (qa qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxLog : Nat) :
-    Option (Nat × Nat × ℚ × ℚ) := Id.run do
-  for lg in List.range (maxLog + 1) do
-    for K in [4, 6, 8] do
-      let N := 2 ^ lg
-      let cs := uniformCells (KQ.toFl a) (KQ.toFl b) N
-      match quadK e K a b cs with
-      | some R =>
-        match ratOf R.lo, ratOf R.hi with
-        | some l, some h =>
-          let okL := match lower with
-            | some (c, true) => decide (c < l) | _ => true
-          let okU := match upper with
-            | some (c, true) => decide (h < c) | _ => true
-          let ql := match lower with | some (c, false) => c | _ => l
-          let qh := match upper with | some (c, false) => c | _ => h
-          if okL && okU && quadBound e K a b cs qa qb ql qh then return some (K, N, ql, qh)
-        | _, _ => pure ()
-      | none => pure ()
+/-- Midpoint bit pattern of two finite bit patterns. -/
+def midBits (x y : Nat) : Nat := bitsOf (0.5 * KQ.toFl x + 0.5 * KQ.toFl y)
+
+def flCell (c : Nat × Nat × Nat) : Float × Float × Float := (KQ.toFl c.1, KQ.toFl c.2.1, KQ.toFl c.2.2)
+
+/-- Bisect a cell at its point. -/
+def splitCell (c : Nat × Nat × Nat) : List (Nat × Nat × Nat) :=
+  [(c.1, midBits c.1 c.2.1, c.2.1), (c.2.1, midBits c.2.1 c.2.2, c.2.2)]
+
+/-- Does the enclosure `[l, h]` (exact rationals of its endpoints) meet the requested bounds? -/
+def meets (l h : Float) (lower upper : Option (ℚ × Bool)) : Bool :=
+  match ratOf (bitsOf l), ratOf (bitsOf h) with
+  | some l, some h =>
+    let okL := match lower with
+      | some (c, true) => decide (c < l)
+      | some (c, false) => decide (c ≤ l)
+      | none => true
+    let okU := match upper with
+      | some (c, true) => decide (h < c)
+      | some (c, false) => decide (h ≤ c)
+      | none => true
+    okL && okU
+  | _, _ => false
+
+/-- Adaptive partition for order `K`: bisect the cells with the widest enclosures (C kernels, `quadF`
+    cells) until the Float enclosure meets the bounds; at most `maxCells` cells. -/
+def adaptCells (e : IExpr) (K : Nat) (a b : Nat) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
+    Option (List (Nat × Nat × Nat)) := Id.run do
+  let some t := derivTape e K | return none
+  let mut cs : List (Nat × Nat × Nat) := [(a, midBits a b, b)]
+  for _ in List.range 64 do
+    let ivs := cs.map fun c => cellTape t (flCell c)
+    let tot := ivs.foldr (· + ·) zeroI
+    if meets tot.lo tot.hi lower upper then return some cs
+    if cs.length ≥ maxCells then return none
+    let ws := ivs.map fun I => let w := I.hi - I.lo; if w.isNaN then Float.inf else w
+    let wmax := ws.foldl max 0
+    cs := (cs.zip ws).flatMap fun (c, w) => if w ≥ 0.25 * wmax then splitCell c else [c]
   return none
+
+/-- Float mirror of `domOK` (same `Interval64` operations under `toI`; untrusted). -/
+def domOKF (env : List Interval64) : IExpr → Bool
+  | .var _ => true
+  | .rat _ => true
+  | .add a b => domOKF env a && domOKF env b
+  | .sub a b => domOKF env a && domOKF env b
+  | .mul a b => domOKF env a && domOKF env b
+  | .div a b => domOKF env a && domOKF env b && nzF (evalI env b)
+  | .neg a => domOKF env a
+  | .inv a => domOKF env a && nzF (evalI env a)
+  | .sqrt a => domOKF env a && posF (evalI env a)
+  | .abs _ => false
+  | .pow a _ => domOKF env a
+  | .exp a => domOKF env a
+  | .log a => domOKF env a && posF (evalI env a)
+  | .sin a => domOKF env a
+  | .cos a => domOKF env a
+  | .pi => true
+  | .atan a => domOKF env a
+  | .atan2 _ _ => false
+  | .sinh a => domOKF env a
+  | .cosh a => domOKF env a
+  | .tanh a => domOKF env a
+  | .log2 a => domOKF env a && posF (evalI env a)
+  | .log10 a => domOKF env a && posF (evalI env a)
+  | .tan a => domOKF env a && nzF (evalI env (.cos a))
+  | .asin a => domOKF env a && posF (evalI env (.sub (.rat 1) (.pow a 2)))
+  | .acos a => domOKF env a && posF (evalI env (.sub (.rat 1) (.pow a 2)))
+where
+  posF (X : Interval64) : Bool := !X.lo.isNaN && !X.hi.isNaN && 0 < X.lo
+  nzF (X : Interval64) : Bool := !X.lo.isNaN && !X.hi.isNaN && (0 < X.lo || X.hi < 0)
+
+/-- Tree size (the kernel evaluates derivative trees without sharing). -/
+def nodes : IExpr → Nat
+  | .add a b | .sub a b | .mul a b | .div a b | .atan2 a b => nodes a + nodes b + 1
+  | .neg a | .inv a | .sqrt a | .abs a | .pow a _ | .exp a | .log a | .sin a | .cos a | .atan a
+  | .sinh a | .cosh a | .tanh a | .log2 a | .log10 a | .tan a | .asin a | .acos a => nodes a + 1
+  | _ => 1
+
+/-- Search `K ∈ {2, 4, 6, 8}` with adaptive partitions (C kernels), and pick the smallest
+    estimated kernel cost `cells × Σ_j |d_j|` (tree sizes). The certificate is checked only by
+    the kernel; the search checks the same conditions on the `Float` mirror (`quadF` cells are
+    bit-identical to `quadK`, `domOKF` mirrors `domOK`). -/
+def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
+    Option (Nat × List (Nat × Nat × Nat) × ℚ × ℚ) := Id.run do
+  let mut best : Option (Nat × Nat × List (Nat × Nat × Nat)) := none
+  for K in [2, 4, 6, 8] do
+    let ds := derivs e K
+    let cost1 := ds.foldl (fun s d => s + nodes d) 0
+    if let some cs := adaptCells e K a b lower upper maxCells then
+      let dom := cs.all fun c => ds.dropLast.all fun d => domOKF [⟨KQ.toFl c.1, KQ.toFl c.2.2⟩] d
+      let cost := cs.length * cost1
+      if dom && (match best with | some (c, _, _) => cost < c | none => true) then
+        best := some (cost, K, cs)
+  let some (_, K, cs) := best | return none
+  let R := quadF e K (cs.map flCell)
+  match ratOf (bitsOf R.lo), ratOf (bitsOf R.hi) with
+  | some l, some h =>
+    let ql := match lower with | some (c, false) => c | _ => l
+    let qh := match upper with | some (c, false) => c | _ => h
+    return some (K, cs, ql, qh)
+  | _, _ => return none
 
 /-- Prove `ql ≤ ∫ ∧ ∫ ≤ qh` for the integral `I = ∫ x in a..b, body x`, adding it as `hI`. -/
 def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := do
@@ -60,9 +142,8 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
   let e ← lambdaTelescope f fun xs body => do
     unless xs.size == 1 do throwError "integral_bound: unexpected integrand"
     reify xs body
-  let some (K, N, ql, qh) := searchQ e a b qa qb lower upper 8 |
-    throwError "integral_bound: no certificate with K ≤ 8 and ≤ 256 cells"
-  let cs := uniformCells (KQ.toFl a) (KQ.toFl b) N
+  let some (K, cs, ql, qh) := searchQ e a b qa qb lower upper 512 |
+    throwError "integral_bound: no certificate with K ≤ 8 and ≤ 512 adaptive cells"
   let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, toExpr qa, toExpr qb,
     toExpr ql, toExpr qh]
   let ty := mkApp2 (mkConst ``Eq [Level.one]) (mkConst ``Bool)

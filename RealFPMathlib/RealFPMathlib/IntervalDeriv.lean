@@ -95,7 +95,18 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     intro h
     have := (iha h.1).div (ihb h.2.1) (by rw [hs]; exact h.2.2)
     simp only [hs] at this
-    exact this
+    cases b
+    case pow c n =>
+      cases n with
+      | zero => exact this
+      | succ n =>
+        refine this.congr_deriv ?_
+        have hc : c.denote xs ≠ 0 := fun h0 => h.2.2 (by simp [IExpr.denote, h0])
+        simp only [IExpr.diff, IExpr.denote]
+        push_cast
+        field_simp
+        ring
+    all_goals exact this
   | neg a iha => intro h; exact (iha h).neg
   | inv a iha =>
     intro h
