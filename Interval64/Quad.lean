@@ -14,9 +14,12 @@ Rigorous quadrature.
 * `IExpr` versions `integrateE0 e …`, `integrateE1 e …` (`f x = e.denote [x]`, derivative by
   `IExpr.diff 0`).
 Soundness: `RealFPMathlib/Quad.lean` (Mathlib `intervalIntegral`).
+At runtime `integrateE0` / `integrateE1` compile `e` to a tape (`Interval64.Tape`) and run the
+whole adaptive rule in C (`c/iv64_quad.h`, `@[implemented_by]`, bit-identical).
 -/
 import Interval64.Poly
 import Interval64.Kernel.Deriv
+import Interval64.Tape
 
 namespace Interval64.Quad
 
@@ -56,11 +59,31 @@ def finite (x : Float) : Bool := !x.isNaN && !x.isInf
 def integrate (cell : Float → Float → Interval64) (a b tol : Float) (fuel : Nat) : Interval64 :=
   if finite a && finite b && decide (a ≤ b) then quadAux cell fuel tol a b else whole
 
+/-- C quadrature over a tape (`c/iv64_quad.h`): `order` 0 is `cell0`, 1 is `cell1`. -/
+@[extern "iv64_quad_integrate"]
+opaque integrateTapeExt (code : @& ByteArray) (consts : @& FloatArray)
+  (fns : @& Array (Interval64 → Interval64)) (atan2 : @& (Interval64 → Interval64 → Interval64))
+  (rF rD : UInt32) (order : UInt8) (a b tol : Float) (fuel : @& Nat) : Interval64
+
+def integrateE0Impl (e : IExpr) (a b tol : Float) (fuel : Nat) : Interval64 :=
+  match KF.Tape.compile [e] with
+  | some t => integrateTapeExt t.code t.consts KF.Tape.unaryFns KF.Tape.atan2Fn t.roots[0]!
+      t.roots[0]! 0 a b tol fuel
+  | none => integrate (cell0 fun X => evalI [X] e) a b tol fuel
+
+def integrateE1Impl (e : IExpr) (a b tol : Float) (fuel : Nat) : Interval64 :=
+  match KF.Tape.compile [e, e.diff 0] with
+  | some t => integrateTapeExt t.code t.consts KF.Tape.unaryFns KF.Tape.atan2Fn t.roots[0]!
+      t.roots[1]! 1 a b tol fuel
+  | none => integrate (cell1 (fun X => evalI [X] e) (fun X => evalI [X] (e.diff 0))) a b tol fuel
+
 /-- `∫_a^b e(x) dx`, zeroth-order cells. -/
+@[implemented_by integrateE0Impl]
 def integrateE0 (e : IExpr) (a b tol : Float) (fuel : Nat) : Interval64 :=
   integrate (cell0 fun X => evalI [X] e) a b tol fuel
 
 /-- `∫_a^b e(x) dx`, second-order cells (derivative `e.diff 0`). -/
+@[implemented_by integrateE1Impl]
 def integrateE1 (e : IExpr) (a b tol : Float) (fuel : Nat) : Interval64 :=
   integrate (cell1 (fun X => evalI [X] e) (fun X => evalI [X] (e.diff 0))) a b tol fuel
 

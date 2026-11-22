@@ -14,6 +14,7 @@ Soundness: `RealFP.KQ.integral_mem_quadK` (Mathlib layer). The partition is untr
 (`uniformCells` computes one natively).
 -/
 import Interval64.Kernel.Deriv
+import Interval64.Tape
 
 namespace Interval64.KF.KQ
 
@@ -90,6 +91,65 @@ def quadBound (e : IExpr) (K a b : Nat) (cs : List (Nat × Nat × Nat)) (qa qb q
     | some l, some h => decide (ql ≤ l) && decide (h ≤ qh)
     | _, _ => false
   | none => false
+
+/-! ### `Interval64` (Float) mirror, for native search
+
+`quadF e K cs` performs the same `Interval64` operations as `quadK` (via `evalI`, which equals
+`evalK` under `toI`: `evalK_toI`), on `Float` cells; at runtime it runs in C over a tape
+(`iv64_quad_taylor`). Untrusted: the tactic only uses it to choose a certificate, which the
+kernel then checks with `quadK`. -/
+
+def ptF (x : Float) : Interval64 := ⟨x, x⟩
+
+def momF (lo m hi : Float) (j : Nat) : Interval64 :=
+  (pown (ptF hi - ptF m) (j + 1) - pown (ptF lo - ptF m) (j + 1)) *
+    ofRat (1 / (fact (j + 1) : Rat))
+
+def taylorF (lo m hi : Float) : Nat → List IExpr → Interval64
+  | _, [] => zeroI
+  | _, [_] => zeroI
+  | j, d :: ds => evalI [ptF m] d * momF lo m hi j + taylorF lo m hi (j + 1) ds
+
+def cellFSpec (ds : List IExpr) (K : Nat) (dK : IExpr) (c : Float × Float × Float) : Interval64 :=
+  taylorF c.1 c.2.1 c.2.2 0 ds + evalI [⟨c.1, c.2.2⟩] dK * momF c.1 c.2.1 c.2.2 K
+
+def sumF (ds : List IExpr) (K : Nat) (dK : IExpr) : List (Float × Float × Float) → Interval64
+  | [] => zeroI
+  | c :: cs => cellFSpec ds K dK c + sumF ds K dK cs
+
+def quadFSpec (e : IExpr) (K : Nat) (cs : List (Float × Float × Float)) : Interval64 :=
+  let ds := derivs e K
+  sumF ds K (ds.getLastD e) cs
+
+@[extern "iv64_quad_taylor"]
+opaque quadTaylorExt (code : @& ByteArray) (consts : @& FloatArray)
+  (fns : @& Array (Interval64 → Interval64)) (atan2 : @& (Interval64 → Interval64 → Interval64))
+  (roots : @& ByteArray) (cells : @& FloatArray) : Interval64
+
+@[extern "iv64_quad_taylor_cell"]
+opaque quadTaylorCellExt (code : @& ByteArray) (consts : @& FloatArray)
+  (fns : @& Array (Interval64 → Interval64)) (atan2 : @& (Interval64 → Interval64 → Interval64))
+  (roots : @& ByteArray) (lo m hi : Float) : Interval64
+
+def cellsArr (cs : List (Float × Float × Float)) : FloatArray :=
+  cs.foldl (fun a c => ((a.push c.1).push c.2.1).push c.2.2) FloatArray.empty
+
+/-- Tape of `d_0, …, d_K` (C needs `(K+1)! < 2^53`). -/
+def derivTape (e : IExpr) (K : Nat) : Option Tape.Tape :=
+  if K ≤ 17 then Tape.compile (derivs e K) else none
+
+def quadFImpl (e : IExpr) (K : Nat) (cs : List (Float × Float × Float)) : Interval64 :=
+  match derivTape e K with
+  | some t => quadTaylorExt t.code t.consts Tape.unaryFns Tape.atan2Fn t.rootBytes (cellsArr cs)
+  | none => quadFSpec e K cs
+
+/-- Taylor quadrature on `Interval64` (C at runtime). -/
+@[implemented_by quadFImpl]
+def quadF (e : IExpr) (K : Nat) (cs : List (Float × Float × Float)) : Interval64 := quadFSpec e K cs
+
+/-- One cell with a precompiled tape (for adaptive partitioning). -/
+def cellTape (t : Tape.Tape) (c : Float × Float × Float) : Interval64 :=
+  quadTaylorCellExt t.code t.consts Tape.unaryFns Tape.atan2Fn t.rootBytes c.1 c.2.1 c.2.2
 
 /-! ### Untrusted helpers -/
 
