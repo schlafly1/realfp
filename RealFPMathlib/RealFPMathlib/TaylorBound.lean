@@ -11,7 +11,7 @@ Taylor bounds with an explicit derivative chain, and the Taylor cell rule for in
 -/
 import RealFPMathlib.Quad
 
-open Set intervalIntegral MeasureTheory Finset
+open Interval64 Interval64.KF Set intervalIntegral MeasureTheory Finset
 
 noncomputable section
 
@@ -150,5 +150,111 @@ theorem taylor_upper_left (K : ℕ) (F : ℕ → ℝ → ℝ) {a m : ℝ} (c : �
   have e : -c * (m - x) ^ K / (K.factorial : ℝ) = -(c * (m - x) ^ K / (K.factorial : ℝ)) := by ring
   have e2 : (-1 : ℝ) ^ K * (-F 0 x - -tay F m K x) = -((-1) ^ K * (F 0 x - tay F m K x)) := by ring
   linarith
+
+/-! ### Two-sided remainder bounds for even `K` -/
+
+theorem rem_lower {K : ℕ} (hK : Even K) {F : ℕ → ℝ → ℝ} {lo m hi : ℝ} (h1 : lo ≤ m) (h2 : m ≤ hi)
+    (hd : ∀ j < K, ∀ t ∈ Icc lo hi, HasDerivAt (F j) (F (j + 1) t) t) {c : ℝ}
+    (hc : ∀ t ∈ Icc lo hi, c ≤ F K t) {x : ℝ} (hx : x ∈ Icc lo hi) :
+    c * ((x - m) ^ K / (K.factorial : ℝ)) ≤ F 0 x - tay F m K x := by
+  rw [← mul_div_assoc]
+  rcases le_total m x with hmx | hxm
+  · exact taylor_lower_right K F c (fun j hj t ht => hd j hj t ⟨h1.trans ht.1, ht.2⟩)
+      (fun t ht => hc t ⟨h1.trans ht.1, ht.2⟩) x ⟨hmx, hx.2⟩
+  · have := taylor_lower_left K F c (fun j hj t ht => hd j hj t ⟨ht.1, ht.2.trans h2⟩)
+      (fun t ht => hc t ⟨ht.1, ht.2.trans h2⟩) x ⟨hx.1, hxm⟩
+    rwa [hK.neg_one_pow, one_mul, show m - x = -(x - m) by ring, hK.neg_pow] at this
+
+theorem rem_upper {K : ℕ} (hK : Even K) {F : ℕ → ℝ → ℝ} {lo m hi : ℝ} (h1 : lo ≤ m) (h2 : m ≤ hi)
+    (hd : ∀ j < K, ∀ t ∈ Icc lo hi, HasDerivAt (F j) (F (j + 1) t) t) {c : ℝ}
+    (hc : ∀ t ∈ Icc lo hi, F K t ≤ c) {x : ℝ} (hx : x ∈ Icc lo hi) :
+    F 0 x - tay F m K x ≤ c * ((x - m) ^ K / (K.factorial : ℝ)) := by
+  rw [← mul_div_assoc]
+  rcases le_total m x with hmx | hxm
+  · exact taylor_upper_right K F c (fun j hj t ht => hd j hj t ⟨h1.trans ht.1, ht.2⟩)
+      (fun t ht => hc t ⟨h1.trans ht.1, ht.2⟩) x ⟨hmx, hx.2⟩
+  · have := taylor_upper_left K F c (fun j hj t ht => hd j hj t ⟨ht.1, ht.2.trans h2⟩)
+      (fun t ht => hc t ⟨ht.1, ht.2.trans h2⟩) x ⟨hx.1, hxm⟩
+    rwa [hK.neg_one_pow, one_mul, show m - x = -(x - m) by ring, hK.neg_pow] at this
+
+/-- A real `y` between every lower and every upper bound of `g` on `S` lies in any interval
+    enclosing `g` on `S` (`S` nonempty). -/
+theorem mem_of_bounds {D : Interval64} {S : Set ℝ} {g : ℝ → ℝ} (hD : ∀ t ∈ S, g t ∈ D)
+    {t₀ : ℝ} (ht₀ : t₀ ∈ S) {y : ℝ} (hl : ∀ c, (∀ t ∈ S, c ≤ g t) → c ≤ y)
+    (hu : ∀ c, (∀ t ∈ S, g t ≤ c) → y ≤ c) : y ∈ D := by
+  obtain ⟨⟨h1, h1'⟩, ⟨h2, h2'⟩⟩ := mem_toSet_iff_toE.1 (hD t₀ ht₀)
+  refine mem_toSet_of_toE h1 h2 ?_ ?_
+  · rcases RealFP.Quad.ereal_cases D.lo.toE with h | h | ⟨r, h⟩
+    · rw [h]; exact bot_le
+    · rw [h] at h1'; exact absurd h1' (by simp)
+    · rw [h]; refine EReal.coe_le_coe_iff.2 (hl r fun t ht => ?_)
+      have := (mem_toSet_iff_toE.1 (hD t ht)).1.2; rw [h] at this; exact EReal.coe_le_coe_iff.1 this
+  · rcases RealFP.Quad.ereal_cases D.hi.toE with h | h | ⟨r, h⟩
+    · rw [h] at h2'; exact absurd h2' (by simp)
+    · rw [h]; exact le_top
+    · rw [h]; refine EReal.coe_le_coe_iff.2 (hu r fun t ht => ?_)
+      have := (mem_toSet_iff_toE.1 (hD t ht)).2.2; rw [h] at this; exact EReal.coe_le_coe_iff.1 this
+
+/-! ### The Taylor cell -/
+
+theorem integral_powTerm (m lo hi : ℝ) (j : ℕ) :
+    (∫ x in lo..hi, (x - m) ^ j / (j.factorial : ℝ)) = mom lo m hi j := by
+  rw [integral_eq_sub_of_hasDerivAt (fun x _ => hasDerivAt_powTerm m j x)
+    (by apply Continuous.intervalIntegrable; fun_prop)]
+  simp only [mom]; ring
+
+theorem integral_tay (F : ℕ → ℝ → ℝ) (m lo hi : ℝ) (K : ℕ) :
+    (∫ x in lo..hi, tay F m K x) = ∑ j ∈ range K, F j m * mom lo m hi j := by
+  unfold tay
+  rw [intervalIntegral.integral_finsetSum (fun j _ => by
+    apply Continuous.intervalIntegrable; fun_prop)]
+  refine sum_congr rfl fun j _ => ?_
+  rw [show (fun x => F j m * (x - m) ^ j / (j.factorial : ℝ)) =
+      fun x => F j m * ((x - m) ^ j / (j.factorial : ℝ)) from funext fun x => by ring,
+    intervalIntegral.integral_const_mul, integral_powTerm]
+
+theorem mom_pos {K : ℕ} (hK : Even K) {lo m hi : ℝ} (h : lo < hi) : 0 < mom lo m hi K := by
+  unfold mom
+  have : (lo - m) ^ (K + 1) < (hi - m) ^ (K + 1) :=
+    (hK.add_one).strictMono_pow (by linarith)
+  have hf : (0 : ℝ) < 1 / ((K + 1).factorial : ℝ) := by positivity
+  nlinarith
+
+/-- **Taylor cell rule.** For even `K > 0`, if `F 0, …, F K` is a derivative chain on
+    `[lo, hi]`, `lo ≤ m ≤ hi`, `F K ∈ D` on `[lo, hi]` and `mom lo m hi K ∈ Q`, then
+    `∫_lo^hi F 0 = Σ_{j<K} F j m · mom j + r` for some `r ∈ D * Q`. -/
+theorem integral_mem_taylorCell {K : ℕ} (hK : Even K) (hK0 : 0 < K) {F : ℕ → ℝ → ℝ}
+    {lo m hi : ℝ} (h1 : lo ≤ m) (h2 : m ≤ hi)
+    (hd : ∀ j < K, ∀ t ∈ Icc lo hi, HasDerivAt (F j) (F (j + 1) t) t) {D Q : Interval64}
+    (hD : ∀ t ∈ Icc lo hi, F K t ∈ D) (hQ : mom lo m hi K ∈ Q) :
+    ∃ r ∈ D * Q, (∫ x in lo..hi, F 0 x) = ∑ j ∈ range K, F j m * mom lo m hi j + r := by
+  have hle : lo ≤ hi := h1.trans h2
+  have hc : ContinuousOn (F 0) (Icc lo hi) :=
+    fun t ht => (hd 0 hK0 t ht).continuousAt.continuousWithinAt
+  have hFi : IntervalIntegrable (F 0) volume lo hi := hc.intervalIntegrable_of_Icc hle
+  have hTi : IntervalIntegrable (tay F m K) volume lo hi := by
+    apply Continuous.intervalIntegrable; unfold tay; fun_prop
+  refine ⟨∫ x in lo..hi, (F 0 x - tay F m K x), ?_, ?_⟩
+  · rcases hle.lt_or_eq with hlt | heq
+    · obtain ⟨K', rfl⟩ : ∃ K', K = K' + 1 := ⟨K - 1, by omega⟩
+      refine RealFP.Quad.integral_mem_mul (w := fun x => (x - m) ^ (K' + 1) / ((K' + 1).factorial : ℝ))
+        hlt hQ (mom_pos hK hlt) (integral_powTerm m lo hi _)
+        (fun x _ => div_nonneg (hK.pow_nonneg _) (by positivity)) (hFi.sub hTi)
+        (by apply Continuous.intervalIntegrable; fun_prop) (fun x hx => ?_)
+      by_cases hw : x = m
+      · subst hw
+        exact ⟨F (K' + 1) x, hD x hx, by simp [tay_self]⟩
+      · have hwpos : 0 < (x - m) ^ (K' + 1) / ((K' + 1).factorial : ℝ) :=
+          div_pos (hK.pow_pos (sub_ne_zero.2 hw)) (by positivity)
+        refine ⟨(F 0 x - tay F m (K' + 1) x) / ((x - m) ^ (K' + 1) / ((K' + 1).factorial : ℝ)),
+          mem_of_bounds hD hx (fun c hc' => ?_) (fun c hc' => ?_), by field_simp⟩
+        · rw [le_div_iff₀ hwpos]; exact rem_lower hK h1 h2 hd hc' hx
+        · rw [div_le_iff₀ hwpos]; exact rem_upper hK h1 h2 hd hc' hx
+    · subst heq
+      have hm : m = lo := le_antisymm h2 h1
+      subst hm
+      rw [integral_same, show (0 : ℝ) = F K m * mom m m m K by simp [mom]]
+      exact Iv.mem_mul (hD m ⟨le_rfl, le_rfl⟩) hQ
+  · rw [intervalIntegral.integral_sub hFi hTi, integral_tay]; ring
 
 end RealFP.Taylor
