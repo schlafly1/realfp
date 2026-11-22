@@ -803,24 +803,126 @@ All conclusions are statements about Mathlib's `intervalIntegral`. Measured widt
 `∫₀¹ e^{-x²}`: `cell1` gives 1.4e-4 with 2⁶ cells (2 ms), 1e-6 with 2¹⁰ (33 ms), and 2e-9 with
 2¹⁴ (0.5 s). `cell0` gives 3.9e-5 with 2¹⁴ cells (14 ms).
 
+### Kernel fast path for PD and quadrature (`Interval64/Kernel/{Matrix,Quad}.lean`)
+
+The checks below run on the `KF`/`KI` Nat-bit-pattern kernel (the same evaluator the `interval`
+tactic uses), so `decide +kernel` is much cheaper than running the Float specification.
+
+- **PD** (`KF.KM`, soundness `RealFPMathlib/KMatrix.lean`):
+  - `pdCheckK n A X` recomputes `T = X A`, `B = T Xᵀ` in the kernel.
+  - `pdCheckL n A c` checks a literal certificate `c : PDCert` (`X`, `T`, `B` computed natively by
+    the `pd_certs% n A` elaborator) entry by entry. The kernel does not share subterms, so this
+    avoids recomputing `T`.
+  - `ratMatOK n A f`: every entry of `A` (a literal from `ki_lit% (ofRatFn n f)`) contains the
+    rational `f i j`.
+  - Theorems: `posDef_of_pdCheckK`, `posDef_of_pdCheckL`,
+    `posDef_of_ratMat : (Matrix.of fun i j => (f i j : ℝ)).PosDef`, and
+    `lt_eigenvalue_of_posDef_sub`.
+- **Taylor quadrature** (`KF.KQ`, soundness `RealFPMathlib/{TaylorBound,KQuad}.lean`):
+  - Each cell `[lo, hi] ∋ m` gets `Σ_{j<K} f⁽ʲ⁾(m)·mom_j + f⁽ᴷ⁾([lo,hi])·mom_K`, with
+    `mom_j = ((hi−m)^{j+1} − (lo−m)^{j+1})/(j+1)!`. Here `K > 0` is even and the derivatives come
+    from `IExpr.deriv`. The error is `O(h^{K+1})` overall.
+  - `quadK e K a b cells` returns the enclosure; `quadBound … qa qb ql qh` checks
+    `ql ≤ ∫_qa^qb ≤ qh`.
+  - Theorems:
+    - `RealFP.Taylor.integral_mem_taylorCell`: Lagrange bounds by the MVT, proved against
+      `intervalIntegral`.
+    - `RealFP.KQ.integral_mem_quadK`
+    - `RealFP.KQ.integral_bounds_of_quadBound`
+  - Elaborators `cells% a b N` (uniform cells) and `bits% x`.
+
+Native widths for `∫₀¹ e^{-x²}`:
+
+| rule | width |
+|---|---|
+| K=4, 8 cells | 8.6e-7 |
+| K=4, 16 cells | 2.7e-8 |
+| K=6, 8 cells | 1.3e-9 |
+| K=8, 4 cells | 7.9e-10 |
+| K=8, 16 cells | 4e-15 |
+| `cell1`, 2¹⁴ cells | 2e-9 |
+
+**Kernel `decide +kernel` timings.** Wall time and peak memory of the `lean` process, x86-64 box.
+"Core" means importing `Interval64` only (≈1.0 s / 1.1 GB); Mathlib files import ≈2.5 s / 3.4 GB.
+
+| check | before (Float spec) | after (KF/KI path) |
+|---|---|---|
+| Hilbert 6 PD | 21.5 s / 4.9 GB | `pdCheckK`: 2.6 s / 1.8 GB (core) |
+| Hilbert 8 PD | — (too slow) | `pdCheckL`+`ratMatOK`: 3.6 s / 1.9 GB (core) |
+| Hilbert 10 PD | — | `pdCheckL`+`ratMatOK`: 6.7 s / 2.3 GB (core); theorem `hilbert10_posDef` 9.2 s / 4.2 GB |
+| `1−x+x²/2−x³/6+x⁴/24 > 0` on [0,4] | `checkGt`: 14.8 s / 4.4 GB | `interval` tactic: ≈5 s beyond import; Bernstein `checkGtB`: 12.8 s / 4.5 GB |
+| `∫₀¹ e^{-x²}` bounds | `cell1`, 16 cells, width 3e-3: 49.7 s / 7.1 GB | `quadBound` K=4, 4 cells, `[0.7468, 0.7469]`: 7.2 s / 3.9 GB |
+
+### Bernstein range enclosures (`Interval64/Bernstein.lean`, `RealFPMathlib/Bern.lean`)
+
+- **1D:** `bernCoeffF` computes `β_k = Σ_{i≤k} C(k,i)/C(n,i)·a_i`.
+  - `bern01 P n` is the hull of the `β_k` on `[0,1]`. Choosing `n` above the degree gives degree
+    elevation.
+  - `bernOn P X n` maps the box `X` to `[0,1]` affinely.
+  - `bernRange P n fuel X` subdivides; `checkGtB` / `checkGeB` are the sign checks.
+  - Theorems: `pow_eq_sum_bern`, `eval_eq_sum_bern`, `mem_bern01`, `mem_bernOn`,
+    `mem_bernRange`, `lt_of_checkGtB`, `le_of_checkGeB`.
+- **2D tensor form:** `IPoly2.bern2On P X Y n m`.
+  - Expand each `P_j(x(s))` in Bernstein form, then enclose `Σ_j β_{k,j} y^j` on `Y` with the 1D
+    rule, and take the hull over `k`.
+  - `checkGt2B` uses 4-way subdivision.
+  - Theorems: `mem_bern2On`, `lt_of_checkGt2B`.
+- Example: `1−x+x²/2−x³/6+x⁴/24` on [0,4]. Bernstein degree 12 gives `[0.168, 5]`; Horner gives
+  `[−5.67, 5]`.
+
+### 2D quadrature over rectangles (`Interval64/Quad2.lean`, `RealFPMathlib/Quad2.lean`)
+
+- `integrate2 F a b c d tol fuel` is an iterated adaptive rule: the outer zeroth-order cells use
+  the inner rule's enclosure as the integrand.
+- `integrate2E0 e …` handles `IExpr` integrands in `x = var 0`, `y = var 1`.
+- `integrate2E1 e …` uses second-order cells in `y` (from `e.diff 1`) and zeroth order in `x`.
+- Theorems:
+  - `integral2_mem_integrate2`, `integral2_mem_integrate2E0`, `integral2_mem_integrate2E1`:
+    iterated `intervalIntegral`, `f` continuous on the rectangle.
+  - `setIntegral_rect_eq` (Fubini):
+    `∫_{[a,b]×[c,d]} f = ∫_a^b ∫_c^d f`.
+- Native result for `∫∫_{[0,1]²} e^{-x²-y²}` = 0.5577…: E0 gives `[0.5504, 0.5651]`; E1 gives
+  `[0.5559, 0.5596]`.
+
+### `integral_bound` tactic (`RealFPMathlib/IntegralTactic.lean`)
+
+It proves `c ≤ ∫ x in a..b, f x`, `∫ … ≤ c`, `<`, conjunctions, and `∈ Set.Icc`.
+
+- `a`, `b`, `c` must be rational numerals, with `a` and `b` exact floats. `f` may use the
+  `interval` tactic's operations.
+- It searches natively for `K ∈ {4,6,8}` and `N ≤ 256` uniform cells, then makes one
+  `decide +kernel` call on `quadBound`.
+- `example : (∫ x in (0:ℝ)..1, Real.exp (-x^2)) ∈ Set.Icc (0.7468 : ℝ) 0.7469 := by integral_bound`
+  takes 15.8 s including the import.
+- Integrands whose derivative expressions grow quickly (e.g. `1/x`) are slower: about 50 s.
+
+Polynomial sign goals are handled by the `interval` tactic, which reifies polynomials.
+
 ### Examples (kernel-checked with `decide +kernel`, standard axioms only)
 
 - `Examples/MatrixPD.lean`:
-  - `hilbert_posDef`: the 6×6 Hilbert matrix is `PosDef`.
+  - `hilbert_posDef`: H₆ is `PosDef` (Float-spec path).
   - `hilbert3_eigen_gt`: every eigenvalue of H₃ is `> 0.0026`.
+  - `hilbert10_posDef`: H₁₀ is `PosDef` (kernel path; condition number ≈ 1.6e13).
+  - `hilbert8_eigen_gt`: every eigenvalue of H₈ is `> 10⁻¹⁰`.
 - `Examples/PolyQuad.lean`:
-  - `taylor_exp_pos`: `0 < 1 − x + x²/2 − x³/6 + x⁴/24` on `[0,4]`.
-  - `gauss_integral_bounds`: `763/1024 ≤ ∫₀¹ e^{-x²} ≤ 383/512`.
+  - `taylor_exp_pos` (Float spec) and `taylor_exp_pos'` (`interval` tactic).
+  - `gauss_integral_bounds`: `763/1024 ≤ ∫₀¹ e^{-x²} ≤ 383/512` (Float spec).
+  - `gauss_integral_bounds_kq`: `0.7468 ≤ ∫₀¹ e^{-x²} ≤ 0.7469` (kernel Taylor quadrature).
+- `Examples/Bernstein.lean`: `taylor_exp_pos_bern`, and `bilinear_pos` (2D, `[0,1]²`).
+- `Examples/Quad2.lean`: `xy_rect_bounds`: `1/8 ≤ ∫_{[0,1]²} xy ≤ 1/2`, via Fubini.
+- `Examples/IntegralTactic.lean`: `gauss_lower`, `gauss_icc`.
 
-The kernel runs the Lean specification, which is slow. For larger instances, run the same checks
-compiled, with the C kernel, through `native_decide`. That adds the `native_decide` trust
-assumption.
+For larger instances, the same checks can run compiled through `native_decide`. That adds the
+`native_decide` trust assumption.
 
 **Tests** (`interval64_tests`):
 - `pdMargins` C vs Lean spec, bit-exact, on 120 random/special matrices.
 - PD decisions on Hilbert 1–12, indefinite and singular matrices, λ_min, and Loewner.
-- Polynomial ops and range enclosures vs exact rationals.
-- Quadrature enclosures vs known values.
+- Kernel path: `pdCheckL` / `pdCheckK` agree with `isPD` on Hilbert 1–13. Taylor quadrature
+  enclosures for K = 2–8 are checked, along with rejected certificates (odd K, broken chains).
+- Polynomial ops, range enclosures, and Bernstein (1D/2D) vs exact rationals.
+- 1D and 2D quadrature enclosures vs known values.
 
 ## Interval128: double-double intervals (`Interval128/`, `RealFPMathlib/I128*.lean`)
 
