@@ -30,3 +30,10 @@ require mathlib from git
 @[default_target]
 lean_lib RealFPMathlib where
   globs := #[.andSubmodules `RealFPMathlib]
+
+/-- **Optional, not a default target.** Slow first-round Float-spec examples (`decide +kernel` on
+    the `Float` specification): `taylor_exp_pos`, `gauss_integral_bounds` (PolyQuad) and
+    `hilbert_posDef` (6×6 Hilbert, MatrixPD). Build with `lake build RealFPMathlibSlow`;
+    axioms with `scripts/check_axioms.sh RealFPMathlib RealFPMathlibSlowAxioms.lean`. -/
+lean_lib RealFPMathlibSlow where
+  globs := #[.submodules `RealFPMathlibSlow]

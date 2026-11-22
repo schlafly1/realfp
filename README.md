@@ -901,17 +901,32 @@ Polynomial sign goals are handled by the `interval` tactic, which reifies polyno
 ### Examples (kernel-checked with `decide +kernel`, standard axioms only)
 
 - `Examples/MatrixPD.lean`:
-  - `hilbert_posDef`: H₆ is `PosDef` (Float-spec path).
   - `hilbert3_eigen_gt`: every eigenvalue of H₃ is `> 0.0026`.
   - `hilbert10_posDef`: H₁₀ is `PosDef` (kernel path; condition number ≈ 1.6e13).
   - `hilbert8_eigen_gt`: every eigenvalue of H₈ is `> 10⁻¹⁰`.
 - `Examples/PolyQuad.lean`:
-  - `taylor_exp_pos` (Float spec) and `taylor_exp_pos'` (`interval` tactic).
-  - `gauss_integral_bounds`: `763/1024 ≤ ∫₀¹ e^{-x²} ≤ 383/512` (Float spec).
+  - `taylor_exp_pos'` (`interval` tactic).
   - `gauss_integral_bounds_kq`: `0.7468 ≤ ∫₀¹ e^{-x²} ≤ 0.7469` (kernel Taylor quadrature).
 - `Examples/Bernstein.lean`: `taylor_exp_pos_bern`, and `bilinear_pos` (2D, `[0,1]²`).
 - `Examples/Quad2.lean`: `xy_rect_bounds`: `1/8 ≤ ∫_{[0,1]²} xy ≤ 1/2`, via Fubini.
 - `Examples/IntegralTactic.lean`: `gauss_lower`, `gauss_icc`.
+
+**Optional slow examples (not built by default).** The first-round Float-spec examples live in the
+separate library `RealFPMathlibSlow` (`RealFPMathlib/RealFPMathlibSlow/`), which is not a default
+Lake target and is not imported by `RealFPMathlib` or `RealFPMathlibAxioms.lean`:
+- `RealFPMathlibSlow/PolyQuad.lean`: `taylor_exp_pos` (`checkGt`, Float spec) and
+  `gauss_integral_bounds`: `763/1024 ≤ ∫₀¹ e^{-x²} ≤ 383/512` (`integrateE1`, Float spec).
+- `RealFPMathlibSlow/MatrixPD.lean`: `hilbert_posDef`: H₆ is `PosDef` (`isPD`, Float spec).
+
+Build and check them with (from `RealFPMathlib/`, ≈65 s and ≈7.7 GB peak on an 8-core box):
+
+```
+lake build RealFPMathlibSlow
+../scripts/check_axioms.sh RealFPMathlib RealFPMathlibSlowAxioms.lean
+```
+
+Moving them out cut the default `Examples` files: `PolyQuad.lean` 77.7 s / 8.1 GB → 7.3 s / 4.0 GB
+and `MatrixPD.lean` 31.6 s / 5.5 GB → 15.1 s / 4.2 GB (single `lean` process, wall / peak RSS).
 
 For larger instances, the same checks can run compiled through `native_decide`. That adds the
 `native_decide` trust assumption.

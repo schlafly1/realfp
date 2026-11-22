@@ -2,7 +2,8 @@
 Positive-definiteness certificates, checked by the kernel (no `native_decide`, standard axioms
 only).
 
-* `hilbert_posDef` (6×6) uses the Float-spec check `isPD` (`decide +kernel` on the Lean spec).
+* `hilbert_posDef` (6×6, Float-spec check `isPD`, slow) is in the optional library
+  `RealFPMathlibSlow/MatrixPD.lean`, not built by default (`lake build RealFPMathlibSlow`).
 * `hilbert10_posDef` uses the kernel fast path: `ki_lit%` (rational entries rounded natively
   to bit patterns), `pd_certs%` (congruence `X` and the intermediate `T`, `B`, computed natively),
   `ratMatOK` (each entry contains its rational) and `pdCheckL`, both by `decide +kernel`.
@@ -38,12 +39,6 @@ theorem hilbert_mem (n : ℕ) : (hilbI n).Mem (hilbert n) := by
   have := ratCoe_mem (1 / ((i : ℚ) + j + 1))
   push_cast at this
   simpa [hilbert] using this
-
-theorem isPD_hilbI6 : isPD (hilbI 6) = true := by decide +kernel
-
-/-- The 6×6 Hilbert matrix is positive definite (Float-spec path). -/
-theorem hilbert_posDef : (hilbert 6).PosDef :=
-  posDef_of_isPD isPD_hilbI6 (hilbert_symm 6) (hilbert_mem 6)
 
 theorem lamMinGt_hilbI3 : lamMinGt (hilbI 3) 0.0026 = true := by decide +kernel
 
