@@ -17,6 +17,7 @@ import RealFPMathlib.Examples.Split
 import RealFPMathlib.Examples.Ops
 import RealFPMathlib.Examples.MatrixPD
 import RealFPMathlib.Examples.PolyQuad
+import RealFPMathlib.Examples.Bernstein
 import RealFPMathlib.Tests.IntervalTest
 
 #print axioms RealFP.loR_rat
@@ -992,3 +993,9 @@ import RealFPMathlib.Tests.IntervalTest
 #print axioms RealFP.Bern.mem_bern2On
 #print axioms RealFP.Bern.checkAux2B_sound
 #print axioms RealFP.Bern.lt_of_checkGt2B
+#print axioms RealFP.Examples.Bernstein.e4_checkB
+#print axioms RealFP.Examples.Bernstein.toReal_zero
+#print axioms RealFP.Examples.Bernstein.taylor_exp_pos_bern
+#print axioms RealFP.Examples.Bernstein.contains_q2
+#print axioms RealFP.Examples.Bernstein.q2_check
+#print axioms RealFP.Examples.Bernstein.bilinear_pos

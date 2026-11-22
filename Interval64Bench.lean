@@ -132,6 +132,11 @@ def nsBench : IO Unit := do
     let R := P.range (ofRatInterval 0 1) fuel
     let tr ← msSince t2
     IO.println s!"  range on [0,1], bisection depth {fuel}: [{R.lo}, {R.hi}] in {tr} ms"
+  for (n, fuel) in [(10, 0), (20, 0), (10, 4)] do
+    let t2 ← IO.monoNanosNow
+    let R := P.bernRange n fuel (ofRatInterval 0 1)
+    let tr ← msSince t2
+    IO.println s!"  Bernstein range on [0,1], degree {n}, {2 ^ fuel} boxes: [{R.lo}, {R.hi}] in {tr} ms"
   IO.println "----- quadrature ∫₀¹ e^(-x²) -----"
   let g : KF.IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
   for d in [6, 10, 14] do

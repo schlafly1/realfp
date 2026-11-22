@@ -734,6 +734,47 @@ def nsTests : IO Nat := do
     | none => Float.inf
   IO.println s!"kernel fast path (pdCheckL/pdCheckK vs isPD, Hilbert 1..13; Taylor quadrature K=2..8): {kFails} failures; K=8, 16 cells width {w8}"
   fails := fails + kFails
+  -- 6. Bernstein enclosures (1D and 2D) vs exact rationals.
+  let mut bFails := 0
+  let mut rb : UInt64 := 0x5EED
+  for _ in [0:200] do
+    rb := xorshift rb; let d := (rb % 7).toNat + 1
+    let mut a : Array Rat := #[]
+    for _ in [0:d] do
+      rb := xorshift rb; a := a.push ((((rb % 2001).toNat : Int) - 1000 : Rat) / 7)
+    rb := xorshift rb; let lo : Rat := (((rb % 2001).toNat : Int) - 1000 : Rat) / 500
+    rb := xorshift rb; let w : Rat := ((rb % 1000).toNat : Rat) / 300
+    let X := ofRatInterval lo (lo + w)
+    let A : IPoly := a.map ofRat
+    for (n, fuel) in [(0, 0), (d + 3, 0), (d, 2)] do
+      let R := A.bernRange n fuel X
+      for k in [0:5] do
+        let x := lo + w * (k : Rat) / 4
+        if !ivContains R (qeval a x) then bFails := bFails + 1
+  -- 2D: p(x, y) = Σ_j a_j(x) y^j
+  for _ in [0:100] do
+    let mut P2 : Array (Array Rat) := #[]
+    for _ in [0:3] do
+      let mut row : Array Rat := #[]
+      for _ in [0:3] do
+        rb := xorshift rb; row := row.push ((((rb % 201).toNat : Int) - 100 : Rat) / 9)
+      P2 := P2.push row
+    rb := xorshift rb; let x0 : Rat := (((rb % 201).toNat : Int) - 100 : Rat) / 50
+    rb := xorshift rb; let y0 : Rat := (((rb % 201).toNat : Int) - 100 : Rat) / 50
+    let X := ofRatInterval x0 (x0 + 1/2)
+    let Y := ofRatInterval y0 (y0 + 1/3)
+    let R := IPoly2.bern2On (P2.map fun r => r.map ofRat) X Y 3 3
+    for (i, j) in [(0, 0), (1, 2), (2, 1), (2, 2)] do
+      let x := x0 + (i : Rat) / 4
+      let y := y0 + (j : Rat) / 6
+      let v := (List.range 3).foldl (fun acc jj => acc + qeval (P2[jj]!) x * y ^ jj) 0
+      if !ivContains R v then bFails := bFails + 1
+  if !e4.checkGtB 0 (ofRatInterval 0 4) 6 4 then bFails := bFails + 1
+  if sq.checkGtB 0 (ofRatInterval (-1) 1) 4 6 then bFails := bFails + 1
+  let Rb := e4.bernOn (ofRatInterval 0 4) 12
+  let Rh := e4.eval (ofRatInterval 0 4)
+  IO.println s!"Bernstein (200 random 1D × 15 points, 100 random 2D × 4 points, sign certs): {bFails} failures; e4 on [0,4]: Bernstein deg 12 [{Rb.lo}, {Rb.hi}] vs Horner [{Rh.lo}, {Rh.hi}]"
+  fails := fails + bFails
   return fails
 
 
