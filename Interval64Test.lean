@@ -895,7 +895,22 @@ def cTests : IO Nat := do
       match KF.KQ.quadK e K (KF.KQ.bitsOf a) (KF.KQ.bitsOf 2) csB with
       | some R => if !sameIv F (toIv R) then qFails := qFails + 1
       | none => qFails := qFails + 1
-  IO.println s!"C quadrature vs Lean spec (integrateE0/E1, integrate2E0/E1, Taylor quadF vs quadFSpec vs quadK): {qFails} mismatches"
+  -- 2D Taylor rule: C (taylor2) vs Lean (t2Sum)
+  let t2spec := fun (e : KF.IExpr) (K : Nat) (a b c d : Float) xs ys =>
+    if Quad.t2OK K a b c d xs ys then Quad.t2Sum e K xs ys else whole
+  for e in [g2, .mul (.var 0) (.var 1), .sin (.add (.var 0) (.mul (.rat 2) (.var 1))),
+      .div (.rat 1) (.add (.rat 1) (.add (.var 0) (.var 1)))] do
+    for (K, N, M) in [(2, 1, 1), (2, 3, 2), (4, 2, 3), (6, 2, 2), (0, 2, 2), (3, 2, 2)] do
+      for (a, b, c, d) in [((0 : Float), (1 : Float), (0 : Float), (1 : Float)), (0, 2, -1, 3), (1, 0, 0, 1)] do
+        let xs := Quad.ucells a b N
+        let ys := Quad.ucells c d M
+        if !sameIv (Quad.taylor2 e K a b c d xs ys) (t2spec e K a b c d xs ys) then qFails := qFails + 1
+  let g2v : Rat := 557746285351033 / 1000000000000000
+  for (K, N) in [(2, 4), (4, 2), (4, 4), (6, 2)] do
+    let cs := Quad.ucells 0 1 N
+    let T := Quad.taylor2 g2 K 0 1 0 1 cs cs
+    if !(ivContains T (g2v - 1/10^14) && ivContains T (g2v + 1/10^14)) then qFails := qFails + 1
+  IO.println s!"C quadrature vs Lean spec (integrateE0/E1, integrate2E0/E1, Taylor quadF vs quadFSpec vs quadK, taylor2 vs t2Sum): {qFails} mismatches"
   fails := fails + qFails
   return fails
 

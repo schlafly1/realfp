@@ -170,6 +170,12 @@ def nsBench : IO Unit := do
     let R1 := Quad.integrate2E1 g2 0 1 0 1 0 d
     let tq1 ← msSince t4
     IO.println s!"  E1 (inner 2nd order), 2^{d}×2^{d} cells: width {R1.hi - R1.lo} in {tq1} ms"
+  for (K, N) in [(2, 4), (2, 16), (4, 2), (4, 4), (4, 8), (6, 2), (6, 4), (8, 2)] do
+    let cs := Quad.ucells 0 1 N
+    let t5 ← IO.monoNanosNow
+    let T := Quad.taylor2 g2 K 0 1 0 1 cs cs
+    let tq2 ← msSince t5
+    IO.println s!"  taylor2 K={K}, {N}×{N} cells (C): width {T.hi - T.lo} in {tq2} ms"
 
 /-- Time `f i` for `i < reps`, returning ms per call. `f` gets the index so calls are not shared. -/
 def timePer (reps : Nat) (f : Nat → Interval64) : IO (Float × Float) := do
@@ -221,6 +227,9 @@ def cBench : IO Unit := do
   let g2 : KF.IExpr := .exp (.neg (.add (.mul (.var 0) (.var 0)) (.mul (.var 1) (.var 1))))
   cmpLine "integrate2E1 ∫∫e^(-x²-y²), 2^6×2^6" 1 (fun i => Quad.integrate2E1 g2 0 (one i) 0 1 0 6)
     (fun i => CSpec.integrate2E1S g2 0 (one i) 0 1 0 6)
+  let c8 := Quad.ucells 0 1 8
+  cmpLine "taylor2 ∫∫e^(-x²-y²) K=4, 8×8 cells" 1 (fun i => Quad.taylor2 g2 (4 + 0 * i) 0 1 0 1 c8 c8)
+    (fun i => Quad.t2Sum g2 (4 + 0 * i) c8 c8)
   for (K, N) in [(4, 16), (8, 16)] do
     let csB := KF.KQ.uniformCells 0 1 N
     let cs := csB.map fun c => (KF.KQ.toFl c.1, KF.KQ.toFl c.2.1, KF.KQ.toFl c.2.2)
