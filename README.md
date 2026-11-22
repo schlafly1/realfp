@@ -357,8 +357,11 @@ theorem RealFP.Pow.rpow_mem_toSet (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) (hx0
     x ^ y ∈ (Interval64.rpow X Y).toSet          -- Real.rpow, no finiteness assumption
 ```
 
-It is sound but **not correctly rounded**: typically 1–3 ulps wide (`rpow 2 (1/2)` is two
-adjacent doubles, `RealFP.Examples.Pow`), wider when `|y · log x|` is large. The vendored
+It is sound but **not correctly rounded**: the width grows with `|y · log x|` (the `exp`
+argument is an interval about one ulp of `y · log x` wide), so a few ulps when `|y · log x| ≲ 1`
+(`rpow 2 (1/2)` is two adjacent doubles, `RealFP.Examples.Pow`) and hundreds of ulps when
+`|y · log x| ≈ 100`. Spot check (`lake lean`, 20000 random `x ∈ [e⁻²⁵, e²⁵]`, `y ∈ [-50, 50]`):
+`Float.pow x y` inside `rpow [x,x] [y,y]` every time. The vendored
 CORE-MATH `cr_pow` (`iv64_dir_pow_down/up`) is compiled and linked but not used yet (a correctly
 rounded pointwise `pow` needs its own exact Lean spec). Not supported by the `interval` tactic.
 
