@@ -144,6 +144,15 @@ def nsBench : IO Unit := do
     let R := Quad.integrateE0 g 0 1 0 d
     let tq ← msSince t3
     IO.println s!"  cell0, 2^{d} cells: width {R.hi - R.lo} in {tq} ms"
+  for (K, N) in [(4, 8), (4, 16), (6, 8), (8, 4), (8, 16)] do
+    let cs := KF.KQ.uniformCells 0 1 N
+    let t3 ← IO.monoNanosNow
+    let R := KF.KQ.quadK g K (KF.KQ.bitsOf 0) (KF.KQ.bitsOf 1) cs
+    let w := match R with
+      | some R => KF.KQ.toFl R.hi - KF.KQ.toFl R.lo
+      | none => Float.inf
+    let tq ← msSince t3
+    IO.println s!"  Taylor K={K} (kernel KF path, run natively), {N} cells: width {w} in {tq} ms"
 
 def main : IO Unit := do
   IO.println "Interval64 benches"

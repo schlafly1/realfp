@@ -6,6 +6,7 @@ only).
 * `hilbert10_posDef` uses the kernel fast path: `ki_lit%` (rational entries rounded natively
   to bit patterns), `pd_certs%` (congruence `X` and the intermediate `T`, `B`, computed natively),
   `ratMatOK` (each entry contains its rational) and `pdCheckL`, both by `decide +kernel`.
+* `hilbert3_eigen_gt` : every eigenvalue of `H₃` exceeds `0.0026` (Float-spec `lamMinGt`).
 * `hilbert8_eigen_gt` : every eigenvalue of `H₈` exceeds `10⁻¹⁰` (`λ_min ≈ 1.11·10⁻¹⁰`).
 -/
 import RealFPMathlib.KMatrix
@@ -43,6 +44,18 @@ theorem isPD_hilbI6 : isPD (hilbI 6) = true := by decide +kernel
 /-- The 6×6 Hilbert matrix is positive definite (Float-spec path). -/
 theorem hilbert_posDef : (hilbert 6).PosDef :=
   posDef_of_isPD isPD_hilbI6 (hilbert_symm 6) (hilbert_mem 6)
+
+theorem lamMinGt_hilbI3 : lamMinGt (hilbI 3) 0.0026 = true := by decide +kernel
+
+/-- `H₃ − 0.0026 · I` is positive definite. -/
+theorem hilbert3_sub_posDef :
+    (hilbert 3 - (0.0026 : Float).toReal • (1 : Matrix (Fin 3) (Fin 3) ℝ)).PosDef :=
+  posDef_sub_of_lamMinGt lamMinGt_hilbI3 (hilbert_symm 3) (hilbert_mem 3)
+
+/-- Every eigenvalue of `H₃` exceeds `0.0026`. -/
+theorem hilbert3_eigen_gt {μ : ℝ} (hμ : Module.End.HasEigenvalue (Matrix.toLin' (hilbert 3)) μ) :
+    (0.0026 : Float).toReal < μ :=
+  lt_eigenvalue_of_lamMinCheck lamMinGt_hilbI3 (hilbert_symm 3) (hilbert_mem 3) hμ
 
 /-! ### Kernel fast path -/
 

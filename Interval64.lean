@@ -33,3 +33,4 @@ import Interval64.Kernel.Matrix
 import Interval64.Kernel.MatrixCert
 import Interval64.Kernel.Quad
 import Interval64.Kernel.QuadCert
+import Interval64.Bernstein

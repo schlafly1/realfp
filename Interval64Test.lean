@@ -694,6 +694,46 @@ def nsTests : IO Nat := do
   if (Quad.integrate (fun _ _ => ofRat 0) 1 0 1e-3 3).lo != -Float.inf then qFails := qFails + 1
   IO.println s!"quadrature: ∫₀¹e^(-x²) ∈ [{R1.lo}, {R1.hi}] (width {R1.hi - R1.lo}); {qFails} failures"
   fails := fails + qFails
+  -- 5. Kernel fast path (KF/KI bit patterns): PD certificates and Taylor quadrature.
+  let mut kFails := 0
+  let hq := fun (i j : Nat) => (1 / ((i : Rat) + j + 1) : Rat)
+  for n in [1:14] do
+    let A := KF.KM.ofRatFn n hq
+    let l := KF.KM.pdCheckL n A (KF.KM.mkCert n A)
+    if l != Mat.isPD (hilb n) then kFails := kFails + 1
+    if l != KF.KM.pdCheckK n A (KF.KM.approxXK n A) then kFails := kFails + 1
+    if !KF.KM.ratMatOK n A hq then kFails := kFails + 1
+  for n in [1:11] do
+    if !KF.KM.pdCheckL n (KF.KM.ofRatFn n hq) (KF.KM.mkCert n (KF.KM.ofRatFn n hq)) then
+      kFails := kFails + 1
+  let badK := KF.KM.ofRatFn 2 fun i j => if i = j then 1 else 2
+  let singK := KF.KM.ofRatFn 2 fun _ _ => 1
+  if KF.KM.pdCheckL 2 badK (KF.KM.mkCert 2 badK) then kFails := kFails + 1
+  if KF.KM.pdCheckL 2 singK (KF.KM.mkCert 2 singK) then kFails := kFails + 1
+  if KF.KM.ratMatOK 2 badK fun _ _ => 3 then kFails := kFails + 1
+  let toIv := fun (R : KF.KI) => (⟨KF.KQ.toFl R.lo, KF.KQ.toFl R.hi⟩ : Interval64)
+  let b0 := KF.KQ.bitsOf 0
+  let b1 := KF.KQ.bitsOf 1
+  for (K, N) in [(2, 32), (4, 8), (6, 8), (8, 4), (8, 16)] do
+    match KF.KQ.quadK g K b0 b1 (KF.KQ.uniformCells 0 1 N) with
+    | some R => if !(ivContains (toIv R) gLo && ivContains (toIv R) gHi) then kFails := kFails + 1
+    | none => kFails := kFails + 1
+  for K in [0, 3] do
+    if (KF.KQ.quadK g K b0 b1 (KF.KQ.uniformCells 0 1 4)).isSome then kFails := kFails + 1
+  -- broken chain: cells for [0, 1] but claimed [0, 2]
+  if (KF.KQ.quadK g 4 b0 (KF.KQ.bitsOf 2) (KF.KQ.uniformCells 0 1 4)).isSome then kFails := kFails + 1
+  match KF.KQ.quadK x2 2 b0 b1 (KF.KQ.uniformCells 0 1 3) with
+  | some R => if !ivContains (toIv R) (1/3) then kFails := kFails + 1
+  | none => kFails := kFails + 1
+  let cs4 := KF.KQ.uniformCells 0 1 4
+  if !KF.KQ.quadBound g 4 b0 b1 cs4 0 1 (7468/10000) (7469/10000) then kFails := kFails + 1
+  if KF.KQ.quadBound g 4 b0 b1 cs4 0 1 (7469/10000) (7470/10000) then kFails := kFails + 1
+  if KF.KQ.quadBound g 4 b0 b1 cs4 0 (1/2) (7468/10000) (7469/10000) then kFails := kFails + 1
+  let w8 := match KF.KQ.quadK g 8 b0 b1 (KF.KQ.uniformCells 0 1 16) with
+    | some R => KF.KQ.toFl R.hi - KF.KQ.toFl R.lo
+    | none => Float.inf
+  IO.println s!"kernel fast path (pdCheckL/pdCheckK vs isPD, Hilbert 1..13; Taylor quadrature K=2..8): {kFails} failures; K=8, 16 cells width {w8}"
+  fails := fails + kFails
   return fails
 
 
