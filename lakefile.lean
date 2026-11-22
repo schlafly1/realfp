@@ -138,6 +138,9 @@ lean_exe interval64_tests where
 
 lean_lib Interval128Tests
 
+/-- Lean-only reference copies of the C-backed specifications (tests, benchmarks). -/
+lean_lib Interval64CSpec
+
 lean_exe interval128_tests where
   root := `Interval128Test
   moreLeancArgs := #["-O3"]

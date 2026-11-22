@@ -1,4 +1,5 @@
 import Interval64
+import Interval64CSpec
 
 open Interval64 Interval64.Directed
 
@@ -170,6 +171,70 @@ def nsBench : IO Unit := do
     let tq1 ← msSince t4
     IO.println s!"  E1 (inner 2nd order), 2^{d}×2^{d} cells: width {R1.hi - R1.lo} in {tq1} ms"
 
+/-- Time `f i` for `i < reps`, returning ms per call. `f` gets the index so calls are not shared. -/
+def timePer (reps : Nat) (f : Nat → Interval64) : IO (Float × Float) := do
+  let mut acc : Float := 0
+  let t0 ← IO.monoNanosNow
+  for i in [0:reps] do
+    let R := f i
+    acc := acc + R.lo + R.hi
+  let t1 ← IO.monoNanosNow
+  return ((t1 - t0).toFloat / 1e6 / Float.ofNat reps, acc)
+
+def cmpLine (name : String) (reps : Nat) (fc fl : Nat → Interval64) : IO Unit := do
+  let (tc, a) ← timePer reps fc
+  let (tl, b) ← timePer reps fl
+  let unit := if tl < 0.1 then "µs" else "ms"
+  let sc := if tl < 0.1 then 1000 else 1
+  IO.println s!"  {name}: C {tc * sc} {unit}, Lean-compiled spec {tl * sc} {unit}, speedup ×{tl / tc} (sinks {a == b})"
+
+def cBench : IO Unit := do
+  IO.println "----- C kernels vs Lean-compiled specification (same results; per call) -----"
+  let P : IPoly := (Array.range 21).map fun (k : Nat) => ofRat ((if k % 2 = 0 then 1 else -1 : Rat) / ((k : Rat) + 1))
+  let dP := P.deriv
+  let X := ofRatInterval 0 1
+  let xs : Array Interval64 := (Array.range 64).map fun (k : Nat) => ofRatInterval ((k : Rat) / 64) ((k : Rat) / 64 + 1/1000)
+  cmpLine "eval (deg 20)" 20000 (fun i => P.eval xs[i % 64]!) (fun i => CSpec.evalS P xs[i % 64]!)
+  cmpLine "evalMV (deg 20)" 20000 (fun i => P.evalMV dP xs[i % 64]!) (fun i => CSpec.evalMVS P dP xs[i % 64]!)
+  cmpLine "range, 2^8 boxes" 50 (fun i => P.range ⟨X.lo, X.hi + Float.ofNat (i % 2) * 0⟩ 8)
+    (fun i => CSpec.rangeAuxS P dP 8 ⟨X.lo, X.hi + Float.ofNat (i % 2) * 0⟩)
+  let e4 : IPoly := #[ofRat 1, ofRat (-1), ofRat (1/2), ofRat (-1/6), ofRat (1/24)]
+  let bx := fun (i : Nat) => (⟨0, 4 + Float.ofNat (i % 2) * 0⟩ : Interval64)
+  cmpLine "checkGt e4 > 0 on [0,4], fuel 12" 50
+    (fun i => if e4.checkGt 0 (bx i) 12 then X else whole)
+    (fun i => if CSpec.checkS 1 e4 0 (bx i) 12 then X else whole)
+  cmpLine "bernRange deg 20, 16 boxes" 1 (fun i => P.bernRange 20 4 (bx i))
+    (fun i => CSpec.bernRangeS P 20 4 (bx i))
+  cmpLine "checkGtB e4, deg 6, fuel 4" 200
+    (fun i => if e4.checkGtB 0 (bx i) 6 4 then X else whole)
+    (fun i => if (CSpec.checkAuxBS e4 6 (CSpec.goal 1 0) 4 (bx i)) then X else whole)
+  let P2 : IPoly2 := #[#[ofRat 1, ofRat (-1/2), ofRat (1/3)], #[ofRat (-1/2), ofRat 1], #[ofRat (1/5)]]
+  cmpLine "bern2On (3×3, deg 6)" 2000 (fun i => P2.bern2On (bx i) X 6 6) (fun i => CSpec.bern2OnS P2 (bx i) X 6 6)
+  cmpLine "checkGt2B, fuel 3" 20 (fun i => if P2.checkGt2B (-100) (bx i) X 4 4 3 then X else whole)
+    (fun i => if CSpec.checkAux2BS P2 4 4 (CSpec.goal 1 (-100)) 3 (bx i) X then X else whole)
+  let g : KF.IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
+  let one := fun (i : Nat) => 1 + Float.ofNat (i % 2) * 0
+  cmpLine "integrateE0 ∫₀¹e^(-x²), 2^10 cells" 5 (fun i => Quad.integrateE0 g 0 (one i) 0 10)
+    (fun i => CSpec.integrateE0S g 0 (one i) 0 10)
+  cmpLine "integrateE1 ∫₀¹e^(-x²), 2^10 cells" 5 (fun i => Quad.integrateE1 g 0 (one i) 0 10)
+    (fun i => CSpec.integrateE1S g 0 (one i) 0 10)
+  let g2 : KF.IExpr := .exp (.neg (.add (.mul (.var 0) (.var 0)) (.mul (.var 1) (.var 1))))
+  cmpLine "integrate2E1 ∫∫e^(-x²-y²), 2^6×2^6" 1 (fun i => Quad.integrate2E1 g2 0 (one i) 0 1 0 6)
+    (fun i => CSpec.integrate2E1S g2 0 (one i) 0 1 0 6)
+  for (K, N) in [(4, 16), (8, 16)] do
+    let csB := KF.KQ.uniformCells 0 1 N
+    let cs := csB.map fun c => (KF.KQ.toFl c.1, KF.KQ.toFl c.2.1, KF.KQ.toFl c.2.2)
+    cmpLine s!"Taylor quadF K={K}, {N} cells" 2 (fun i => KF.KQ.quadF g (K + 0 * i) cs)
+      (fun i => KF.KQ.quadFSpec g (K + 0 * i) cs)
+    let (tk, _) ← timePer 1 fun i => match KF.KQ.quadK g (K + 0 * i) (KF.KQ.bitsOf 0) (KF.KQ.bitsOf 1) csB with
+      | some R => ⟨KF.KQ.toFl R.lo, KF.KQ.toFl R.hi⟩ | none => whole
+    IO.println s!"    (same rule on the kernel KF/KI Nat path, run natively: {tk} ms)"
+  let sx : KF.IExpr := .sin (.mul (.var 0) (.var 0))
+  let csB := KF.KQ.uniformCells 0 3 64
+  let cs := csB.map fun c => (KF.KQ.toFl c.1, KF.KQ.toFl c.2.1, KF.KQ.toFl c.2.2)
+  cmpLine "Taylor quadF ∫₀³ sin(x²), K=8, 64 cells" 1 (fun i => KF.KQ.quadF sx (8 + 0 * i) cs)
+    (fun i => KF.KQ.quadFSpec sx (8 + 0 * i) cs)
+
 def main : IO Unit := do
   IO.println "Interval64 benches"
   IO.println s!"C backend: {backendName}  AVX-512F available: {avx512fAvailable}"
@@ -196,3 +261,4 @@ def main : IO Unit := do
   IO.println s!"Lean Interval64 (AVX externs, allocated structs): {ns} ns/kernel  sink={acc}"
   transcBench
   nsBench
+  cBench
