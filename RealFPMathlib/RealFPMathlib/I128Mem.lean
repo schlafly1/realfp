@@ -190,4 +190,118 @@ theorem mem_neg {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) :
       show _ ≤ (-X.lh).toE
       rw [toE_neg hn, EReal.coe_neg]; exact EReal.neg_le_neg_iff.2 hle
 
+/-! ### Multiplication -/
+
+theorem isFin_vals {X : Interval128.Interval128} (h : X.isFin = true) :
+    ∃ a1 a2 a3 a4, Fv X.lh a1 ∧ Fv X.ll a2 ∧ Fv X.uh a3 ∧ Fv X.ul a4 := by
+  simp only [Interval128.isFin, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+  obtain ⟨a1, f1⟩ := isFinite_fv h1
+  obtain ⟨a2, f2⟩ := isFinite_fv h2
+  obtain ⟨a3, f3⟩ := isFinite_fv h3
+  obtain ⟨a4, f4⟩ := isFinite_fv h4
+  exact ⟨a1, a2, a3, a4, f1, f2, f3, f4⟩
+
+theorem bool_decide {b : Bool} {p : Prop} [Decidable p] (h : b = true ↔ p) : b = decide p := by
+  rw [Bool.eq_iff_iff, decide_eq_true_iff]; exact h
+
+theorem mulLo_le' {ah al bh bl : Float} {a1 a2 b1 b2 H L : ℝ} (ha1 : Fv ah a1) (ha2 : Fv al a2)
+    (hb1 : Fv bh b1) (hb2 : Fv bl b2) (hH : Fv (mulLo ah al bh bl).hi H)
+    (hL : Fv (mulLo ah al bh bl).lo L) : H + L ≤ (a1 + a2) * (b1 + b2) := by
+  obtain ⟨c1, c2, d1, d2, hc1, hc2, hd1, hd2, i⟩ := mulLo_le hH hL
+  rw [fv_unique ha1 hc1, fv_unique ha2 hc2, fv_unique hb1 hd1, fv_unique hb2 hd2]; exact i
+
+theorem mulHi_ge' {ah al bh bl : Float} {a1 a2 b1 b2 H L : ℝ} (ha1 : Fv ah a1) (ha2 : Fv al a2)
+    (hb1 : Fv bh b1) (hb2 : Fv bl b2) (hH : Fv (mulHi ah al bh bl).hi H)
+    (hL : Fv (mulHi ah al bh bl).lo L) : (a1 + a2) * (b1 + b2) ≤ H + L := by
+  obtain ⟨c1, c2, d1, d2, hc1, hc2, hd1, hd2, i⟩ := mulHi_ge hH hL
+  rw [fv_unique ha1 hc1, fv_unique ha2 hc2, fv_unique hb1 hd1, fv_unique hb2 hd2]; exact i
+
+theorem mixed_lo {xl xh yl yh x y : ℝ} (h1 : xl ≤ x) (h2 : x ≤ xh) (h3 : yl ≤ y) (h4 : y ≤ yh)
+    (s1 : xl < 0) (s2 : 0 < xh) (s3 : yl < 0) (s4 : 0 < yh) :
+    xl * yh ≤ x * y ∨ xh * yl ≤ x * y := by
+  rcases le_total 0 x with hx | hx <;> rcases le_total 0 y with hy | hy
+  · left; nlinarith
+  · right; nlinarith
+  · left; nlinarith
+  · left; nlinarith
+
+theorem mixed_hi {xl xh yl yh x y : ℝ} (h1 : xl ≤ x) (h2 : x ≤ xh) (h3 : yl ≤ y) (h4 : y ≤ yh)
+    (s1 : xl < 0) (s2 : 0 < xh) (s3 : yl < 0) (s4 : 0 < yh) :
+    x * y ≤ xl * yl ∨ x * y ≤ xh * yh := by
+  rcases le_total 0 x with hx | hx <;> rcases le_total 0 y with hy | hy
+  · right; nlinarith
+  · left; nlinarith
+  · right; nlinarith
+  · left; nlinarith
+
+section mul
+variable {X Y : Interval128.Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 : ℝ}
+  (fa1 : Fv X.lh a1) (fa2 : Fv X.ll a2) (fa3 : Fv X.uh a3) (fa4 : Fv X.ul a4)
+  (fb1 : Fv Y.lh b1) (fb2 : Fv Y.ll b2) (fb3 : Fv Y.uh b3) (fb4 : Fv Y.ul b4)
+  (hx1 : a1 + a2 ≤ x) (hx2 : x ≤ a3 + a4) (hy1 : b1 + b2 ≤ y) (hy2 : y ≤ b3 + b4)
+include fa1 fa2 fa3 fa4 fb1 fb2 fb3 fb4 hx1 hx2 hy1 hy2
+
+theorem mulLoF_le : ∀ H L, Fv (Interval128.mulLoF X Y).hi H → Fv (Interval128.mulLoF X Y).lo L →
+    H + L ≤ x * y := by
+  intro H L hH hL
+  have e1 := bool_decide (nonneg_iff fb1 fb2)
+  have e2 := bool_decide (nonneg_iff fa1 fa2)
+  have e3 := bool_decide (nonpos_iff fb3 fb4)
+  have e4 := bool_decide (nonpos_iff fa3 fa4)
+  simp only [Interval128.mulLoF, e1, e2, e3, e4, decide_eq_true_eq] at hH hL
+  split_ifs at hH hL with c1 c2 c3 c4 c5 c6
+  · have := mulLo_le' fa1 fa2 fb1 fb2 hH hL; nlinarith
+  · have := mulLo_le' fa1 fa2 fb3 fb4 hH hL; nlinarith
+  · have := mulLo_le' fa3 fa4 fb3 fb4 hH hL; nlinarith
+  · have := mulLo_le' fa3 fa4 fb1 fb2 hH hL; nlinarith
+  · have := mulLo_le' fa3 fa4 fb1 fb2 hH hL; nlinarith
+  · have := mulLo_le' fa1 fa2 fb3 fb4 hH hL; nlinarith
+  · obtain ⟨A, B, ⟨h1, l1, hh1, hl1, rfl⟩, ⟨h2, l2, hh2, hl2, rfl⟩, i1, i2⟩ := minLo_le hH hL
+    have j1 := mulLo_le' fa1 fa2 fb3 fb4 hh1 hl1
+    have j2 := mulLo_le' fa3 fa4 fb1 fb2 hh2 hl2
+    rcases mixed_lo hx1 hx2 hy1 hy2 (by linarith) (by linarith) (by linarith) (by linarith)
+      with k | k <;> linarith
+
+theorem mulHiF_ge : ∀ H L, Fv (Interval128.mulHiF X Y).hi H → Fv (Interval128.mulHiF X Y).lo L →
+    x * y ≤ H + L := by
+  intro H L hH hL
+  have e1 := bool_decide (nonneg_iff fb1 fb2)
+  have e2 := bool_decide (nonneg_iff fa3 fa4)
+  have e3 := bool_decide (nonpos_iff fb3 fb4)
+  have e4 := bool_decide (nonneg_iff fa1 fa2)
+  have e5 := bool_decide (nonpos_iff fa3 fa4)
+  simp only [Interval128.mulHiF, e1, e2, e3, e4, e5, decide_eq_true_eq] at hH hL
+  split_ifs at hH hL with c1 c2 c3 c4 c5 c6
+  · have := mulHi_ge' fa3 fa4 fb3 fb4 hH hL; nlinarith
+  · have := mulHi_ge' fa3 fa4 fb1 fb2 hH hL; nlinarith
+  · have := mulHi_ge' fa1 fa2 fb3 fb4 hH hL; nlinarith
+  · have := mulHi_ge' fa1 fa2 fb1 fb2 hH hL; nlinarith
+  · have := mulHi_ge' fa3 fa4 fb3 fb4 hH hL; nlinarith
+  · have := mulHi_ge' fa1 fa2 fb1 fb2 hH hL; nlinarith
+  · obtain ⟨A, B, ⟨h1, l1, hh1, hl1, rfl⟩, ⟨h2, l2, hh2, hl2, rfl⟩, i1, i2⟩ := maxHi_ge hH hL
+    have j1 := mulHi_ge' fa1 fa2 fb1 fb2 hh1 hl1
+    have j2 := mulHi_ge' fa3 fa4 fb3 fb4 hh2 hl2
+    rcases mixed_hi hx1 hx2 hy1 hy2 (by linarith) (by linarith) (by linarith) (by linarith)
+      with k | k <;> linarith
+
+end mul
+
+theorem mem_mul {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
+    x * y ∈ toSet (X * Y) := by
+  show x * y ∈ toSet (Interval128.mulSpec X Y)
+  have hs := mem_toSet_mul (mem_toInterval64 hx) (mem_toInterval64 hy)
+  unfold Interval128.mulSpec
+  split_ifs with c
+  · simp only [Bool.and_eq_true] at c
+    obtain ⟨a1, a2, a3, a4, fa1, fa2, fa3, fa4⟩ := isFin_vals c.1
+    obtain ⟨b1, b2, b3, b4, fb1, fb2, fb3, fb4⟩ := isFin_vals c.2
+    have hx1 := loIn_val hx.1 fa1 fa2
+    have hx2 := hiIn_val hx.2 fa3 fa4
+    have hy1 := loIn_val hy.1 fb1 fb2
+    have hy2 := hiIn_val hy.2 fb3 fb4
+    exact mem_pick (mulLoF_le fa1 fa2 fa3 fa4 fb1 fb2 fb3 fb4 hx1 hx2 hy1 hy2)
+      (mulHiF_ge fa1 fa2 fa3 fa4 fb1 fb2 fb3 fb4 hx1 hx2 hy1 hy2) hs
+  · exact mem_ofInterval64 hs
+
 end RealFP.I128
