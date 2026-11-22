@@ -87,9 +87,7 @@ def evalMV (P dP : IPoly) (X : Interval64) : Interval64 :=
 /-- Enclosure of `P` on `X` by bisection to depth `fuel` (hull of the mean-value forms). -/
 def rangeAux (P dP : IPoly) : Nat → Interval64 → Interval64
   | 0, X => evalMV P dP X
-  | fuel + 1, X =>
-    let (X₁, X₂) := bisect X
-    hull (rangeAux P dP fuel X₁) (rangeAux P dP fuel X₂)
+  | fuel + 1, X => hull (rangeAux P dP fuel (bisect X).1) (rangeAux P dP fuel (bisect X).2)
 
 def range (P : IPoly) (X : Interval64) (fuel : Nat) : Interval64 := rangeAux P (deriv P) fuel X
 
@@ -98,8 +96,7 @@ def checkAux (P dP : IPoly) (g : Interval64 → Bool) : Nat → Interval64 → B
   | 0, X => g (evalMV P dP X)
   | fuel + 1, X =>
     g (evalMV P dP X) ||
-      (let (X₁, X₂) := bisect X
-       checkAux P dP g fuel X₁ && checkAux P dP g fuel X₂)
+      (checkAux P dP g fuel (bisect X).1 && checkAux P dP g fuel (bisect X).2)
 
 /-- `c ≤ p x` for all `x ∈ X` (certificate by bisection, at most `2^fuel` boxes). -/
 def checkGe (P : IPoly) (c : Float) (X : Interval64) (fuel : Nat) : Bool :=
@@ -129,11 +126,9 @@ def checkAux2 (P : IPoly2) (g : Interval64 → Bool) : Nat → Interval64 → In
   | fuel + 1, X, Y =>
     g (eval2 P X Y) ||
       (if decide (width Y ≤ width X) then
-        let (X₁, X₂) := bisect X
-        checkAux2 P g fuel X₁ Y && checkAux2 P g fuel X₂ Y
+        checkAux2 P g fuel (bisect X).1 Y && checkAux2 P g fuel (bisect X).2 Y
       else
-        let (Y₁, Y₂) := bisect Y
-        checkAux2 P g fuel X Y₁ && checkAux2 P g fuel X Y₂)
+        checkAux2 P g fuel X (bisect Y).1 && checkAux2 P g fuel X (bisect Y).2)
 
 /-- `c ≤ p x y` on `X × Y` (bisection of the wider side, `fuel` levels). -/
 def checkGe2 (P : IPoly2) (c : Float) (X Y : Interval64) (fuel : Nat) : Bool :=

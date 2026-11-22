@@ -25,3 +25,4 @@ import RealFPMathlib.I128DD
 import RealFPMathlib.I128Mem
 
 import RealFPMathlib.Matrix
+import RealFPMathlib.Poly

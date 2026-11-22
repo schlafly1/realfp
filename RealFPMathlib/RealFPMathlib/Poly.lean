@@ -258,4 +258,191 @@ theorem contains_shift {P : IPoly} {p : ℝ[X]} (hP : Contains P p) {A : Interva
     (ha : a ∈ A) : Contains (P.shift A) (p.comp (X + C a)) :=
   contains_comp hP (contains_lin ha)
 
+/-! ### Mean-value form, ranges, sign certificates -/
+
+theorem toE_eq_toReal {f : Float} (hn : f.isNaN = false) (hi : f.isInf = false) :
+    f.toE = (f.toReal : EReal) := by
+  have h := RealFP.Mat.toReal_mem_point hn hi
+  obtain ⟨⟨-, h1⟩, ⟨-, h2⟩⟩ := mem_toSet_iff_toE.1 h
+  exact le_antisymm h1 h2
+
+theorem mem_evalMV {P dP : IPoly} {p : ℝ[X]} (hP : Contains P p) (hD : Contains dP (derivative p))
+    {X : Interval64} {x : ℝ} (hx : x ∈ X) : p.eval x ∈ IPoly.evalMV P dP X := by
+  unfold IPoly.evalMV
+  simp only
+  split
+  · exact mem_eval hP hx
+  · rename_i hinf
+    have hinf' : (mid X).isInf = false := by simpa using hinf
+    obtain ⟨hmn, hm1, hm2⟩ := mid_spec hx
+    obtain ⟨⟨hl, -⟩, ⟨hh, -⟩⟩ := mem_toSet_iff_toE.1 hx
+    set m := mid X with hm
+    have hmr : m.toReal ∈ point m := RealFP.Mat.toReal_mem_point hmn hinf'
+    have hmX : m.toReal ∈ X := by
+      rw [toE_eq_toReal hmn hinf'] at hm1 hm2
+      exact mem_toSet_of_toE hl hh hm1 hm2
+    refine mem_intersect (mem_eval hP hx) ?_
+    obtain ⟨d, hd, he⟩ := mvt_uIcc (φ := fun t => p.eval t) (S := fun d => d ∈ dP.eval X)
+      (a := m.toReal) (b := x) (fun t ht =>
+        ⟨(derivative p).eval t, mem_eval hD (seg_mem hx hmX (Set.uIcc_comm m.toReal x ▸ ht)),
+          Polynomial.hasDerivAt p t⟩)
+    have : p.eval x = p.eval m.toReal + d * (x - m.toReal) := by linarith
+    rw [this]
+    exact Iv.add_mem (mem_eval hP hmr) (Iv.mem_mul hd (Iv.sub_mem hx hmr))
+
+theorem mem_rangeAux {P dP : IPoly} {p : ℝ[X]} (hP : Contains P p)
+    (hD : Contains dP (derivative p)) (fuel : ℕ) :
+    ∀ {X : Interval64} {x : ℝ}, x ∈ X → p.eval x ∈ IPoly.rangeAux P dP fuel X := by
+  induction fuel with
+  | zero => intro X x hx; exact mem_evalMV hP hD hx
+  | succ n ih =>
+    intro X x hx
+    rcases bisect_cover hx with h | h
+    · exact mem_hull_left (ih h)
+    · exact mem_hull_right (ih h)
+
+/-- `range P X fuel` encloses `p x` for all `x ∈ X`. -/
+theorem mem_range {P : IPoly} {p : ℝ[X]} (hP : Contains P p) (fuel : ℕ) {X : Interval64}
+    {x : ℝ} (hx : x ∈ X) : p.eval x ∈ IPoly.range P X fuel :=
+  mem_rangeAux hP (contains_deriv hP) fuel hx
+
+theorem checkAux_sound {P dP : IPoly} {p : ℝ[X]} (hP : Contains P p)
+    (hD : Contains dP (derivative p)) {g : Interval64 → Bool} (fuel : ℕ) :
+    ∀ {X : Interval64}, IPoly.checkAux P dP g fuel X = true → ∀ {x : ℝ}, x ∈ X →
+      ∃ R, g R = true ∧ p.eval x ∈ R := by
+  induction fuel with
+  | zero => intro X h x hx; exact ⟨_, h, mem_evalMV hP hD hx⟩
+  | succ n ih =>
+    intro X h x hx
+    simp only [IPoly.checkAux, Bool.or_eq_true, Bool.and_eq_true] at h
+    rcases h with h | ⟨h1, h2⟩
+    · exact ⟨_, h, mem_evalMV hP hD hx⟩
+    · rcases bisect_cover hx with hb | hb
+      · exact ih h1 hb
+      · exact ih h2 hb
+
+theorem le_of_lo {c : Float} (hcn : c.isNaN = false) (hci : c.isInf = false) {R : Interval64}
+    {y : ℝ} (hy : y ∈ R) (h : c ≤ R.lo) : c.toReal ≤ y := by
+  obtain ⟨⟨hl, hl'⟩, -⟩ := mem_toSet_iff_toE.1 hy
+  have := (float_le_iff_toE hcn hl).1 h
+  rw [toE_eq_toReal hcn hci] at this
+  exact EReal.coe_le_coe_iff.1 (le_trans this hl')
+
+theorem lt_of_lo {c : Float} (hcn : c.isNaN = false) (hci : c.isInf = false) {R : Interval64}
+    {y : ℝ} (hy : y ∈ R) (h : c < R.lo) : c.toReal < y := by
+  obtain ⟨⟨hl, hl'⟩, -⟩ := mem_toSet_iff_toE.1 hy
+  have := (float_lt_iff_toE hcn hl).1 h
+  rw [toE_eq_toReal hcn hci] at this
+  exact EReal.coe_lt_coe_iff.1 (lt_of_lt_of_le this hl')
+
+theorem ge_of_hi {c : Float} (hcn : c.isNaN = false) (hci : c.isInf = false) {R : Interval64}
+    {y : ℝ} (hy : y ∈ R) (h : R.hi ≤ c) : y ≤ c.toReal := by
+  obtain ⟨-, ⟨hh, hh'⟩⟩ := mem_toSet_iff_toE.1 hy
+  have := (float_le_iff_toE hh hcn).1 h
+  rw [toE_eq_toReal hcn hci] at this
+  exact EReal.coe_le_coe_iff.1 (le_trans hh' this)
+
+theorem gt_of_hi {c : Float} (hcn : c.isNaN = false) (hci : c.isInf = false) {R : Interval64}
+    {y : ℝ} (hy : y ∈ R) (h : R.hi < c) : y < c.toReal := by
+  obtain ⟨-, ⟨hh, hh'⟩⟩ := mem_toSet_iff_toE.1 hy
+  have := (float_lt_iff_toE hh hcn).1 h
+  rw [toE_eq_toReal hcn hci] at this
+  exact EReal.coe_lt_coe_iff.1 (lt_of_le_of_lt hh' this)
+
+/-- **Polynomial lower bound.** -/
+theorem le_of_checkGe {P : IPoly} {p : ℝ[X]} (hP : Contains P p) {c : Float} {X : Interval64}
+    {fuel : ℕ} (h : P.checkGe c X fuel = true) {x : ℝ} (hx : x ∈ X) : c.toReal ≤ p.eval x := by
+  simp only [IPoly.checkGe, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hn, hi⟩, h⟩ := h
+  obtain ⟨R, hR, hy⟩ := checkAux_sound hP (contains_deriv hP) fuel h hx
+  exact le_of_lo hn hi hy (of_decide_eq_true hR)
+
+theorem lt_of_checkGt {P : IPoly} {p : ℝ[X]} (hP : Contains P p) {c : Float} {X : Interval64}
+    {fuel : ℕ} (h : P.checkGt c X fuel = true) {x : ℝ} (hx : x ∈ X) : c.toReal < p.eval x := by
+  simp only [IPoly.checkGt, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hn, hi⟩, h⟩ := h
+  obtain ⟨R, hR, hy⟩ := checkAux_sound hP (contains_deriv hP) fuel h hx
+  exact lt_of_lo hn hi hy (of_decide_eq_true hR)
+
+theorem ge_of_checkLe {P : IPoly} {p : ℝ[X]} (hP : Contains P p) {c : Float} {X : Interval64}
+    {fuel : ℕ} (h : P.checkLe c X fuel = true) {x : ℝ} (hx : x ∈ X) : p.eval x ≤ c.toReal := by
+  simp only [IPoly.checkLe, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hn, hi⟩, h⟩ := h
+  obtain ⟨R, hR, hy⟩ := checkAux_sound hP (contains_deriv hP) fuel h hx
+  exact ge_of_hi hn hi hy (of_decide_eq_true hR)
+
+theorem gt_of_checkLt {P : IPoly} {p : ℝ[X]} (hP : Contains P p) {c : Float} {X : Interval64}
+    {fuel : ℕ} (h : P.checkLt c X fuel = true) {x : ℝ} (hx : x ∈ X) : p.eval x < c.toReal := by
+  simp only [IPoly.checkLt, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hn, hi⟩, h⟩ := h
+  obtain ⟨R, hR, hy⟩ := checkAux_sound hP (contains_deriv hP) fuel h hx
+  exact gt_of_hi hn hi hy (of_decide_eq_true hR)
+
+/-! ### Bivariate -/
+
+/-- `p : ℝ[X][X]` (outer variable `y`, inner `x`) lies in `P`. -/
+def Contains2 (P : IPoly2) (p : ℝ[X][X]) : Prop := ∀ j, Contains (P.coeff j) (p.coeff j)
+
+/-- Value at `(x, y)`: `(p.eval (C y)).eval x` (Mathlib's `Polynomial.evalEval x y p`). -/
+def eval2R (x y : ℝ) (p : ℝ[X][X]) : ℝ := (p.eval (C y)).eval x
+
+theorem coeff2_zero {P : IPoly2} {p : ℝ[X][X]} (h : Contains2 P p) {j : ℕ} (hj : P.size ≤ j) :
+    p.coeff j = 0 := by
+  have hc := h j
+  have : P.coeff j = #[] := by simp [IPoly2.coeff, Array.getD, show ¬ j < P.size by omega]
+  rw [this] at hc
+  ext k
+  have := hc k
+  simp only [IPoly.coeff, Array.getD] at this
+  simpa using mem_zeroI_iff.1 (by simpa using this)
+
+theorem mem_eval2 {P : IPoly2} {p : ℝ[X][X]} (hP : Contains2 P p) {X Y : Interval64} {x y : ℝ}
+    (hx : x ∈ X) (hy : y ∈ Y) : eval2R x y p ∈ P.eval2 X Y := by
+  have e : eval2R x y p = ∑ j ∈ range P.size, (p.coeff j).eval x * y ^ j := by
+    unfold eval2R
+    conv_lhs => rw [eq_sum_range (fun j hj => coeff2_zero hP hj)]
+    simp [eval_finsetSum]
+  rw [e]
+  have := mem_hornerAux (c := fun j => (P.coeff j).eval X) (u := fun j => (p.coeff j).eval x)
+    hy P.size 0 (fun k _ => mem_eval (hP (0 + k)) hx)
+  show _ ∈ IPoly.hornerAux _ Y 0 P.size
+  simpa using this
+
+theorem checkAux2_sound {P : IPoly2} {p : ℝ[X][X]} (hP : Contains2 P p) {g : Interval64 → Bool}
+    (fuel : ℕ) : ∀ {X Y : Interval64}, IPoly2.checkAux2 P g fuel X Y = true →
+      ∀ {x y : ℝ}, x ∈ X → y ∈ Y → ∃ R, g R = true ∧ eval2R x y p ∈ R := by
+  induction fuel with
+  | zero => intro X Y h x y hx hy; exact ⟨_, h, mem_eval2 hP hx hy⟩
+  | succ n ih =>
+    intro X Y h x y hx hy
+    simp only [IPoly2.checkAux2, Bool.or_eq_true] at h
+    rcases h with h | h
+    · exact ⟨_, h, mem_eval2 hP hx hy⟩
+    · split at h
+      · simp only [Bool.and_eq_true] at h
+        rcases bisect_cover hx with hb | hb
+        · exact ih h.1 hb hy
+        · exact ih h.2 hb hy
+      · simp only [Bool.and_eq_true] at h
+        rcases bisect_cover hy with hb | hb
+        · exact ih h.1 hx hb
+        · exact ih h.2 hx hb
+
+/-- **Bivariate lower bound** on a box. -/
+theorem le_of_checkGe2 {P : IPoly2} {p : ℝ[X][X]} (hP : Contains2 P p) {c : Float}
+    {X Y : Interval64} {fuel : ℕ} (h : P.checkGe2 c X Y fuel = true) {x y : ℝ} (hx : x ∈ X)
+    (hy : y ∈ Y) : c.toReal ≤ eval2R x y p := by
+  simp only [IPoly2.checkGe2, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hn, hi⟩, h⟩ := h
+  obtain ⟨R, hR, hv⟩ := checkAux2_sound hP fuel h hx hy
+  exact le_of_lo hn hi hv (of_decide_eq_true hR)
+
+theorem lt_of_checkGt2 {P : IPoly2} {p : ℝ[X][X]} (hP : Contains2 P p) {c : Float}
+    {X Y : Interval64} {fuel : ℕ} (h : P.checkGt2 c X Y fuel = true) {x y : ℝ} (hx : x ∈ X)
+    (hy : y ∈ Y) : c.toReal < eval2R x y p := by
+  simp only [IPoly2.checkGt2, Bool.and_eq_true, Bool.not_eq_true'] at h
+  obtain ⟨⟨hn, hi⟩, h⟩ := h
+  obtain ⟨R, hR, hv⟩ := checkAux2_sound hP fuel h hx hy
+  exact lt_of_lo hn hi hv (of_decide_eq_true hR)
+
 end RealFP.Poly
