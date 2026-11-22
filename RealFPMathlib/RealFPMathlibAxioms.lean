@@ -19,6 +19,7 @@ import RealFPMathlib.Examples.MatrixPD
 import RealFPMathlib.Examples.PolyQuad
 import RealFPMathlib.Examples.Bernstein
 import RealFPMathlib.Examples.Quad2
+import RealFPMathlib.Examples.Taylor2
 import RealFPMathlib.Examples.IntegralTactic
 import RealFPMathlib.Tests.IntervalTest
 
@@ -1008,3 +1009,39 @@ import RealFPMathlib.Tests.IntervalTest
 #print axioms RealFP.Examples.Quad2.xy_rect_bounds
 #print axioms RealFP.Examples.IntegralTactic.gauss_lower
 #print axioms RealFP.Examples.IntegralTactic.gauss_icc
+#print axioms RealFP.Taylor2.fle_real
+#print axioms RealFP.Taylor2.cellOKF_spec
+#print axioms RealFP.Taylor2.toReal_of_bits
+#print axioms RealFP.Taylor2.ptF_mem
+#print axioms RealFP.Taylor2.mom_mem_momF
+#print axioms RealFP.Taylor2.sum_mem_sumI
+#print axioms RealFP.Taylor2.hasDerivAt_y
+#print axioms RealFP.Taylor2.hasDerivAt_x
+#print axioms RealFP.Taylor2.env2
+#print axioms RealFP.Taylor2.integral2_mem_t2Cell
+#print axioms RealFP.Taylor2.chain_eq
+#print axioms RealFP.Taylor2.chain_bounds
+#print axioms RealFP.Taylor2.sum_mem_foldr
+#print axioms RealFP.Taylor2.integral_list_sum
+#print axioms RealFP.Taylor2.integral2_mem_taylor2
+#print axioms RealFP.Taylor2.integral_rect_mem_taylor2
+#print axioms RealFP.Taylor2.dom_of_smoothB
+#print axioms RealFP.Taylor2.continuous_of_smoothB
+#print axioms RealFP.Taylor2.allSmooth_spec
+#print axioms RealFP.Taylor2.integral2_mem_taylor2_smooth
+#print axioms RealFP.KTaylor2.wf_pt
+#print axioms RealFP.KTaylor2.wf_box
+#print axioms RealFP.KTaylor2.momK_toI
+#print axioms RealFP.KTaylor2.sumK_toI
+#print axioms RealFP.KTaylor2.evalK2_toI
+#print axioms RealFP.KTaylor2.cellOKK_fin
+#print axioms RealFP.KTaylor2.t2CellK_toI
+#print axioms RealFP.KTaylor2.t2SumK_toI
+#print axioms RealFP.KTaylor2.cellOKF_fl3
+#print axioms RealFP.KTaylor2.chainF_fl3
+#print axioms RealFP.KTaylor2.integral2_mem_taylor2K
+#print axioms RealFP.KTaylor2.toReal_of_ratOf
+#print axioms RealFP.KTaylor2.integral2_bounds_of_taylor2Bound
+#print axioms RealFP.Examples.Taylor2.cert2
+#print axioms RealFP.Examples.Taylor2.gauss2_bounds
+#print axioms RealFP.Examples.Taylor2.gauss2_rect_bounds
