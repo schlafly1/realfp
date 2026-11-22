@@ -416,4 +416,78 @@ theorem mem_sqrt {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) (h
       exact le_trans (Real.sqrt_le_sqrt hx2) (sqrtHi_ge fa3 fa4 (by linarith) hH hL)
   · exact mem_ofInterval64 hs
 
+/-! ### Conversions -/
+
+theorem mem_point {f : Float} {v : ℝ} (h : Fv f v) : v ∈ toSet (Interval128.point f) :=
+  ⟨Or.inl ⟨v, 0, h, fv_zero, by simp⟩, Or.inl ⟨v, 0, h, fv_zero, by simp⟩⟩
+
+theorem fv_of_loR_hiR {f : Float} {a b : ℝ} (hl : loR (bitsToEVal f.toBits) b)
+    (hh : hiR (bitsToEVal f.toBits) a) : ∃ v, Fv f v ∧ a ≤ v ∧ v ≤ b := by
+  obtain ⟨hn, h1⟩ := (loR_iff_toE f b).1 hl
+  obtain ⟨-, h2⟩ := (hiR_iff_toE f a).1 hh
+  obtain ⟨q, hq, hqe⟩ := exists_rat_of_toE hn
+    (fun h => by rw [h] at h2; exact EReal.coe_ne_bot a (le_bot_iff.1 h2))
+    (fun h => by rw [h] at h1; exact EReal.coe_ne_top b (top_le_iff.1 h1))
+  rw [hqe] at h1 h2
+  exact ⟨q, toReal?_of_bitsToRat? hq, by exact_mod_cast h2, by exact_mod_cast h1⟩
+
+theorem repr_zero : RepresentableR 0 := (representableR_iff_exists_float 0).2 ⟨0, fv_zero⟩
+
+theorem ofRatDown_float_lo (q : ℚ) : IsRoundDownR (q : ℝ) (bitsToEVal (Float.ofRatDown q).toBits) := by
+  have h := ofRatDown_isRoundDownR q
+  show IsRoundDownR (q : ℝ) (bitsToEVal (Float.ofBits (Interval64.Spec.ofRatDown q)).toBits)
+  rw [toBits_ofBits]
+  cases hb : bitsToEVal (Interval64.Spec.ofRatDown q) with
+  | none => rw [hb] at h; exact absurd h.1 (by simp [loR])
+  | some ev => rw [bitsToEVal_pack_unpack_of_some hb, ← hb]; exact h
+
+theorem ofRatUp_float_hi (q : ℚ) : IsRoundUpR (q : ℝ) (bitsToEVal (Float.ofRatUp q).toBits) := by
+  have h := ofRatUp_isRoundUpR q
+  show IsRoundUpR (q : ℝ) (bitsToEVal (Float.ofBits (Interval64.Spec.ofRatUp q)).toBits)
+  rw [toBits_ofBits]
+  cases hb : bitsToEVal (Interval64.Spec.ofRatUp q) with
+  | none => rw [hb] at h; exact absurd h.1 (by simp [hiR])
+  | some ev => rw [bitsToEVal_pack_unpack_of_some hb, ← hb]; exact h
+
+theorem ddOfRatDown_lo (q : ℚ) :
+    loIn (Interval128.ddOfRatDown q).hi (Interval128.ddOfRatDown q).lo (q : ℝ) := by
+  have hl := (ofRatDown_float_lo q).1
+  unfold Interval128.ddOfRatDown
+  dsimp only
+  split
+  · rename_i r hr
+    have hfr : Fv (Float.ofRatDown q) r := toReal?_of_bitsToRat? hr
+    have hrq : (r : ℝ) ≤ q := le_of_loR hfr hl
+    have h2 := ofRatDown_float_lo (q - r)
+    have h0 : hiR (bitsToEVal (Float.ofRatDown (q - r)).toBits) 0 :=
+      h2.2 0 repr_zero (by push_cast; linarith)
+    obtain ⟨v, hv, -, hv2⟩ := fv_of_loR_hiR h2.1 h0
+    exact Or.inl ⟨r, v, hfr, hv, by push_cast at hv2; linarith⟩
+  · exact Or.inr ⟨fv_zero, ((loR_iff_toE _ _).1 hl).1, ((loR_iff_toE _ _).1 hl).2⟩
+
+theorem ddOfRatUp_hi (q : ℚ) :
+    hiIn (Interval128.ddOfRatUp q).hi (Interval128.ddOfRatUp q).lo (q : ℝ) := by
+  have hl := (ofRatUp_float_hi q).1
+  unfold Interval128.ddOfRatUp
+  dsimp only
+  split
+  · rename_i r hr
+    have hfr : Fv (Float.ofRatUp q) r := toReal?_of_bitsToRat? hr
+    have hrq : (q : ℝ) ≤ r := ge_of_hiR hfr hl
+    have h2 := ofRatUp_float_hi (q - r)
+    have h0 : loR (bitsToEVal (Float.ofRatUp (q - r)).toBits) 0 :=
+      h2.2 0 repr_zero (by push_cast; linarith)
+    obtain ⟨v, hv, hv1, -⟩ := fv_of_loR_hiR h0 h2.1
+    exact Or.inl ⟨r, v, hfr, hv, by push_cast at hv1; linarith⟩
+  · exact Or.inr ⟨fv_zero, ((hiR_iff_toE _ _).1 hl).1, ((hiR_iff_toE _ _).1 hl).2⟩
+
+theorem mem_ofRat (q : ℚ) : (q : ℝ) ∈ toSet (Interval128.ofRat q) :=
+  ⟨ddOfRatDown_lo q, ddOfRatUp_hi q⟩
+
+theorem mem_ofNat (n : ℕ) : (n : ℝ) ∈ toSet (Interval128.ofNat n) := by
+  have := mem_ofRat (n : ℚ); push_cast at this; exact this
+
+theorem mem_ofInt (n : ℤ) : (n : ℝ) ∈ toSet (Interval128.ofInt n) := by
+  have := mem_ofRat (n : ℚ); push_cast at this; exact this
+
 end RealFP.I128
