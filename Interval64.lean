@@ -29,3 +29,5 @@ import Interval64.Kernel.Deriv
 import Interval64.Matrix
 import Interval64.Poly
 import Interval64.Quad
+import Interval64.Kernel.Matrix
+import Interval64.Kernel.MatrixCert

@@ -27,3 +27,4 @@ import RealFPMathlib.I128Mem
 import RealFPMathlib.Matrix
 import RealFPMathlib.Poly
 import RealFPMathlib.Quad
+import RealFPMathlib.KMatrix
