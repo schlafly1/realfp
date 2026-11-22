@@ -523,7 +523,7 @@ def opsTests : IO Nat := do
     | some l, some h => if !leQF (h - l) wd then bad := bad + 1
     | _, _ => if !(wd.isInf && decide (wd > 0)) then bad := bad + 1
     if !(subset bs.1 A && subset bs.2 A) then bad := bad + 1
-    for i in [0:6] do
+    for _i in [0:6] do
       s := xorshift s; let x := pick A (unitF s)
       s := xorshift s; let y := pick B (unitF s)
       match r x, r y with

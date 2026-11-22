@@ -2,12 +2,14 @@
 Directed-rounding `asin`, `acos` (binary64).
 
 Logical model (Mathlib-free), for `0 < q < 1`:
-* tiny `q` (`q ≤ 1/32`, `q² ≲ 2^-p`): `q ≤ asin q ≤ q + q³/5`;
+* tiny `q` (`q ≤ 1/32`, `q² ≲ 2^-p`): `q + q³/6 ≤ asin q ≤ q + q³/5` (the lower bound certified by
+  a 10-term `sin` enclosure, else `q`; a lower bound of exactly `q` would never let Ziv converge
+  rounding up, since `q` is a float and `asin q > q`);
 * otherwise an unverified candidate `c ≈ atan (q / √(1-q²))` gives `[a, b]` that is certified by
   the `sin` enclosures: `0 ≤ a ≤ π/2`, `sin a ≤ q` and `b ≤ π/2`, `q ≤ sin b` (failures fall back
   to `0` / `π/2`);
 * `asin (-q) = -asin q`, `asin (±1) = ±π/2`; `acos q = π/2 - asin q` (`acos 1 = 0` exactly),
-  computed with 64 extra bits.
+  computed with 32 extra bits.
 Runtime: CORE-MATH `cr_asin`, `cr_acos` under RD / RU.
 -/
 import Interval64.Tan
@@ -20,8 +22,11 @@ open Float.Model Float.Model.UnpackedFloat
 /-- Enclosure of `asin q` for `0 < q < 1`. -/
 def asinPos (q : Rat) (p : Nat) : Rat × Rat :=
   let e := relShift q
-  let pb := piBounds (p + 20) false
-  if q ≤ 1 / 32 ∧ p + 10 ≤ 2 * e then (q, q + q ^ 3 / 5) else
+  let pb := piBounds 128 false
+  if q ≤ 1 / 32 ∧ p + 10 ≤ 2 * e then
+    let a := q + q ^ 3 / 6
+    (if 0 ≤ a ∧ a ≤ pb.1 / 2 ∧ (trigBounds a 0).1.2 ≤ q then a else q, q + q ^ 3 / 5)
+  else
   let P := p + e + 8
   let W := P + 80
   let c := atanCand (q / sqrtD (1 - q * q) W) W
@@ -44,8 +49,8 @@ def asinBounds (q : Rat) (p : Nat) : Rat × Rat :=
 def acosBounds (q : Rat) (p : Nat) : Rat × Rat :=
   if q = 1 then (0, 0)
   else
-    let s := asinBounds q (p + 64)
-    let pb := piBounds (p + 64) false
+    let s := asinBounds q (p + 32)
+    let pb := piBounds p false
     (pb.1 / 2 - s.2, pb.2 / 2 - s.1)
 
 /-- `asin` on bits: NaN, ±∞, `|x| > 1` → NaN; `asin ±0 = ±0`. -/

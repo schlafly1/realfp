@@ -71,13 +71,18 @@ theorem asinPos_spec {q : ℚ} (h0 : 0 < q) (h1 : q < 1) (p : ℕ) :
     ((asinPos q p).1 : ℝ) ≤ Real.arcsin q ∧ Real.arcsin q ≤ (asinPos q p).2 := by
   have hq0 : (0 : ℝ) ≤ q := by exact_mod_cast h0.le
   have hq1 : (q : ℝ) ≤ 1 := by exact_mod_cast h1.le
-  have hpi := piBounds_spec (p + 20) false
+  have hpi := piBounds_spec 128 false
   have flo : ((0 : ℚ) : ℝ) ≤ Real.arcsin q := by push_cast; exact Real.arcsin_nonneg.2 hq0
-  have fhi : Real.arcsin q ≤ (((piBounds (p + 20) false).2 / 2 : ℚ) : ℝ) := by
+  have fhi : Real.arcsin q ≤ (((piBounds 128 false).2 / 2 : ℚ) : ℝ) := by
     push_cast; linarith [Real.arcsin_le_pi_div_two q, hpi.2]
   unfold asinPos
   dsimp only
-  split_ifs with ht hl hh hh
+  generalize piBounds 128 false = pb at hpi fhi ⊢
+  split_ifs with ht ha hl hh hh
+  · refine ⟨lo_ok hpi.1 ha, ?_⟩
+    have h32 := Rat.cast_le (K := ℝ) |>.2 ht.1
+    push_cast at h32 ⊢
+    exact arcsin_le_tiny hq0 h32
   · have h32 := Rat.cast_le (K := ℝ) |>.2 ht.1
     push_cast at h32 ⊢
     exact ⟨le_arcsin_self hq0 hq1, arcsin_le_tiny hq0 h32⟩
@@ -121,8 +126,8 @@ theorem acosBounds_spec {q : ℚ} (h : |(q : ℝ)| ≤ 1) (p : ℕ) :
   split_ifs with h1
   · subst h1; simp
   · dsimp only
-    obtain ⟨a, b⟩ := asinBounds_spec h (p + 64)
-    obtain ⟨c, d⟩ := piBounds_spec (p + 64) false
+    obtain ⟨a, b⟩ := asinBounds_spec h (p + 32)
+    obtain ⟨c, d⟩ := piBounds_spec p false
     rw [Real.arccos_eq_pi_div_two_sub_arcsin]
     push_cast
     constructor <;> linarith
