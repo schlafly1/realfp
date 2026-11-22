@@ -239,3 +239,60 @@ LEAN_EXPORT lean_obj_res iv64_tape_eval(b_lean_obj_arg code, b_lean_obj_arg cons
   free(e); free(t.regs);
   return ivt_box(r);
 }
+
+/* Quad.taylor2 grid sum (t2Sum): roots (u32) are dxy e i j at i*(K+1)+j for i < K, j <= K,
+   then dxy e K 0. xs, ys: (lo, m, hi) triples. */
+LEAN_EXPORT lean_obj_res iv64_quad_taylor2(b_lean_obj_arg code, b_lean_obj_arg consts, b_lean_obj_arg fns,
+                                           b_lean_obj_arg atan2fn, b_lean_obj_arg roots, b_lean_obj_arg Kn,
+                                           b_lean_obj_arg xs, b_lean_obj_arg ys) {
+  ivt_t t; ivw_tape(&t, code, consts, fns, atan2fn);
+  size_t K = ivw_nat(Kn);
+  const uint32_t *r32 = (const uint32_t *)lean_sarray_cptr(roots);
+  size_t K1 = K + 1, nA = K * K1;
+  size_t topA = 0, topB = 0, rC = r32[nA];
+  for (size_t i = 0; i < K; i++)
+    for (size_t j = 0; j <= K; j++) {
+      size_t r = r32[i * K1 + j];
+      if (j < K) { if (r > topA) topA = r; } else if (r > topB) topB = r;
+    }
+  size_t nx = lean_sarray_size(xs) / 3, ny = lean_sarray_size(ys) / 3;
+  const double *X = lean_float_array_cptr(xs), *Y = lean_float_array_cptr(ys);
+  ivp_t *A = (ivp_t *)ivw_alloc(nA + 1, sizeof(ivp_t));
+  ivp_t *mx = (ivp_t *)ivw_alloc(K1, sizeof(ivp_t));
+  ivp_t *my = (ivp_t *)ivw_alloc(K1, sizeof(ivp_t));
+  ivp_t *row = (ivp_t *)ivw_alloc(ny + 1, sizeof(ivp_t));
+  ivp_t acc = ivp_zero();
+  for (size_t ix = nx; ix-- > 0;) {
+    double xl = X[3 * ix], xm = X[3 * ix + 1], xh = X[3 * ix + 2];
+    for (size_t j = 0; j <= K; j++) mx[j] = ivq_mom(xl, xm, xh, j);
+    ivp_t wx = ivp_sub(ivp_point(xh), ivp_point(xl));
+    for (size_t iy = 0; iy < ny; iy++) {
+      double yl = Y[3 * iy], ym = Y[3 * iy + 1], yh = Y[3 * iy + 2];
+      for (size_t j = 0; j <= K; j++) my[j] = ivq_mom(yl, ym, yh, j);
+      ivp_t env[2] = { ivp_point(xm), ivp_point(ym) };
+      if (K > 0) {
+        ivt_eval(&t, env, 2, topA);
+        for (size_t i = 0; i < K; i++)
+          for (size_t j = 0; j < K; j++) A[i * K1 + j] = t.regs[r32[i * K1 + j]];
+        env[0] = ivp_mk(xl, xh);
+        ivt_eval(&t, env, 2, topB);
+        for (size_t i = 0; i < K; i++) A[i * K1 + K] = t.regs[r32[i * K1 + K]];
+      }
+      env[0] = ivp_mk(xl, xh); env[1] = ivp_mk(yl, yh);
+      ivp_t C = ivt_eval(&t, env, 2, rC);
+      ivp_t s = ivp_zero();
+      for (size_t i = 0; i < K; i++) {
+        ivp_t si = ivp_zero();
+        for (size_t j = 0; j < K; j++) si = ivp_add(si, ivp_mul(A[i * K1 + j], mx[j]));
+        ivp_t inner = ivp_add(si, ivp_mul(A[i * K1 + K], mx[K]));
+        s = ivp_add(s, ivp_mul(my[i], inner));
+      }
+      row[iy] = ivp_add(s, ivp_mul(ivp_mul(C, my[K]), wx));
+    }
+    ivp_t r = ivp_zero();
+    for (size_t iy = ny; iy-- > 0;) r = ivp_add(row[iy], r);
+    acc = ivp_add(r, acc);
+  }
+  free(A); free(mx); free(my); free(row); free(t.regs);
+  return ivt_box(acc);
+}
