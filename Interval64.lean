@@ -27,3 +27,4 @@ import Interval64.Kernel.Interval
 import Interval64.Kernel.Reflect
 import Interval64.Kernel.Deriv
 import Interval64.Matrix
+import Interval64.Poly
