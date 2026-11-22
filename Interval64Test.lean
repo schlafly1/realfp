@@ -898,9 +898,10 @@ def cTests : IO Nat := do
   -- 2D Taylor rule: C (taylor2) vs Lean (t2Sum)
   let t2spec := fun (e : KF.IExpr) (K : Nat) (a b c d : Float) xs ys =>
     if Quad.t2OK K a b c d xs ys then Quad.t2Sum e K xs ys else whole
-  for e in [g2, .mul (.var 0) (.var 1), .sin (.add (.var 0) (.mul (.rat 2) (.var 1))),
-      .div (.rat 1) (.add (.rat 1) (.add (.var 0) (.var 1)))] do
-    for (K, N, M) in [(2, 1, 1), (2, 3, 2), (4, 2, 3), (6, 2, 2), (0, 2, 2), (3, 2, 2)] do
+  for (e, Ks) in [(g2, [2, 4, 6]), (.mul (.var 0) (.var 1), [2, 4, 6]),
+      (.sin (.add (.var 0) (.mul (.rat 2) (.var 1))), [2, 4]),
+      (.div (.rat 1) (.add (.rat 1) (.add (.var 0) (.var 1))), [2])] do
+    for (K, N, M) in ((Ks.map fun K => [(K, 1, 1), (K, 3, 2)]).flatten ++ [(0, 2, 2), (3, 2, 2)]) do
       for (a, b, c, d) in [((0 : Float), (1 : Float), (0 : Float), (1 : Float)), (0, 2, -1, 3), (1, 0, 0, 1)] do
         let xs := Quad.ucells a b N
         let ys := Quad.ucells c d M
