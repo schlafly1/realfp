@@ -107,6 +107,12 @@ lean_exe interval64_tests where
   root := `Interval64Test
   moreLeancArgs := #["-O3"]
 
+lean_lib Interval128Tests
+
+lean_exe interval128_tests where
+  root := `Interval128Test
+  moreLeancArgs := #["-O3"]
+
 lean_exe interval64_bench where
   root := `Interval64Bench
   moreLeancArgs := #["-O3"]
