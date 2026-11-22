@@ -27,3 +27,9 @@ import RealFPMathlib.I128Mem
 import RealFPMathlib.Matrix
 import RealFPMathlib.Poly
 import RealFPMathlib.Quad
+import RealFPMathlib.KMatrix
+import RealFPMathlib.TaylorBound
+import RealFPMathlib.KQuad
+import RealFPMathlib.Bern
+import RealFPMathlib.Quad2
+import RealFPMathlib.IntegralTactic

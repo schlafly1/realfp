@@ -4,8 +4,16 @@ Polynomial sign certificates and rigorous quadrature, checked by the kernel
 
 * `taylor_exp_pos` : `0 < 1 - x + x²/2 - x³/6 + x⁴/24` on `[0, 4]`.
 * `gauss_integral_bounds` : `0.7451171875 ≤ ∫₀¹ e^{-x²} dx ≤ 0.748046875`.
+
+Fast kernel path (`KF`/`KI` bit patterns):
+* `taylor_exp_pos'` : the same polynomial positivity, by the `interval` tactic.
+* `gauss_integral_bounds_kq` : `0.7468 ≤ ∫₀¹ e^{-x²} dx ≤ 0.7469` by order-4 Taylor quadrature
+  (`quadBound`, 4 cells; ~5 s beyond the import vs ~47 s for the second-order rule above).
 -/
 import RealFPMathlib.Quad
+import RealFPMathlib.KQuad
+import RealFPMathlib.IntervalTactic
+import Interval64.Kernel.QuadCert
 
 open Interval64 Interval64.Quad Interval64.KF RealFP RealFP.Poly RealFP.Quad Polynomial
 
@@ -67,5 +75,24 @@ theorem gauss_integral_bounds :
   constructor
   · have := le_of_lo hcn hci h R_ok.1; rwa [c_lo] at this
   · have := ge_of_hi hdn hdi h R_ok.2; rwa [c_hi] at this
+
+/-! ### Kernel fast path -/
+
+theorem taylor_exp_pos' {x : ℝ} (h0 : 0 ≤ x) (h4 : x ≤ 4) :
+    0 < 1 - x + x ^ 2 / 2 - x ^ 3 / 6 + x ^ 4 / 24 := by
+  interval
+
+open Interval64.KF.KQ RealFP.KQ in
+/-- **`0.7468 ≤ ∫₀¹ e^{-x²} dx ≤ 0.7469`** (order-4 Taylor cells, kernel-checked). -/
+theorem gauss_integral_bounds_kq :
+    (7468 / 10000 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) ∧
+      (∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2)) ≤ 7469 / 10000 := by
+  have h := integral_bounds_of_quadBound (e := g) (K := 4) (a := bits% 0) (b := bits% 1)
+    (cs := cells% 0 1 4) (qa := 0) (qb := 1) (ql := 7468 / 10000) (qh := 7469 / 10000)
+    (by decide +kernel)
+  have e : ∀ x : ℝ, g.denote [x] = Real.exp (-x ^ 2) := fun x => by simp [g, IExpr.denote, sq]
+  simp only [e] at h
+  push_cast at h
+  exact h
 
 end RealFP.Examples.PolyQuad

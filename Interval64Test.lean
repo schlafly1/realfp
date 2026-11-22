@@ -694,6 +694,101 @@ def nsTests : IO Nat := do
   if (Quad.integrate (fun _ _ => ofRat 0) 1 0 1e-3 3).lo != -Float.inf then qFails := qFails + 1
   IO.println s!"quadrature: ∫₀¹e^(-x²) ∈ [{R1.lo}, {R1.hi}] (width {R1.hi - R1.lo}); {qFails} failures"
   fails := fails + qFails
+  -- 5. Kernel fast path (KF/KI bit patterns): PD certificates and Taylor quadrature.
+  let mut kFails := 0
+  let hq := fun (i j : Nat) => (1 / ((i : Rat) + j + 1) : Rat)
+  for n in [1:14] do
+    let A := KF.KM.ofRatFn n hq
+    let l := KF.KM.pdCheckL n A (KF.KM.mkCert n A)
+    if l != Mat.isPD (hilb n) then kFails := kFails + 1
+    if l != KF.KM.pdCheckK n A (KF.KM.approxXK n A) then kFails := kFails + 1
+    if !KF.KM.ratMatOK n A hq then kFails := kFails + 1
+  for n in [1:11] do
+    if !KF.KM.pdCheckL n (KF.KM.ofRatFn n hq) (KF.KM.mkCert n (KF.KM.ofRatFn n hq)) then
+      kFails := kFails + 1
+  let badK := KF.KM.ofRatFn 2 fun i j => if i = j then 1 else 2
+  let singK := KF.KM.ofRatFn 2 fun _ _ => 1
+  if KF.KM.pdCheckL 2 badK (KF.KM.mkCert 2 badK) then kFails := kFails + 1
+  if KF.KM.pdCheckL 2 singK (KF.KM.mkCert 2 singK) then kFails := kFails + 1
+  if KF.KM.ratMatOK 2 badK fun _ _ => 3 then kFails := kFails + 1
+  let toIv := fun (R : KF.KI) => (⟨KF.KQ.toFl R.lo, KF.KQ.toFl R.hi⟩ : Interval64)
+  let b0 := KF.KQ.bitsOf 0
+  let b1 := KF.KQ.bitsOf 1
+  for (K, N) in [(2, 32), (4, 8), (6, 8), (8, 4), (8, 16)] do
+    match KF.KQ.quadK g K b0 b1 (KF.KQ.uniformCells 0 1 N) with
+    | some R => if !(ivContains (toIv R) gLo && ivContains (toIv R) gHi) then kFails := kFails + 1
+    | none => kFails := kFails + 1
+  for K in [0, 3] do
+    if (KF.KQ.quadK g K b0 b1 (KF.KQ.uniformCells 0 1 4)).isSome then kFails := kFails + 1
+  -- broken chain: cells for [0, 1] but claimed [0, 2]
+  if (KF.KQ.quadK g 4 b0 (KF.KQ.bitsOf 2) (KF.KQ.uniformCells 0 1 4)).isSome then kFails := kFails + 1
+  match KF.KQ.quadK x2 2 b0 b1 (KF.KQ.uniformCells 0 1 3) with
+  | some R => if !ivContains (toIv R) (1/3) then kFails := kFails + 1
+  | none => kFails := kFails + 1
+  let cs4 := KF.KQ.uniformCells 0 1 4
+  if !KF.KQ.quadBound g 4 b0 b1 cs4 0 1 (7468/10000) (7469/10000) then kFails := kFails + 1
+  if KF.KQ.quadBound g 4 b0 b1 cs4 0 1 (7469/10000) (7470/10000) then kFails := kFails + 1
+  if KF.KQ.quadBound g 4 b0 b1 cs4 0 (1/2) (7468/10000) (7469/10000) then kFails := kFails + 1
+  let w8 := match KF.KQ.quadK g 8 b0 b1 (KF.KQ.uniformCells 0 1 16) with
+    | some R => KF.KQ.toFl R.hi - KF.KQ.toFl R.lo
+    | none => Float.inf
+  IO.println s!"kernel fast path (pdCheckL/pdCheckK vs isPD, Hilbert 1..13; Taylor quadrature K=2..8): {kFails} failures; K=8, 16 cells width {w8}"
+  fails := fails + kFails
+  -- 6. Bernstein enclosures (1D and 2D) vs exact rationals.
+  let mut bFails := 0
+  let mut rb : UInt64 := 0x5EED
+  for _ in [0:200] do
+    rb := xorshift rb; let d := (rb % 7).toNat + 1
+    let mut a : Array Rat := #[]
+    for _ in [0:d] do
+      rb := xorshift rb; a := a.push ((((rb % 2001).toNat : Int) - 1000 : Rat) / 7)
+    rb := xorshift rb; let lo : Rat := (((rb % 2001).toNat : Int) - 1000 : Rat) / 500
+    rb := xorshift rb; let w : Rat := ((rb % 1000).toNat : Rat) / 300
+    let X := ofRatInterval lo (lo + w)
+    let A : IPoly := a.map ofRat
+    for (n, fuel) in [(0, 0), (d + 3, 0), (d, 2)] do
+      let R := A.bernRange n fuel X
+      for k in [0:5] do
+        let x := lo + w * (k : Rat) / 4
+        if !ivContains R (qeval a x) then bFails := bFails + 1
+  -- 2D: p(x, y) = Σ_j a_j(x) y^j
+  for _ in [0:100] do
+    let mut P2 : Array (Array Rat) := #[]
+    for _ in [0:3] do
+      let mut row : Array Rat := #[]
+      for _ in [0:3] do
+        rb := xorshift rb; row := row.push ((((rb % 201).toNat : Int) - 100 : Rat) / 9)
+      P2 := P2.push row
+    rb := xorshift rb; let x0 : Rat := (((rb % 201).toNat : Int) - 100 : Rat) / 50
+    rb := xorshift rb; let y0 : Rat := (((rb % 201).toNat : Int) - 100 : Rat) / 50
+    let X := ofRatInterval x0 (x0 + 1/2)
+    let Y := ofRatInterval y0 (y0 + 1/3)
+    let R := IPoly2.bern2On (P2.map fun r => r.map ofRat) X Y 3 3
+    for (i, j) in [(0, 0), (1, 2), (2, 1), (2, 2)] do
+      let x := x0 + (i : Rat) / 4
+      let y := y0 + (j : Rat) / 6
+      let v := (List.range 3).foldl (fun acc jj => acc + qeval (P2[jj]!) x * y ^ jj) 0
+      if !ivContains R v then bFails := bFails + 1
+  if !e4.checkGtB 0 (ofRatInterval 0 4) 6 4 then bFails := bFails + 1
+  if sq.checkGtB 0 (ofRatInterval (-1) 1) 4 6 then bFails := bFails + 1
+  let Rb := e4.bernOn (ofRatInterval 0 4) 12
+  let Rh := e4.eval (ofRatInterval 0 4)
+  IO.println s!"Bernstein (200 random 1D × 15 points, 100 random 2D × 4 points, sign certs): {bFails} failures; e4 on [0,4]: Bernstein deg 12 [{Rb.lo}, {Rb.hi}] vs Horner [{Rh.lo}, {Rh.hi}]"
+  fails := fails + bFails
+  -- 7. 2D quadrature over rectangles.
+  let mut q2Fails := 0
+  let g2 : KF.IExpr := .exp (.neg (.add (.mul (.var 0) (.var 0)) (.mul (.var 1) (.var 1))))
+  -- (∫₀¹ e^{-x²})² = 0.557746285351033...
+  let g2v : Rat := 557746285351033 / 1000000000000000
+  let S0 := Quad.integrate2E0 g2 0 1 0 1 1e-3 6
+  let S1 := Quad.integrate2E1 g2 0 1 0 1 1e-4 7
+  for S in [S0, S1] do
+    if !(ivContains S (g2v - 1/10^14) && ivContains S (g2v + 1/10^14)) then q2Fails := q2Fails + 1
+  let xyE : KF.IExpr := .mul (.var 0) (.var 1)
+  if !ivContains (Quad.integrate2E0 xyE 0 2 (-1) 3 1e-3 6) 8 then q2Fails := q2Fails + 1
+  if !ivContains (Quad.integrate2E1 xyE 0 2 (-1) 3 1e-3 6) 8 then q2Fails := q2Fails + 1
+  IO.println s!"2D quadrature (∫∫ e^(-x²-y²) on [0,1]², ∫∫ xy): {q2Fails} failures; E0 [{S0.lo}, {S0.hi}], E1 [{S1.lo}, {S1.hi}]"
+  fails := fails + q2Fails
   return fails
 
 
