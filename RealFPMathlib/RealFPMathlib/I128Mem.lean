@@ -304,4 +304,116 @@ theorem mem_mul {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X)
       (mulHiF_ge fa1 fa2 fa3 fa4 fb1 fb2 fb3 fb4 hx1 hx2 hy1 hy2) hs
   · exact mem_ofInterval64 hs
 
+/-! ### Division -/
+
+theorem divPos_lo {xl x yl yh y : ℝ} (h1 : xl ≤ x) (h3 : yl ≤ y) (h4 : y ≤ yh) (hyl : 0 < yl) :
+    (0 ≤ xl → xl / yh ≤ x / y) ∧ (¬ 0 ≤ xl → xl / yl ≤ x / y) := by
+  have hy : 0 < y := by linarith
+  have hyh : 0 < yh := by linarith
+  constructor
+  · intro h0
+    rw [div_le_div_iff₀ hyh hy]; nlinarith
+  · intro h0
+    rw [div_le_div_iff₀ hyl hy]; push Not at h0; nlinarith
+
+theorem divPos_hi {xh x yl yh y : ℝ} (h2 : x ≤ xh) (h3 : yl ≤ y) (h4 : y ≤ yh) (hyl : 0 < yl) :
+    (0 ≤ xh → x / y ≤ xh / yl) ∧ (¬ 0 ≤ xh → x / y ≤ xh / yh) := by
+  have hy : 0 < y := by linarith
+  have hyh : 0 < yh := by linarith
+  constructor
+  · intro h0
+    rw [div_le_div_iff₀ hy hyl]; nlinarith
+  · intro h0
+    rw [div_le_div_iff₀ hy hyh]; push Not at h0; nlinarith
+
+theorem divLo_le' {ah al bh bl : Float} {a1 a2 b1 b2 H L : ℝ} (ha1 : Fv ah a1) (ha2 : Fv al a2)
+    (hb1 : Fv bh b1) (hb2 : Fv bl b2) (hB : 0 < b1 + b2) :
+    Fv (divLo ah al bh bl).hi H → Fv (divLo ah al bh bl).lo L → H + L ≤ (a1 + a2) / (b1 + b2) :=
+  divLo_le ha1 ha2 hb1 hb2 hB
+
+theorem mem_divPos {X Y : Interval128.Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 : ℝ}
+    (fa1 : Fv X.lh a1) (fa2 : Fv X.ll a2) (fa3 : Fv X.uh a3) (fa4 : Fv X.ul a4)
+    (fb1 : Fv Y.lh b1) (fb2 : Fv Y.ll b2) (fb3 : Fv Y.uh b3) (fb4 : Fv Y.ul b4)
+    (hx1 : a1 + a2 ≤ x) (hx2 : x ≤ a3 + a4) (hy1 : b1 + b2 ≤ y) (hy2 : y ≤ b3 + b4)
+    (hpos : 0 < b1 + b2) (hs : x / y ∈ (Interval128.toInterval64 X / Interval128.toInterval64 Y).toSet) :
+    x / y ∈ toSet (Interval128.divPos X Y) := by
+  unfold Interval128.divPos
+  have hyh : 0 < b3 + b4 := by linarith
+  obtain ⟨l1, l2⟩ := divPos_lo hx1 hy1 hy2 hpos
+  obtain ⟨u1, u2⟩ := divPos_hi hx2 hy1 hy2 hpos
+  refine mem_pick (slow := fun _ => Interval128.toInterval64 X / Interval128.toInterval64 Y)
+    ?_ ?_ hs
+  · intro H L hH hL
+    by_cases c : DD.nonneg X.lh X.ll = true
+    · rw [if_pos c] at hH hL
+      exact le_trans (divLo_le fa1 fa2 fb3 fb4 hyh hH hL) (l1 ((nonneg_iff fa1 fa2).1 c))
+    · rw [if_neg c] at hH hL
+      exact le_trans (divLo_le fa1 fa2 fb1 fb2 hpos hH hL)
+        (l2 (fun h => c ((nonneg_iff fa1 fa2).2 h)))
+  · intro H L hH hL
+    by_cases c : DD.nonneg X.uh X.ul = true
+    · rw [if_pos c] at hH hL
+      exact le_trans (u1 ((nonneg_iff fa3 fa4).1 c)) (divHi_ge fa3 fa4 fb1 fb2 hpos hH hL)
+    · rw [if_neg c] at hH hL
+      exact le_trans (u2 (fun h => c ((nonneg_iff fa3 fa4).2 h)))
+        (divHi_ge fa3 fa4 fb3 fb4 hyh hH hL)
+
+theorem mem_div {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y)
+    (hy0 : y ≠ 0) : x / y ∈ toSet (X / Y) := by
+  show x / y ∈ toSet (Interval128.divSpec X Y)
+  have hs := mem_toSet_div (mem_toInterval64 hx) (mem_toInterval64 hy) hy0
+  unfold Interval128.divSpec
+  split_ifs with c c1 c2
+  · simp only [Bool.and_eq_true] at c
+    obtain ⟨a1, a2, a3, a4, fa1, fa2, fa3, fa4⟩ := isFin_vals c.1
+    obtain ⟨b1, b2, b3, b4, fb1, fb2, fb3, fb4⟩ := isFin_vals c.2
+    exact mem_divPos fa1 fa2 fa3 fa4 fb1 fb2 fb3 fb4 (loIn_val hx.1 fa1 fa2) (hiIn_val hx.2 fa3 fa4)
+      (loIn_val hy.1 fb1 fb2) (hiIn_val hy.2 fb3 fb4) ((pos_iff fb1 fb2).1 c1) hs
+  · simp only [Bool.and_eq_true] at c
+    obtain ⟨a1, a2, a3, a4, fa1, fa2, fa3, fa4⟩ := isFin_vals c.1
+    obtain ⟨b1, b2, b3, b4, fb1, fb2, fb3, fb4⟩ := isFin_vals c.2
+    have hneg := (neg_iff fb3 fb4).1 c2
+    have hx' := mem_neg hx
+    have hy' := mem_neg hy
+    have e : x / y = (-x) / (-y) := (neg_div_neg_eq x y).symm
+    rw [e]
+    have hs' : -x / -y ∈ (Interval128.toInterval64 (-X) / Interval128.toInterval64 (-Y)).toSet :=
+      mem_toSet_div (mem_toInterval64 hx') (mem_toInterval64 hy') (neg_ne_zero.2 hy0)
+    exact mem_divPos (fv_neg fa3) (fv_neg fa4) (fv_neg fa1) (fv_neg fa2)
+      (fv_neg fb3) (fv_neg fb4) (fv_neg fb1) (fv_neg fb2)
+      (loIn_val hx'.1 (fv_neg fa3) (fv_neg fa4)) (hiIn_val hx'.2 (fv_neg fa1) (fv_neg fa2))
+      (loIn_val hy'.1 (fv_neg fb3) (fv_neg fb4)) (hiIn_val hy'.2 (fv_neg fb1) (fv_neg fb2))
+      (by linarith) hs'
+  · exact mem_whole _
+  · exact mem_ofInterval64 hs
+
+/-! ### Square root -/
+
+theorem mem_sqrt {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) (hx0 : 0 ≤ x) :
+    Real.sqrt x ∈ toSet (Interval128.sqrt X) := by
+  show Real.sqrt x ∈ toSet (Interval128.sqrtSpec X)
+  have hs := mem_toSet_sqrt (mem_toInterval64 hx) hx0
+  unfold Interval128.sqrtSpec
+  split_ifs with c c1 c2
+  · obtain ⟨a1, a2, a3, a4, fa1, fa2, fa3, fa4⟩ := isFin_vals c
+    have := (neg_iff fa3 fa4).1 c1
+    have := hiIn_val hx.2 fa3 fa4
+    exact absurd hx0 (by linarith)
+  · obtain ⟨a1, a2, a3, a4, fa1, fa2, fa3, fa4⟩ := isFin_vals c
+    have hx1 := loIn_val hx.1 fa1 fa2
+    have hx2 := hiIn_val hx.2 fa3 fa4
+    refine mem_pick (slow := fun _ => Interval64.sqrt (Interval128.toInterval64 X)) ?_ ?_ hs
+    · intro H L hH hL
+      exact le_trans (sqrtLo_le fa1 fa2 ((nonneg_iff fa1 fa2).1 c2) hH hL) (Real.sqrt_le_sqrt hx1)
+    · intro H L hH hL
+      exact le_trans (Real.sqrt_le_sqrt hx2) (sqrtHi_ge fa3 fa4 (by linarith) hH hL)
+  · obtain ⟨a1, a2, a3, a4, fa1, fa2, fa3, fa4⟩ := isFin_vals c
+    have hx2 := hiIn_val hx.2 fa3 fa4
+    refine mem_pick (slow := fun _ => Interval64.sqrt (Interval128.toInterval64 X)) ?_ ?_ hs
+    · intro H L hH hL
+      rw [fv_unique hH fv_zero, fv_unique hL fv_zero]; simp [Real.sqrt_nonneg]
+    · intro H L hH hL
+      exact le_trans (Real.sqrt_le_sqrt hx2) (sqrtHi_ge fa3 fa4 (by linarith) hH hL)
+  · exact mem_ofInterval64 hs
+
 end RealFP.I128
