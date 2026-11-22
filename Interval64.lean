@@ -36,3 +36,4 @@ import Interval64.Kernel.Quad
 import Interval64.Kernel.QuadCert
 import Interval64.Bernstein
 import Interval64.Quad2
+import Interval64.Kernel.Quad2
