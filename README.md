@@ -993,11 +993,11 @@ Timings (`lake build` of a one-example file, including ≈4 s import; before = `
 
 | Goal | Before | After |
 |---|---|---|
-| `∫₁² 1/x ∈ [0.6931, 0.6932]` | BASE_INV | 6.0 s |
-| `∫₀¹ sin x ∈ [0.4596, 0.4598]` | BASE_SIN1 | 5.5 s |
-| `∫₀¹ 1/(1+x²) ∈ [0.7853, 0.7854]` | BASE_ATAN | 12.5 s |
-| `∫₁² sin x / x ∈ [0.6593, 0.6594]` | BASE_SINX | 33.6 s |
-| `∫₀¹ sin(10x) ∈ [0.1839, 0.1840]` | BASE_SIN10 | 83 s |
+| `∫₁² 1/x ∈ [0.6931, 0.6932]` | 170 s | 6.0 s |
+| `∫₀¹ sin x ∈ [0.4596, 0.4598]` | 8.1 s | 5.5 s |
+| `∫₀¹ 1/(1+x²) ∈ [0.7853, 0.7854]` | > 600 s (timeout) | 12.5 s |
+| `∫₁² sin x / x ∈ [0.6593, 0.6594]` | > 400 s (timeout) | 33.6 s |
+| `∫₀¹ sin(10x) ∈ [0.1839, 0.1840]` | not measured | 83 s |
 | `∫₀³ sin(x²) ∈ [0.7735, 0.7736]` | — | 60 s |
 
 The remaining cost is `KI.sin`/`KI.cos` in the kernel (≈1 s per call: four rational Taylor
