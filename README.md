@@ -511,9 +511,20 @@ kernel-checked (`decide` / `rfl`); they introduce no extra axioms. They
 cover signed-zero rules, exact cases such as `1+1` and `1+2^{-53}`, NaN
 propagation lemmas, and a concrete rational enclosure for `1+2^{-53}`.
 
-A general theorem `round-down(a+b) ≤ a+b ≤ round-up(a+b)` for arbitrary
-finite inputs is **not** proved in this revision (no `sorry` is left in
-the tree). The compiled C path is a trust assumption, checked
+The general directed-rounding enclosure is proved, about the **Lean spec**,
+and depends only on `propext`, `Classical.choice` and `Quot.sound` (no
+`sorry`). `Interval64Proofs.AddBits.add_encloses` states that if `a` and
+`b` are finite or zero, with exact rational values `qa` and `qb`, then
+round-down(`a+b`) ≤ `qa+qb` ≤ round-up(`a+b`). Overflow may round to
+`±∞`, which is a valid bound. The same theorems exist for subtraction,
+multiplication, division (`qb ≠ 0`) and square root:
+`Sub.sub_encloses`, `Mul.mul_encloses`, `Div.div_encloses`,
+`Sqrt.sqrt_mem_rat`. Interval versions are `add_mem_iv`, `sub_mem_iv`,
+`mul_mem_iv`, `div_mem_iv` and `sqrt_mem_iv`. The Mathlib-layer lifts are
+`RealFP.add_mem_toSet` / `sub_mem_toSet` and, with no finiteness
+hypotheses, `mem_toSet_mul` / `mem_toSet_div` / `mem_toSet_sqrt`.
+
+The compiled C path (AVX-512, or RN+err) is a trust assumption, checked
 differentially against the Lean spec and against `fesetround`.
 
 `Interval64.NativeDecide.demoHi_le` (`demoHi ≤ 3.75` for
