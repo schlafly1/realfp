@@ -5,9 +5,10 @@ representable as floats) and `f` built from the `interval` tactic's operations.
 
 It searches (C kernels over a derivative tape) for an order `K ∈ {2, 4, 6, 8}` and an adaptive
 partition (bisecting the cells with the widest enclosures) such that the kernel Taylor
-quadrature certificate succeeds, then proves it by one `decide +kernel` on `quadBoundS` (the
+quadrature certificate succeeds, then proves it by one `decide +kernel` on `quadBoundW` (the
 derivatives as shared lets, so each `sin x`, `cos x`, … is evaluated once per cell environment)
-and `RealFP.KQS.integral_bounds_of_quadBoundS` (standard axioms only).
+with the let values of every cell given as checked witnesses, so every kernel operation runs
+on literal inputs) and `RealFP.KQS.integral_bounds_of_quadBoundW` (standard axioms only).
 
 ```
 example : (0.7468 : ℝ) ≤ ∫ x in (0:ℝ)..1, Real.exp (-x^2) := by integral_bound
@@ -146,16 +147,23 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
     throwError "integral_bound: no certificate with K ≤ 8 and ≤ 512 adaptive cells"
   let (lets, roots) := shareDerivs e K
   let lst := fun (l : List IExpr) => mkListLit (mkConst ``IExpr) (l.map iexprToExpr)
-  let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, ← lst lets, ← lst roots,
+  let kiE := fun (k : KI) => mkApp2 (mkConst ``KI.mk) (toExpr k.lo) (toExpr k.hi)
+  let kis := fun (l : List KI) => mkListLit (mkConst ``KI) (l.map kiE)
+  let ws ← cs.mapM fun c => do
+    let vm := (evalLets [pt c.2.1] lets).drop 1
+    let vb := (evalLets [⟨c.1, c.2.2⟩] lets).drop 1
+    mkAppM ``Prod.mk #[← kis vm, ← kis vb]
+  let wsE ← mkListLit (← mkAppM ``Prod #[← mkAppM ``List #[mkConst ``KI], ← mkAppM ``List #[mkConst ``KI]]) ws
+  let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, ← lst lets, ← lst roots, wsE,
     toExpr qa, toExpr qb, toExpr ql, toExpr qh]
   let ty := mkApp2 (mkConst ``Eq [Level.one]) (mkConst ``Bool)
-    (mkAppN (mkConst ``quadBoundS) args) |>.app (mkConst ``Bool.true)
+    (mkAppN (mkConst ``quadBoundW) args) |>.app (mkConst ``Bool.true)
   let pm ← mkFreshExprMVar ty
   let saved ← getGoals
   setGoals [pm.mvarId!]
   evalTactic (← `(tactic| decide +kernel))
   setGoals saved
-  let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundS) (args.push pm)
+  let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundW) (args.push pm)
   let goal ← getMainGoal
   let g ← goal.assert `hI (← inferType pf) pf
   let (_, g) ← g.intro1P
