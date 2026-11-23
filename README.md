@@ -973,11 +973,35 @@ It proves `c ≤ ∫ x in a..b, f x`, `∫ … ≤ c`, `<`, conjunctions, and `�
 
 - `a`, `b`, `c` must be rational numerals, with `a` and `b` exact floats. `f` may use the
   `interval` tactic's operations.
-- It searches natively for `K ∈ {4,6,8}` and `N ≤ 256` uniform cells, then makes one
-  `decide +kernel` call on `quadBound`.
-- `example : (∫ x in (0:ℝ)..1, Real.exp (-x^2)) ∈ Set.Icc (0.7468 : ℝ) 0.7469 := by integral_bound`
-  takes 15.8 s including the import.
-- Integrands whose derivative expressions grow quickly (e.g. `1/x`) are slower: about 50 s.
+- **Search (native, C kernels).** For each `K ∈ {2,4,6,8}` it bisects the cells with the widest
+  `cellF` enclosures (adaptive, at most 512 cells) until the Float enclosure meets the bounds,
+  and picks the `K` with the lowest estimated kernel cost (cells × shared-let cost, a
+  transcendental let counting 30).
+- **Derivatives.** `diff` has a power-denominator quotient rule
+  `(a/bⁿ⁺¹)' = (a'b - (n+1)ab')/bⁿ⁺²`, so the derivatives of `1/x`, `1/(1+x²)` … stay small.
+- **Certificate.** The derivatives are hash-consed into shared `lets` (`shareDerivs`, untrusted;
+  the kernel checks `shareOK`: expanding the roots gives exactly `derivs e K`). The values of
+  every let in every cell (point and box environment) are passed as witnesses; each witness list
+  is checked by its own small auxiliary theorem (`letsW … = true` by `rfl`, combined with
+  `RealFP.KQS.cellsW_cons`), and the main `decide +kernel` checks `quadBoundW`, so every kernel
+  operation runs on literal inputs and each `sin x`, `cos x` … is evaluated once per cell
+  environment. Soundness: `RealFP.KQS.quadKW_some` (`quadKW = quadKS`), `quadKS_some`
+  (`quadKS = quadK`), `integral_bounds_of_quadBoundW`.
+- `example : (∫ x in (0:ℝ)..1, Real.exp (-x^2)) ∈ Set.Icc (0.7468 : ℝ) 0.7469 := by integral_bound`.
+
+Timings (`lake build` of a one-example file, including ≈4 s import; before = `a17e605`):
+
+| Goal | Before | After |
+|---|---|---|
+| `∫₁² 1/x ∈ [0.6931, 0.6932]` | 170 s | 6.0 s |
+| `∫₀¹ sin x ∈ [0.4596, 0.4598]` | 8.1 s | 5.5 s |
+| `∫₀¹ 1/(1+x²) ∈ [0.7853, 0.7854]` | > 600 s (timeout) | 12.5 s |
+| `∫₁² sin x / x ∈ [0.6593, 0.6594]` | > 400 s (timeout) | 33.6 s |
+| `∫₀¹ sin(10x) ∈ [0.1839, 0.1840]` | not measured | 83 s |
+| `∫₀³ sin(x²) ∈ [0.7735, 0.7736]` | — | 60 s |
+
+The remaining cost is `KI.sin`/`KI.cos` in the kernel (≈1 s per call: four rational Taylor
+evaluations per interval), so trigonometric integrands needing many cells stay slow.
 
 Polynomial sign goals are handled by the `interval` tactic, which reifies polynomials.
 
@@ -992,7 +1016,8 @@ Polynomial sign goals are handled by the `interval` tactic, which reifies polyno
   - `gauss_integral_bounds_kq`: `0.7468 ≤ ∫₀¹ e^{-x²} ≤ 0.7469` (kernel Taylor quadrature).
 - `Examples/Bernstein.lean`: `taylor_exp_pos_bern`, and `bilinear_pos` (2D, `[0,1]²`).
 - `Examples/Quad2.lean`: `xy_rect_bounds`: `1/8 ≤ ∫_{[0,1]²} xy ≤ 1/2`, via Fubini.
-- `Examples/IntegralTactic.lean`: `gauss_lower`, `gauss_icc`.
+- `Examples/IntegralTactic.lean`: `gauss_lower`, `gauss_icc`, `inv_icc` (`∫₁² 1/x`), `sin_icc`,
+  `atan_icc`.
 
 **Optional slow examples (not built by default).** The first-round Float-spec examples live in the
 separate library `RealFPMathlibSlow` (`RealFPMathlib/RealFPMathlibSlow/`), which is not a default
@@ -1000,6 +1025,8 @@ Lake target and is not imported by `RealFPMathlib` or `RealFPMathlibAxioms.lean`
 - `RealFPMathlibSlow/PolyQuad.lean`: `taylor_exp_pos` (`checkGt`, Float spec) and
   `gauss_integral_bounds`: `763/1024 ≤ ∫₀¹ e^{-x²} ≤ 383/512` (`integrateE1`, Float spec).
 - `RealFPMathlibSlow/MatrixPD.lean`: `hilbert_posDef`: H₆ is `PosDef` (`isPD`, Float spec).
+- `RealFPMathlibSlow/IntegralTactic.lean`: `sinc_icc` (`∫₁² sin x/x`), `sin10_icc`, `sinsq_icc`
+  (`integral_bound`, 30–90 s each).
 
 Build and check them with (from `RealFPMathlib/`, ≈65 s and ≈7.7 GB peak on an 8-core box):
 

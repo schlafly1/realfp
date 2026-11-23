@@ -219,6 +219,7 @@ LEAN_EXPORT lean_obj_res iv64_quad_taylor_cell(b_lean_obj_arg code, b_lean_obj_a
   ivt_t t; ivw_tape(&t, code, consts, fns, atan2fn);
   size_t nr = lean_sarray_size(roots) / 4;
   const uint32_t *r32 = (const uint32_t *)lean_sarray_cptr(roots);
+  if (nr == 0) { free(t.regs); return ivt_box(ivp_zero()); } /* unreachable: `derivs` is nonempty */
   size_t K = nr - 1;
   size_t *rs = (size_t *)ivw_alloc(nr, sizeof(size_t));
   for (size_t j = 0; j < nr; j++) rs[j] = r32[j];
