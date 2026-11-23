@@ -107,8 +107,9 @@ def quadBoundS (e : IExpr) (K a b : Nat) (cs : List (Nat × Nat × Nat)) (lets r
 /-! ### Witnessed let values
 
 The kernel does not reliably share the (lazily reduced) let values, so `quadKW` takes the let
-values of every cell as a witness `ws` (point and box environments) and only checks each let
-against its witness: every kernel operation then runs on literal inputs. Under `cellsW` it
+values of every cell as a witness `ws` (point and box environments). The witnesses are checked
+by `cellsW`, separately (one small kernel check per cell and environment, combined with
+`RealFP.KQS.cellsW_cons`), so every kernel operation runs on literal inputs. Under `cellsW` it
 computes exactly `quadKS` (`RealFP.KQS.quadKW_some`). -/
 
 /-- Boolean equality of kernel intervals. -/
@@ -142,7 +143,6 @@ def quadKW (e : IExpr) (K : Nat) (a b : Nat) (cs : List (Nat × Nat × Nat)) (le
     (ws : List (List KI × List KI)) : Option KI :=
   let ds := derivs e K
   if shareOK e K lets roots && Nat.beq (K % 2) 0 && Nat.blt 0 K && chainOK a b cs && cs.all (cellOK ds)
-    && cellsW lets cs ws
   then some (sumCellsW roots K ds cs ws)
   else none
 

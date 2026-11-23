@@ -215,18 +215,25 @@ theorem sumCellsW_eq {roots lets : List IExpr} {K : Nat} {ds : List IExpr} :
   | [], _ :: _, h => by simp [cellsW] at h
   | _ :: _, [], h => by simp [cellsW] at h
 
+theorem cellsW_nil (lets : List IExpr) : cellsW lets [] [] = true := rfl
+
+theorem cellsW_cons {lets : List IExpr} {lo m hi : Nat} {vm vb : List KI}
+    {cs : List (Nat × Nat × Nat)} {ws : List (List KI × List KI)}
+    (h1 : letsW [pt m] lets vm = true) (h2 : letsW [⟨lo, hi⟩] lets vb = true)
+    (h3 : cellsW lets cs ws = true) : cellsW lets ((lo, m, hi) :: cs) ((vm, vb) :: ws) = true := by
+  simp only [cellsW, h1, h2, h3, Bool.and_self]
+
 theorem quadKW_some {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)} {lets roots : List IExpr}
-    {ws : List (List KI × List KI)} {R : KI} (h : quadKW e K a b cs lets roots ws = some R) :
+    {ws : List (List KI × List KI)} {R : KI} (hw : cellsW lets cs ws = true)
+    (h : quadKW e K a b cs lets roots ws = some R) :
     quadKS e K a b cs lets roots = some R := by
   unfold quadKW at h
   dsimp only at h
   split at h
   · rename_i hc
-    simp only [Bool.and_eq_true] at hc
-    obtain ⟨hc, hw⟩ := hc
     unfold quadKS
     dsimp only
-    rw [if_pos (by simpa only [Bool.and_eq_true] using hc), ← sumCellsW_eq cs ws hw]
+    rw [if_pos hc, ← sumCellsW_eq cs ws hw]
     exact h
   · exact absurd h (by simp)
 
@@ -234,7 +241,7 @@ theorem quadKW_some {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)} {l
     witnessed let values) certificate. -/
 theorem integral_bounds_of_quadBoundW {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)}
     {lets roots : List IExpr} {ws : List (List KI × List KI)} {qa qb ql qh : ℚ}
-    (h : quadBoundW e K a b cs lets roots ws qa qb ql qh = true) :
+    (hw : cellsW lets cs ws = true) (h : quadBoundW e K a b cs lets roots ws qa qb ql qh = true) :
     (ql : ℝ) ≤ (∫ x in (qa : ℝ)..qb, e.denote [x]) ∧
       (∫ x in (qa : ℝ)..qb, e.denote [x]) ≤ qh := by
   apply integral_bounds_of_quadBoundS (lets := lets) (roots := roots) (cs := cs) (K := K) (a := a) (b := b)
@@ -243,6 +250,6 @@ theorem integral_bounds_of_quadBoundW {e : IExpr} {K a b : Nat} {cs : List (Nat 
   revert h
   cases hq : quadKW e K a b cs lets roots ws with
   | none => simp
-  | some R => rw [quadKW_some hq]; exact id
+  | some R => rw [quadKW_some hw hq]; exact id
 
 end RealFP.KQS

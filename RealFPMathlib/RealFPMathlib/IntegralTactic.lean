@@ -149,12 +149,25 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
   let lst := fun (l : List IExpr) => mkListLit (mkConst ``IExpr) (l.map iexprToExpr)
   let kiE := fun (k : KI) => mkApp2 (mkConst ``KI.mk) (toExpr k.lo) (toExpr k.hi)
   let kis := fun (l : List KI) => mkListLit (mkConst ``KI) (l.map kiE)
-  let ws ← cs.mapM fun c => do
-    let vm := (evalLets [pt c.2.1] lets).drop 1
-    let vb := (evalLets [⟨c.1, c.2.2⟩] lets).drop 1
-    mkAppM ``Prod.mk #[← kis vm, ← kis vb]
-  let wsE ← mkListLit (← mkAppM ``Prod #[← mkAppM ``List #[mkConst ``KI], ← mkAppM ``List #[mkConst ``KI]]) ws
-  let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, ← lst lets, ← lst roots, wsE,
+  let L ← lst lets
+  let wl := cs.map fun c => ((evalLets [pt c.2.1] lets).drop 1, (evalLets [⟨c.1, c.2.2⟩] lets).drop 1)
+  let ws ← wl.mapM fun (vm, vb) => do mkAppM ``Prod.mk #[← kis vm, ← kis vb]
+  let wTy ← mkAppM ``Prod #[← mkAppM ``List #[mkConst ``KI], ← mkAppM ``List #[mkConst ``KI]]
+  let wsE ← mkListLit wTy ws
+  -- the witnesses, one small kernel check each (checked in parallel by `addDecl`)
+  let boolTrue := fun (b : Expr) => mkApp3 (mkConst ``Eq [Level.one]) (mkConst ``Bool) b (mkConst ``Bool.true)
+  let rfl := mkApp2 (mkConst ``Eq.refl [Level.one]) (mkConst ``Bool) (mkConst ``Bool.true)
+  let mut hw := mkApp (mkConst ``RealFP.KQS.cellsW_nil) L
+  let n := cs.length
+  for i in (List.range n).reverse do
+    let c := cs[i]!; let w := wl[i]!
+    let envM ← mkListLit (mkConst ``KI) [mkApp (mkConst ``pt) (toExpr c.2.1)]
+    let envB ← mkListLit (mkConst ``KI) [kiE ⟨c.1, c.2.2⟩]
+    let h1 ← mkAuxTheorem (boolTrue (mkAppN (mkConst ``letsW) #[envM, L, ← kis w.1])) rfl
+    let h2 ← mkAuxTheorem (boolTrue (mkAppN (mkConst ``letsW) #[envB, L, ← kis w.2])) rfl
+    hw := mkAppN (mkConst ``RealFP.KQS.cellsW_cons) #[L, toExpr c.1, toExpr c.2.1, toExpr c.2.2,
+      ← kis w.1, ← kis w.2, toExpr (cs.drop (i + 1)), ← mkListLit wTy (ws.drop (i + 1)), h1, h2, hw]
+  let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, L, ← lst roots, wsE,
     toExpr qa, toExpr qb, toExpr ql, toExpr qh]
   let ty := mkApp2 (mkConst ``Eq [Level.one]) (mkConst ``Bool)
     (mkAppN (mkConst ``quadBoundW) args) |>.app (mkConst ``Bool.true)
@@ -163,7 +176,7 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
   setGoals [pm.mvarId!]
   evalTactic (← `(tactic| decide +kernel))
   setGoals saved
-  let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundW) (args.push pm)
+  let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundW) ((args.push hw).push pm)
   let goal ← getMainGoal
   let g ← goal.assert `hI (← inferType pf) pf
   let (_, g) ← g.intro1P
