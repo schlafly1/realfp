@@ -233,7 +233,7 @@ theorem quadKW_some {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)} {l
   · rename_i hc
     unfold quadKS
     dsimp only
-    rw [if_pos hc, ← sumCellsW_eq cs ws hw]
+    rw [ite_eq_left_of_eq_true _ _ (by simp [hc]), ← sumCellsW_eq cs ws hw]
     exact h
   · exact absurd h (by simp)
 
