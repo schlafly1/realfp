@@ -104,6 +104,58 @@ def quadBoundS (e : IExpr) (K a b : Nat) (cs : List (Nat × Nat × Nat)) (lets r
     | _, _ => false
   | none => false
 
+/-! ### Witnessed let values
+
+The kernel does not reliably share the (lazily reduced) let values, so `quadKW` takes the let
+values of every cell as a witness `ws` (point and box environments) and only checks each let
+against its witness: every kernel operation then runs on literal inputs. Under `cellsW` it
+computes exactly `quadKS` (`RealFP.KQS.quadKW_some`). -/
+
+/-- Boolean equality of kernel intervals. -/
+def keq (a b : KI) : Bool := Nat.beq a.lo b.lo && Nat.beq a.hi b.hi
+
+/-- The witnessed values `vs` are the let values over `acc`. -/
+def letsW (acc : List KI) : List IExpr → List KI → Bool
+  | [], [] => true
+  | d :: ds, v :: vs => keq (evalK acc d) v && letsW (acc ++ [v]) ds vs
+  | _, _ => false
+
+/-- `cellKS` with the let values given. -/
+def cellKW (roots : List IExpr) (K : Nat) (ds : List IExpr) (c : Nat × Nat × Nat)
+    (vm vb : List KI) : KI :=
+  KI.add (taylorKS c.1 c.2.1 c.2.2 (pt c.2.1 :: vm) 0 roots)
+    (KI.mul (evalK (⟨c.1, c.2.2⟩ :: vb) (roots.getLastD (ds.getLastD (.var 0))))
+      (momK c.1 c.2.1 c.2.2 K))
+
+/-- Every cell's witnesses are correct. -/
+def cellsW (lets : List IExpr) : List (Nat × Nat × Nat) → List (List KI × List KI) → Bool
+  | [], [] => true
+  | c :: cs, w :: ws => letsW [pt c.2.1] lets w.1 && letsW [⟨c.1, c.2.2⟩] lets w.2 && cellsW lets cs ws
+  | _, _ => false
+
+def sumCellsW (roots : List IExpr) (K : Nat) (ds : List IExpr) :
+    List (Nat × Nat × Nat) → List (List KI × List KI) → KI
+  | c :: cs, w :: ws => KI.add (cellKW roots K ds c w.1 w.2) (sumCellsW roots K ds cs ws)
+  | _, _ => zeroK
+
+def quadKW (e : IExpr) (K : Nat) (a b : Nat) (cs : List (Nat × Nat × Nat)) (lets roots : List IExpr)
+    (ws : List (List KI × List KI)) : Option KI :=
+  let ds := derivs e K
+  if shareOK e K lets roots && Nat.beq (K % 2) 0 && Nat.blt 0 K && chainOK a b cs && cs.all (cellOK ds)
+    && cellsW lets cs ws
+  then some (sumCellsW roots K ds cs ws)
+  else none
+
+def quadBoundW (e : IExpr) (K a b : Nat) (cs : List (Nat × Nat × Nat)) (lets roots : List IExpr)
+    (ws : List (List KI × List KI)) (qa qb ql qh : Rat) : Bool :=
+  decide (ratOf a = some qa) && decide (ratOf b = some qb) &&
+  match quadKW e K a b cs lets roots ws with
+  | some R =>
+    match ratOf R.lo, ratOf R.hi with
+    | some l, some h => decide (ql ≤ l) && decide (h ≤ qh)
+    | _, _ => false
+  | none => false
+
 /-! ### Untrusted: hash-consing into lets -/
 
 /-- One level: rebuild `t` with already-shared children. -/

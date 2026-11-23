@@ -185,4 +185,64 @@ theorem integral_bounds_of_quadBoundS {e : IExpr} {K a b : Nat} {cs : List (Nat 
     · simp at h
   · simp at h
 
+/-! ### Witnessed let values (`quadKW`) -/
+
+theorem keq_eq {a b : KI} (h : keq a b = true) : a = b := by
+  simp only [keq, Bool.and_eq_true, Nat.beq_eq] at h
+  cases a; cases b; simp_all
+
+theorem letsW_spec : ∀ (acc : List KI) (lets : List IExpr) (vs : List KI),
+    letsW acc lets vs = true → evalLets acc lets = acc ++ vs
+  | acc, [], [], _ => by simp [evalLets]
+  | acc, d :: ds, v :: vs, h => by
+    simp only [letsW, Bool.and_eq_true] at h
+    have hv := keq_eq h.1
+    have ih := letsW_spec (acc ++ [v]) ds vs h.2
+    show evalLets (acc ++ [evalK acc d]) ds = _
+    rw [hv, ih]; simp
+  | _, [], _ :: _, h => by simp [letsW] at h
+  | _, _ :: _, [], h => by simp [letsW] at h
+
+theorem sumCellsW_eq {roots lets : List IExpr} {K : Nat} {ds : List IExpr} :
+    ∀ (cs : List (Nat × Nat × Nat)) (ws : List (List KI × List KI)), cellsW lets cs ws = true →
+      sumCellsW roots K ds cs ws = sumCellsS lets roots K ds cs
+  | [], [], _ => rfl
+  | c :: cs, w :: ws, h => by
+    simp only [cellsW, Bool.and_eq_true] at h
+    obtain ⟨⟨h1, h2⟩, h3⟩ := h
+    simp only [sumCellsW, sumCellsS, sumCellsW_eq cs ws h3, cellKW, cellKS,
+      letsW_spec _ _ _ h1, letsW_spec _ _ _ h2, List.singleton_append]
+  | [], _ :: _, h => by simp [cellsW] at h
+  | _ :: _, [], h => by simp [cellsW] at h
+
+theorem quadKW_some {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)} {lets roots : List IExpr}
+    {ws : List (List KI × List KI)} {R : KI} (h : quadKW e K a b cs lets roots ws = some R) :
+    quadKS e K a b cs lets roots = some R := by
+  unfold quadKW at h
+  dsimp only at h
+  split at h
+  · rename_i hc
+    simp only [Bool.and_eq_true] at hc
+    obtain ⟨hc, hw⟩ := hc
+    unfold quadKS
+    dsimp only
+    rw [if_pos (by simpa only [Bool.and_eq_true] using hc), ← sumCellsW_eq cs ws hw]
+    exact h
+  · exact absurd h (by simp)
+
+/-- **Rigorous integral bounds** from a kernel-checked `quadBoundW` (shared subexpressions with
+    witnessed let values) certificate. -/
+theorem integral_bounds_of_quadBoundW {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)}
+    {lets roots : List IExpr} {ws : List (List KI × List KI)} {qa qb ql qh : ℚ}
+    (h : quadBoundW e K a b cs lets roots ws qa qb ql qh = true) :
+    (ql : ℝ) ≤ (∫ x in (qa : ℝ)..qb, e.denote [x]) ∧
+      (∫ x in (qa : ℝ)..qb, e.denote [x]) ≤ qh := by
+  apply integral_bounds_of_quadBoundS (lets := lets) (roots := roots) (cs := cs) (K := K) (a := a) (b := b)
+  unfold quadBoundW at h
+  unfold quadBoundS
+  revert h
+  cases hq : quadKW e K a b cs lets roots ws with
+  | none => simp
+  | some R => rw [quadKW_some hq]; exact id
+
 end RealFP.KQS
