@@ -9,7 +9,7 @@ roots and integrals, and on to writing your own certificates.
 [`RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean`](RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean),
 which is part of the default `lake build`. Printed output (`#eval`, `#realfp_min`, error
 messages) is pinned there with `#guard_msgs`, so what you read here is what Lean prints. The
-whole file builds in about 35 s on an x86-64 box, including imports.
+whole file checks in about 40 s on an 8-core x86-64 box (one `lean` process, imports included).
 
 Contents
 
