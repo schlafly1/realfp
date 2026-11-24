@@ -106,7 +106,7 @@ def provePosDef : TacticM Unit := withMainContext do
 syntax (name := posDefTac) "pos_def" (ppSpace "(" ident " := " ident ")")? : tactic
 
 @[tactic posDefTac] def evalPosDef : Tactic := fun stx => do
-  let trust := if stx[1].getNumArgs > 0 then stx[1][3].getId else `kernel
+  let trust := if stx[1].getNumArgs > 0 then stx[1][3].getId else `inherit
   withTrust trust provePosDef
 
 end RealFP.PosDefTactic

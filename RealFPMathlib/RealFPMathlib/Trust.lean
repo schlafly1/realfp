@@ -26,8 +26,10 @@ def closeCheck : TacticM Unit := do
   else
     evalTactic (← `(tactic| decide +kernel))
 
-/-- Run `k` with the trust option given by an identifier (`kernel` or `native`). -/
+/-- Run `k` with the trust option given by an identifier (`kernel` or `native`); `inherit`
+(the tactics' default when no `trust` option is given) keeps the current `realfp.native`. -/
 def withTrust {α} (v : Name) (k : TacticM α) : TacticM α := do
+  if v == `inherit then return ← k
   let native ← match v with
     | `kernel => pure false
     | `native => pure true

@@ -539,7 +539,7 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
 
 def parseCfg (opts : Array Syntax) (tac : String) : TacticM (Cfg × Name) := do
   let mut cfg : Cfg := {}
-  let mut trust : Name := `kernel
+  let mut trust : Name := `inherit
   for o in opts do
     let k := o[1].getId
     let v := o[3]

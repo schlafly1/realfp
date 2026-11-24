@@ -562,7 +562,7 @@ syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
 
 @[tactic intervalTac] def evalInterval : Tactic := fun stx => do
   let mut cfg : Cfg := {}
-  let mut trust : Name := `kernel
+  let mut trust : Name := `inherit
   for o in stx[1].getArgs do
     let k := o[1].getId
     let v := o[3]
