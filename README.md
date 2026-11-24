@@ -726,7 +726,7 @@ Hessian/second-order or Taylor-model bounds; boxes only (no constraints); `sInf 
 attained at a rational point; localisation is one-dimensional; argmin needs `fun_prop` to prove
 continuity.
 
-### Adding a function (`RealFPMathlib/Registry.lean`, `RealFPMathlib/Extensions/Erf.lean`)
+### Adding a function (`RealFPMathlib/Registry.lean`, `RealFPMathlib/Extensions/*.lean`)
 
 Real functions beyond the built-in ones are plugged into all realfp tactics through a registry,
 without editing the library. The reflected expressions have a node `IExpr.ext k d a` (key `k`,
@@ -752,6 +752,30 @@ has none): monotone enclosure from the integrated alternating Taylor bounds of `
 `∫₀¹ erf`, and a maximum/argmax. Limitations: unary functions applied as `f a`; ext-free
 derivative templates; no C tape for registered functions (Lean evaluation in the search);
 `integral_bound` orders ≤ 4 for them; not supported by 2D quadrature or `Interval64.Quad`.
+
+Further registered functions, using Mathlib's definitions (`import RealFPMathlib` includes all):
+
+* `Real.arsinh` (`Extensions/Arsinh.lean`): `ExtFn.ofMonoK` (monotone, endpoint enclosures from a
+  point evaluator `P : bits → KI`); for `|q| ≤ 2⁻¹²` the rational bounds
+  `q - q³/6 ≤ arsinh q ≤ q - q³/6 + 3q⁵/40` (odd symmetry), else the kernel's
+  `log (|q| + √(1 + q²))`. Derivative `1/√(1 + x²)` (Mathlib's `hasDerivAt_arsinh`), everywhere.
+* `Real.artanh` (`Extensions/Artanh.lean`), domain `(-1, 1)`: `ofMonoK` guarded by
+  `-1 < lo ∧ hi < 1` (exact endpoint values; boxes touching `±1` give `whole` and fail `domK`);
+  `q + q³/3 ≤ artanh q ≤ q + q³/3 + q⁵/4` for small `q`, else `½ log ((1 + q)/(1 - q))`.
+  Derivative `1/(1 - x²)`, proved here (Mathlib has no derivative lemma for `artanh`).
+* `Real.sinc` (`Extensions/Sinc.lean`): on boxes in `[-3, 3]`, evenness and monotonicity in `|x|`
+  (proved from `sin x - x cos x ≥ 0` on `[0, π]`) give the bounds from endpoint values (`1` at
+  `0`, else `sin q / q`; upper bound `1` when `0 ∈ X`); away from `0`, interval `sin x / x`;
+  otherwise `[-1, 1]`. Derivative `(x cos x - sin x)/x²` with `D x := x ≠ 0`: boxes containing
+  `0` fail `domK`, so derivative-based modes (monotonicity, centred forms, Taylor quadrature,
+  Newton/Krawczyk) are unavailable there and bounds tight at `0` cannot be proved.
+
+Point enclosures have relative error of a few ulps except just above the series threshold
+(`≲ 10⁻¹²` relative for `arsinh`/`artanh` near `2⁻¹²`), near zeros of `sinc` (as for `sin`) and
+for `artanh` near `±1` (absolute error `~ ulp/(1 - |q|)`). Kernel checking is dominated by the
+built-in `log`/`sin` evaluations (~0.1 s each), so tight bounds over many boxes may need
+`(trust := native)`. Examples: `RealFPMathlib/Examples/{Arsinh,Artanh,Sinc}.lean` (bounds, `∃!`
+roots, integrals, optimisation).
 
 ## `interval` tactic (Mathlib layer, `RealFPMathlib/IntervalTactic.lean`)
 

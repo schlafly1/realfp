@@ -114,6 +114,137 @@ theorem ExtSound.ofMono {f : ℝ → ℝ} {D : ℝ → Prop} {name : String} {fl
   deriv_extFree := hfree
   deriv := hder
 
+
+/-! ### Monotone functions from point enclosures
+
+`ExtFn.ofMonoK P guard` encloses a function `f` that is monotone on a set `S` by
+`[(P a).lo, (P b).hi]` on `X = [a, b]`, where `P b : KI` encloses `f` at the point with bit
+pattern `b` (e.g. a built-in expression evaluated by `evalK [ptK b] e`, or rational bounds near a
+removable singularity). `guard X` must imply `X ⊆ S` (otherwise the result is `whole`). -/
+
+/-- The point interval of a bit pattern. -/
+def ptK (b : Nat) : KI := ⟨b, b⟩
+
+theorem mem_ptK {b : Nat} (hb0 : b < 2 ^ 64) {q : ℚ} (hq : ratOfBits b = some q) :
+    (q : ℝ) ∈ (toI (ptK b)).toSet := by
+  have hb : Spec.bitsToRat? (toF b).toBits = some q := by
+    unfold Spec.bitsToRat?; rw [unpack_toF hb0, ← unpackBits_ofNat hb0]; exact hq
+  have hn := isNaN_false_of_bitsToRat? hb
+  have he := toE_of_bitsToRat? hb
+  exact mem_toSet_of_toE hn hn (by show (toF b).toE ≤ _; rw [he])
+    (by show _ ≤ (toF b).toE; rw [he])
+
+/-- A built-in expression evaluated by the kernel at a point encloses its value there. -/
+theorem denote_mem_evalK_pt {b : Nat} (hb : b < 2 ^ 64) {q : ℚ} (hq : ratOfBits b = some q)
+    (e : IExpr) : e.denote [(q : ℝ)] ∈ (toI (evalK [ptK b] e)).toSet := by
+  have hw : ∀ X ∈ [ptK b], WF X := by
+    intro X hX; simp only [List.mem_singleton] at hX; subst hX; exact ⟨hb, hb⟩
+  rw [(evalK_toI hw e).1]
+  exact eval_sound (List.Forall₂.cons (mem_ptK hb hq) List.Forall₂.nil) e
+
+
+/-- A built-in expression evaluated by the kernel on a box encloses its values there. -/
+theorem denote_mem_evalK {X : KI} (hX : WF X) {x : ℝ} (hx : x ∈ (toI X).toSet) (e : IExpr) :
+    e.denote [x] ∈ (toI (evalK [X] e)).toSet := by
+  have hw : ∀ Y ∈ [X], WF Y := by
+    intro Y hY; simp only [List.mem_singleton] at hY; subst hY; exact hX
+  rw [(evalK_toI hw e).1]
+  exact eval_sound (List.Forall₂.cons hx List.Forall₂.nil) e
+
+/-- Combine the lower end of one enclosure with the upper end of another. -/
+theorem mem_mix {Y Z : KI} {u v r : ℝ} (hu : u ∈ (toI Y).toSet) (hv : v ∈ (toI Z).toSet)
+    (h1 : u ≤ r) (h2 : r ≤ v) : r ∈ (toI (⟨Y.lo, Z.hi⟩ : KI)).toSet := by
+  have a := mem_toSet_iff_toE.1 hu
+  have b := mem_toSet_iff_toE.1 hv
+  apply mem_toSet_iff_toE.2
+  exact ⟨⟨a.1.1, a.1.2.trans (by exact_mod_cast h1)⟩,
+    ⟨b.2.1, (by exact_mod_cast h2 : (r : EReal) ≤ v).trans b.2.2⟩⟩
+
+/-- Monotone (on `guard`ed boxes) extension from point enclosures `P`. -/
+def _root_.Interval64.KF.ExtFn.ofMonoK (name : String) (P : Nat → KI) (guard : KI → Bool)
+    (domK : KI → Bool) (deriv : IExpr) : ExtFn where
+  name := name
+  evK X := bif guard X then
+      ⟨match ratOfBits X.lo with | some _ => (P X.lo).lo | none => KI.whole.lo,
+       match ratOfBits X.hi with | some _ => (P X.hi).hi | none => KI.whole.hi⟩
+    else KI.whole
+  domK := domK
+  deriv := deriv
+
+theorem whole_lo_toE (y : ℝ) : (toF KI.whole.lo).isNaN = false ∧ (toF KI.whole.lo).toE ≤ (y : EReal) :=
+  (mem_toSet_iff_toE.1 (show y ∈ (toI KI.whole).toSet by rw [toI_whole]; exact mem_toSet_whole _)).1
+
+theorem whole_hi_toE (y : ℝ) : (toF KI.whole.hi).isNaN = false ∧ (y : EReal) ≤ (toF KI.whole.hi).toE :=
+  (mem_toSet_iff_toE.1 (show y ∈ (toI KI.whole).toSet by rw [toI_whole]; exact mem_toSet_whole _)).2
+
+/-- An endpoint with a rational value belongs to a nonempty box. -/
+theorem lo_mem {X : KI} (hX : WF X) (hn : isNaN X.lo = false) {a : ℚ} (ha : ratOfBits X.lo = some a)
+    {x : ℝ} (hx : x ∈ (toI X).toSet) : (a : ℝ) ∈ (toI X).toSet := by
+  have hb : Spec.bitsToRat? (toF X.lo).toBits = some a := by
+    rw [toBits_toF_of_not_nan hX.1 hn]; exact ha
+  have h := mem_toSet_iff_toE.1 hx
+  refine mem_toSet_of_toE h.1.1 h.2.1 ?_ ?_
+  · show (toF X.lo).toE ≤ _; rw [toE_of_bitsToRat? hb]
+  · exact le_trans (by exact_mod_cast le_of_mem_lo hX hn ha hx) h.2.2
+
+theorem hi_mem {X : KI} (hX : WF X) (hn : isNaN X.hi = false) {b : ℚ} (hb : ratOfBits X.hi = some b)
+    {x : ℝ} (hx : x ∈ (toI X).toSet) : (b : ℝ) ∈ (toI X).toSet := by
+  have hb' : Spec.bitsToRat? (toF X.hi).toBits = some b := by
+    rw [toBits_toF_of_not_nan hX.2 hn]; exact hb
+  have h := mem_toSet_iff_toE.1 hx
+  refine mem_toSet_of_toE h.1.1 h.2.1 ?_ ?_
+  · exact le_trans h.1.2 (by exact_mod_cast ge_of_mem_hi hX hn hb hx)
+  · show _ ≤ (toF X.hi).toE; rw [toE_of_bitsToRat? hb']
+
+theorem ExtSound.ofMonoK {f : ℝ → ℝ} {D : ℝ → Prop} {S : Set ℝ} {name : String} {P : Nat → KI}
+    {guard domK : KI → Bool} {deriv : IExpr} (hmono : MonotoneOn f S)
+    (hg : ∀ X : KI, WF X → isNaN X.lo = false → isNaN X.hi = false → guard X = true →
+      ∀ x : ℝ, x ∈ (toI X).toSet → x ∈ S)
+    (hP : ∀ (b : Nat) (q : ℚ), b < 2 ^ 64 → ratOfBits b = some q → (q : ℝ) ∈ S →
+      f q ∈ (toI (P b)).toSet)
+    (hdom : ∀ X : KI, WF X → isNaN X.lo = false → isNaN X.hi = false → domK X = true →
+      ∀ x : ℝ, x ∈ (toI X).toSet → D x)
+    (hfree : deriv.extFree = true) (hder : ∀ x, D x → HasDerivAt f (deriv.denoteB [x]) x) :
+    ExtSound f D (ExtFn.ofMonoK name P guard domK deriv) where
+  enc X hX hlo hhi _ x hx := by
+    show f x ∈ (toI (bif guard X then _ else _)).toSet
+    cases hgX : guard X with
+    | false => simp only [Bool.cond_false]; rw [toI_whole]; exact mem_toSet_whole _
+    | true =>
+      simp only [Bool.cond_true]
+      have hS := hg X hX hlo hhi hgX
+      apply mem_toSet_iff_toE.2
+      constructor
+      · rcases ha : ratOfBits X.lo with _ | a
+        · exact whole_lo_toE (f x)
+        · have hm := mem_toSet_iff_toE.1 (hP X.lo a hX.1 ha (hS _ (lo_mem hX hlo ha hx)))
+          refine ⟨hm.1.1, le_trans hm.1.2 ?_⟩
+          exact_mod_cast hmono (hS _ (lo_mem hX hlo ha hx)) (hS x hx) (le_of_mem_lo hX hlo ha hx)
+      · rcases hb : ratOfBits X.hi with _ | b
+        · exact whole_hi_toE (f x)
+        · have hm := mem_toSet_iff_toE.1 (hP X.hi b hX.2 hb (hS _ (hi_mem hX hhi hb hx)))
+          refine ⟨hm.2.1, le_trans ?_ hm.2.2⟩
+          exact_mod_cast hmono (hS x hx) (hS _ (hi_mem hX hhi hb hx)) (ge_of_mem_hi hX hhi hb hx)
+  dom := hdom
+  deriv_extFree := hfree
+  deriv := hder
+
+
+/-- A function vanishing at `0` with nonnegative derivative on `[0, x]` is nonnegative at `x`
+(for proving point bounds by comparing derivatives). -/
+theorem nonneg_of_hasDerivAt {F F' : ℝ → ℝ} {x : ℝ} (h0 : F 0 = 0)
+    (hd : ∀ y, 0 ≤ y → y ≤ x → HasDerivAt F (F' y) y)
+    (hpos : ∀ y, 0 ≤ y → y ≤ x → 0 ≤ F' y) (hx : 0 ≤ x) : 0 ≤ F x := by
+  have hm : MonotoneOn F (Set.Icc 0 x) := by
+    apply monotoneOn_of_deriv_nonneg (convex_Icc 0 x)
+    · exact fun y hy => (hd y hy.1 hy.2).continuousAt.continuousWithinAt
+    · intro y hy; rw [interior_Icc] at hy
+      exact (hd y hy.1.le hy.2.le).differentiableAt.differentiableWithinAt
+    · intro y hy; rw [interior_Icc] at hy
+      rw [(hd y hy.1.le hy.2.le).deriv]; exact hpos y hy.1.le hy.2.le
+  have := hm ⟨le_refl (0:ℝ), hx⟩ ⟨hx, le_refl x⟩ hx
+  rw [h0] at this; exact this
+
 /-! ### The registry -/
 
 /-- A registered function: `fn` is the Mathlib function's head constant, `ext` the `ExtFn`

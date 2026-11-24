@@ -39,4 +39,7 @@ import RealFPMathlib.IntegralTactic
 import RealFPMathlib.Front
 import RealFPMathlib.Registry
 import RealFPMathlib.Extensions.Erf
+import RealFPMathlib.Extensions.Arsinh
+import RealFPMathlib.Extensions.Artanh
+import RealFPMathlib.Extensions.Sinc
 import RealFPMathlib.Kernel

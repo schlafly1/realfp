@@ -337,7 +337,9 @@ File: `Tutorial.lean` §5. More examples: `Examples/Roots.lean`, `Examples/Optim
 All backends share one expression language: `+ − × ÷ ⁻¹`, `^ n` (numeral `n`), `Real.sqrt`,
 `exp`, `log`, `logb 2`, `logb 10`, `sin`, `cos`, `tan`, `arctan`, `arcsin`, `arccos`, `sinh`,
 `cosh`, `tanh`, `Real.pi`, rational numerals, plus `|x|` and atan2
-(`Complex.arg (↑x + ↑y * I)`) for inequalities only.
+(`Complex.arg (↑x + ↑y * I)`) for inequalities only. Registered functions (§6, "Adding a
+function"; import their `RealFPMathlib.Extensions.*` module, included in `import RealFPMathlib`):
+`RealFP.erf`, `Real.sinc`, `Real.artanh` (on `(-1, 1)`), `Real.arsinh`.
 
 ### `interval`: bounds on a box
 
@@ -651,6 +653,33 @@ registered functions are evaluated in Lean, not by the C tape, so searches over 
 slower; `integral_bound` uses Taylor orders ≤ 4 for them; 2D quadrature and the adaptive
 `Interval64.Quad` rules do not support them.
 
+Three more registered functions use Mathlib's definitions directly:
+
+| function | file | enclosure | derivative template | domain `D` |
+|---|---|---|---|---|
+| `Real.arsinh` | `Extensions/Arsinh.lean` | monotone; series `q - q³/6 (+ 3q⁵/40)` for `\|q\| ≤ 2⁻¹²`, else `log (\|q\| + √(1+q²))` | `1/√(1+x²)` | all `x` |
+| `Real.artanh` | `Extensions/Artanh.lean` | monotone on `(-1, 1)`; series `q + q³/3 (+ q⁵/4)` for small `q`, else `½ log ((1+q)/(1-q))`; `whole` on boxes touching `±1` | `1/(1-x²)` | `-1 < x < 1` |
+| `Real.sinc` | `Extensions/Sinc.lean` | even, decreasing in `\|x\|` on `[0, 3]`: endpoint values (`1` at `0`, `sin q / q` else); `sin x / x` on boxes away from `0` | `(x cos x - sin x)/x²` | `x ≠ 0` |
+
+`ExtFn.ofMonoK P guard domK deriv` is the helper for the first two: `P b : KI` encloses `f` at
+the double with bit pattern `b`, usually a built-in expression evaluated at that point:
+
+```lean
+def arsinhExt : ExtFn := ExtFn.ofMonoK "arsinh" Arsinh.pt (fun _ => true) (fun _ => true) arsinhDeriv
+```
+
+`sinc`'s template is undefined at `0`, so boxes containing `0` fail the domain check and only
+zeroth-order (plain interval) bounds are available there: a bound that is tight *at* `0` (e.g.
+`sinc x ≤ 1 - x²/7` near `0`) cannot be proved, and `integral_bound` cannot integrate over a range containing `0` (every cell
+needs the derivative). Examples (`Examples/{Arsinh,Artanh,Sinc}.lean`):
+
+```lean
+example : (9.99999999983e-6 : ℝ) < arsinh 1e-5 ∧ arsinh 1e-5 < 9.99999999984e-6 := by realfp
+example : ∃! x ∈ Set.Icc (0 : ℝ) 0.9, artanh x = 1 := by realfp
+example : ∃ x ∈ Set.Icc (1.89549 : ℝ) 1.8955, sinc x = 1/2 := by root_exists
+example : (∫ x in (1 : ℝ)..2, sinc x) ∈ Set.Icc (0.655 : ℝ) 0.663 := by integral_bound
+```
+
 ## 7. Troubleshooting, performance, limitations
 
 **Common problems**
@@ -692,7 +721,10 @@ slower; `integral_bound` uses Taylor orders ≤ 4 for them; 2D quadrature and th
   certificate level, §6).
 - Optimisation uses first-order (centred-form) bounds only; localising a minimiser works in
   one variable; exact `sInf = v` needs `v` attained at a rational point.
-- No `erf`, `sinc`, `atanh`, `arsinh` yet; Interval128 is not used by the tactics.
+- `erf`, `sinc`, `artanh`, `arsinh` are registered functions (no C tape: slower searches).
+  `sinc` has no derivative information on boxes containing `0` (zeroth-order bounds only
+  there); `artanh` only works on boxes strictly inside `(-1, 1)`.
+- Interval128 is not used by the tactics.
 
 **Where next**
 
