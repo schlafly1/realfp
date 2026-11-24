@@ -19,6 +19,10 @@ concurrency:
 jobs:
   examples:
     runs-on: ubuntu-latest
+    env:
+      # Seen by the core lakefile even when RealFPMathlib is the Lake root
+      # (lake -K is not forwarded to required packages).
+      IV64_BACKEND: rnerr
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4

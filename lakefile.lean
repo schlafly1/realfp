@@ -13,13 +13,16 @@ package «interval64» where
 def isX86_64 : Bool := System.Platform.target.startsWith "x86_64"
 
 /-- Backend selection. Default: AVX-512 on x86_64, RN + exact error term elsewhere
-    (aarch64). `lake build -Kbackend=rnerr` forces the portable backend on x86_64
-    (for testing it against the Lean spec, and for CI on machines without AVX-512). -/
+    (aarch64). `lake build -Kbackend=rnerr` or `IV64_BACKEND=rnerr` forces the
+    portable backend on x86_64 (for testing it against the Lean spec, and for CI
+    on machines without AVX-512). The env var is required when a downstream
+    package such as RealFPMathlib builds this one: Lake `-K` options are not
+    forwarded to required packages. -/
 def forceRnErr : Bool := (get_config? backend) == some "rnerr"
 
-def cArchArgs : Array String :=
+def cArchArgsOf (force : Bool) : Array String :=
   if isX86_64 then
-    if forceRnErr then
+    if force then
       -- No -mavx512f: the object file must not contain AVX-512 instructions,
       -- so the binary runs on any x86_64 (GitHub-hosted runners included).
       -- AVX-512 kernels are therefore not compiled in this configuration;
@@ -29,6 +32,8 @@ def cArchArgs : Array String :=
       #["-mavx512f", "-mavx512vl"]
   else #[]
 
+def cArchArgs : Array String := cArchArgsOf forceRnErr
+
 /-- C kernels: AVX-512 embedded rounding (x86_64) or RN + exact error term
     (aarch64 / other), plus fesetround fallbacks. Compiled with gcc (cc).
     The Lean 4.36 bundled clang is missing immintrin.h. -/
@@ -36,7 +41,8 @@ target interval64.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "interval64.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "interval64.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let args := #["-fPIC", "-O2"] ++ cArchArgs ++
+  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
   -- Headers are part of the trace, so editing them rebuilds the object.
   buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
@@ -49,7 +55,8 @@ target interval128.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "interval128.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "interval128.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let args := #["-fPIC", "-O2"] ++ cArchArgs ++ (if isX86_64 then #["-mfma"] else #[]) ++
+  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++ (if isX86_64 then #["-mfma"] else #[]) ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
   buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
@@ -61,7 +68,8 @@ target iv64_matrix.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "iv64_matrix.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "iv64_matrix.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let args := #["-fPIC", "-O2"] ++ cArchArgs ++ (if isX86_64 then #["-mfma"] else #[]) ++
+  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++ (if isX86_64 then #["-mfma"] else #[]) ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
   buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
@@ -74,7 +82,8 @@ target iv64_poly.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "iv64_poly.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "iv64_poly.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let args := #["-fPIC", "-O2"] ++ cArchArgs ++ (if isX86_64 then #["-mfma"] else #[]) ++
+  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++ (if isX86_64 then #["-mfma"] else #[]) ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
   buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))

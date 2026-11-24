@@ -77,7 +77,7 @@ A tiny downstream project lives at `/workspace/interval64_consumer`
 
 **CI.** `.github/workflows/ci.yml` runs on every push and pull request to `main`:
 it installs Lean from `lean-toolchain`, fetches the Mathlib olean cache, builds
-the core libraries and proofs with `-Kbackend=rnerr`, runs `interval64_tests`
+the core libraries and proofs with `IV64_BACKEND=rnerr` (and `-Kbackend=rnerr`), runs `interval64_tests`
 and `interval128_tests`, checks `Interval64Axioms.lean`, builds
 `RealFPMathlib.AxiomAuditCore` (library + Demo + Tests, not Examples), and
 checks the tutorial snippets. `.github/workflows/examples.yml` builds the slow
@@ -137,6 +137,9 @@ backend on x86_64 (no AVX-512 instructions, so the binary also runs on CPUs
 without AVX-512F; this is what CI uses), so the Lean-side tests
 (`.lake/build/bin/interval64_tests`, C runtime vs Lean spec) can run against
 it; `lake -R build interval64_tests` switches back to AVX-512.
+`IV64_BACKEND=rnerr` has the same effect and also works when another Lake package
+(such as `RealFPMathlib`) builds this one, because Lake `-K` options are not
+forwarded to required packages. CI sets this environment variable.
 (Name the exe target: a plain `lake build` does not relink the test exe.)
 `scripts/test_arm64_qemu.sh` also cross-compiles CORE-MATH exp/log/sin/cos and
 `c/iv64_transc.c` for aarch64 and checks RD/RU (FPCR) against the mpmath oracle
