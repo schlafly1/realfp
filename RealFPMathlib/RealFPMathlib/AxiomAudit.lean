@@ -30,6 +30,7 @@ import RealFPMathlib.Examples.Split
 import RealFPMathlib.Examples.Taylor2
 import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Examples.Trig
+import RealFPMathlib.Examples.Tutorial
 import RealFPMathlib.Ext
 import RealFPMathlib.Front
 import RealFPMathlib.Hyp
