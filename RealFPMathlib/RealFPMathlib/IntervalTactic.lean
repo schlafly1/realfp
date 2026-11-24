@@ -23,12 +23,14 @@ How it works:
 -/
 import RealFPMathlib.IntervalSound
 import RealFPMathlib.IntervalDeriv
+import RealFPMathlib.Opt
 import RealFPMathlib.Roots
 import RealFPMathlib.Trust
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Ring
 import Mathlib.Tactic.CasesM
+import Batteries.Data.BinaryHeap
 
 open Lean Meta Elab Tactic
 open Interval64.KF
@@ -59,6 +61,12 @@ theorem lt_of_sub {a b : ℝ} (h : a - b < 0) : a < b := sub_neg.mp h
 
 def toFl (n : Nat) : Float := Float.ofBits (UInt64.ofNat n)
 
+/-- `evalK` computed with the hardware interval evaluator `evalI` (the C runtime); equal to
+`evalK` by `Interval64Proofs.evalK_toI`. Used only by the (untrusted) native searches. -/
+def evalF (env : List KI) (e : IExpr) : KI :=
+  let r := evalI (env.map fun X => ⟨toFl X.lo, toFl X.hi⟩) e
+  ⟨r.lo.toBits.toNat, r.hi.toBits.toNat⟩
+
 /-- Widest splittable variable and its float midpoint. -/
 def pickSplit (env : List KI) : Option (Nat × Nat) := Id.run do
   let mut best : Option (Nat × Nat) := none
@@ -80,7 +88,7 @@ partial def search (e : IExpr) (g : KI → Bool) (maxEvals : Nat) :
     Nat → List KI → StateM Nat (Option Cert)
   | depth, env => do
     modify (· + 1)
-    if g (evalK env e) then return some .leaf
+    if g (evalF env e) then return some .leaf
     if depth == 0 || (← get) ≥ maxEvals then return none
     match pickSplit env with
     | none => return none
@@ -118,7 +126,7 @@ partial def searchD (deriv : Bool) (maxEvals : Nat) (e : IExpr) (g : KI → Bool
     (order : Nat) (allowSplit : Bool) : Nat → List KI → StateM Nat (Option DCert)
   | depth, env => do
     modify (· + 1)
-    if g (evalK env e) then return some .leaf
+    if g (evalF env e) then return some .leaf
     if (← get) ≥ maxEvals then return none
     if deriv && domOK env e then
       let tryEnd (i : Nat) (inc : Bool) (dc : DCert) : StateM Nat (Option DCert) := do
@@ -131,7 +139,7 @@ partial def searchD (deriv : Bool) (maxEvals : Nat) (e : IExpr) (g : KI → Bool
       -- 1. monotone, sign visible on the box
       for i in wideVars env do
         modify (· + 1)
-        let D := evalK env (e.deriv i)
+        let D := evalF env (e.deriv i)
         if gGe zeroHi D then
           if let some c ← tryEnd i true .leaf then return some c
         if gLe zeroLo D then
@@ -157,6 +165,183 @@ partial def searchD (deriv : Bool) (maxEvals : Nat) (e : IExpr) (g : KI → Bool
       let some r ← searchD deriv maxEvals e g upper order allowSplit (depth - 1)
         (env.set i ⟨m, X.hi⟩) | return none
       return some (.split i m l r)
+
+/-! ### Multivariate centred-form certificates (`MCert`, `checkM`) -/
+
+def mLeaves : MCert → Nat
+  | .enc _ => 1
+  | .d c => dLeaves c
+  | .split _ _ l r => mLeaves l + mLeaves r
+  | .mono _ _ dc c => dLeaves dc + mLeaves c
+
+def mStats : MCert → Nat × Nat × Nat   -- (splits, mono, centred leaves)
+  | .enc (.cen _ _ _) => (0, 0, 1)
+  | .enc .nat => (0, 0, 0)
+  | .d _ => (0, 0, 0)
+  | .split _ _ l r => let a := mStats l; let b := mStats r; (a.1 + b.1 + 1, a.2.1 + b.2.1, a.2.2 + b.2.2)
+  | .mono _ _ _ c => let a := mStats c; (a.1, a.2.1 + 1, a.2.2)
+
+def midBits (X : KI) : Option Nat :=
+  let lo := toFl X.lo
+  let hi := toFl X.hi
+  let mid := if (lo + hi).isInf then lo / 2 + hi / 2 else (lo + hi) / 2
+  let mid := if mid == 0 then 0 else mid
+  if lo ≤ mid && mid ≤ hi && !mid.isNaN && !mid.isInf then some mid.toBits.toNat else none
+
+/-- Nested centred form at the box midpoint (widest variables centred first). -/
+def cenCert (env : List KI) : ECert := Id.run do
+  let ws := (wideVars env).map fun i =>
+    let X := env.getD i zeroK
+    (i, toFl X.hi - toFl X.lo)
+  let ws := (ws.toArray.qsort (fun a b => a.2 > b.2)).toList
+  let mut k : ECert := .nat
+  for (i, _) in ws.reverse do
+    if let some m := midBits (env.getD i zeroK) then k := .cen i m k
+  return k
+
+/-- `encK` with precomputed derivatives `ds[i] = e.deriv i` (same value; for the native search). -/
+def encKd (e : IExpr) (ds : Array IExpr) : ECert → List KI → KI
+  | .nat, env => evalF env e
+  | .cen i m k, env =>
+    if cenOK env e i m then
+      KI.add (encKd e ds k (env.set i ⟨m, m⟩))
+        (KI.mul (evalF env (ds.getD i (e.deriv i))) (KI.sub (env.getD i zeroK) ⟨m, m⟩))
+    else evalF env e
+
+def derivs (e : IExpr) (n : Nat) : Array IExpr := (List.range n).toArray.map e.deriv
+
+def absMaxF (X : KI) : Float := max (toFl X.lo).abs (toFl X.hi).abs
+
+/-- Split variable: largest `width × |∂ᵢf|` (widest if derivatives are unavailable). -/
+def pickSplitM (e : IExpr) (ds : Array IExpr) (env : List KI) : Option (Nat × Nat) := Id.run do
+  let dom := domOK env e
+  let mut best : Option (Nat × Nat) := none
+  let mut bestS : Float := -1
+  for i in wideVars env do
+    let X := env.getD i zeroK
+    let some m := midBits X | continue
+    if m == X.lo || m == X.hi then continue
+    let w := toFl X.hi - toFl X.lo
+    let s := if dom then
+        let d := absMaxF (evalF env (ds.getD i (e.deriv i)))
+        if d.isNaN || d.isInf then w * 1e300 else w * d + w * 1e-300
+      else w
+    if s > bestS then
+      bestS := s
+      best := some (i, m)
+  if best.isNone then return pickSplit env
+  return best
+
+/-- Depth-first search for an `MCert`: natural enclosure, nested centred form, monotonicity on
+a face, else bisection (variable chosen by `pickSplitM`). -/
+partial def searchM (maxEvals : Nat) (e : IExpr) (ds : Array IExpr) (g : KI → Bool) (upper : Bool) :
+    Nat → List KI → StateM Nat (Option MCert)
+  | depth, env => do
+    modify (· + 1)
+    if g (evalF env e) then return some (.enc .nat)
+    if (← get) ≥ maxEvals then return none
+    let dom := domOK env e
+    if dom then
+      let k := cenCert env
+      modify (· + 1)
+      if g (encKd e ds k env) then return some (.enc k)
+      for i in wideVars env do
+        let D := evalF env (ds.getD i (e.deriv i))
+        let inc? : Option Bool :=
+          if gGe zeroHi D then some true else if gLe zeroLo D then some false else none
+        if let some inc := inc? then
+          let X := env.getD i zeroK
+          let p := if inc == upper then X.hi else X.lo
+          if finK p then
+            if let some c ← searchM maxEvals e ds g upper depth (env.set i ⟨p, p⟩) then
+              return some (.mono i inc .leaf c)
+    if depth == 0 || (← get) ≥ maxEvals then return none
+    match pickSplitM e ds env with
+    | none => return none
+    | some (i, m) =>
+      let X := env.getD i zeroK
+      let some l ← searchM maxEvals e ds g upper (depth - 1) (env.set i ⟨X.lo, m⟩) | return none
+      let some r ← searchM maxEvals e ds g upper (depth - 1) (env.set i ⟨m, X.hi⟩) | return none
+      return some (.split i m l r)
+
+/-! ### Branch and bound for the global minimum (untrusted estimate, used for discovery,
+witnesses and error messages; every claim is re-proved by a certificate) -/
+
+structure BBNode where
+  key : Float        -- negated lower bound (the binary heap pops the maximum)
+  lb : Float
+  depth : Nat
+  env : List KI
+
+instance : Ord BBNode := ⟨fun a b => if a.key < b.key then .lt else if b.key < a.key then .gt else .eq⟩
+
+structure BBResult where
+  /-- Lower bound for the minimum of `±f` from the interval enclosures (not yet certified). -/
+  lower : Float
+  /-- Upper bound: rigorous enclosure upper end of `±f` at `arg`. -/
+  upper : Float
+  /-- Approximate minimiser (float points inside the box). -/
+  arg : List Float
+  boxes : Nat
+  deriving Inhabited
+
+def fixNaN (x d : Float) : Float := if x.isNaN then d else x
+
+/-- Lower bound of `s·e` on `env` (`s = -1` if `maximize`): natural and nested centred forms. -/
+def bbLower (e : IExpr) (ds : Array IExpr) (maximize : Bool) (env : List KI) : Float :=
+  let F := evalF env e
+  let a := if maximize then -(toFl F.hi) else toFl F.lo
+  let a := fixNaN a (-1.0/0.0)
+  if domOK env e then
+    let G := encKd e ds (cenCert env) env
+    let b := fixNaN (if maximize then -(toFl G.hi) else toFl G.lo) (-1.0/0.0)
+    max a b
+  else a
+
+def midEnv (env : List KI) : List KI :=
+  env.map fun X => match midBits X with | some m => ⟨m, m⟩ | none => ⟨X.lo, X.lo⟩
+
+/-- Rigorous upper bound of `s·e` at the midpoint of `env`. -/
+def bbUpperAt (e : IExpr) (maximize : Bool) (env : List KI) : Float × List Float :=
+  let pe := midEnv env
+  let F := evalF pe e
+  let u := fixNaN (if maximize then -(toFl F.lo) else toFl F.hi) (1.0/0.0)
+  (u, pe.map fun X => toFl X.lo)
+
+/-- Best-first branch and bound for `min (±e)` on `env0`; stops when the gap is below `tol`
+(absolute, plus `tol·|upper|`) or after `maxBoxes` boxes. -/
+partial def bnbMin (e : IExpr) (maximize : Bool) (env0 : List KI) (maxBoxes : Nat := 20000)
+    (tol : Float := 1e-9) (maxDepth : Nat := 200) : BBResult := Id.run do
+  let ds := derivs e env0.length
+  let lb0 := bbLower e ds maximize env0
+  let (u0, a0) := bbUpperAt e maximize env0
+  let mut heap : Batteries.BinaryHeap BBNode := Batteries.BinaryHeap.empty
+  heap := heap.insert ⟨-lb0, lb0, 0, env0⟩
+  let mut U := u0
+  let mut arg := a0
+  let mut n := 1
+  let mut lower := lb0
+  let mut stalled : Float := 1.0/0.0   -- min lower bound of boxes that cannot be split further
+  while true do
+    let (top?, h') := heap.extractMax
+    heap := h'
+    let some nd := top? | do lower := min stalled U; break
+    lower := min nd.lb stalled
+    if nd.lb ≥ U - tol * (1 + U.abs) || n ≥ maxBoxes then
+      break
+    if nd.depth ≥ maxDepth then
+      stalled := min stalled nd.lb; continue
+    match pickSplitM e ds nd.env with
+    | none => stalled := min stalled nd.lb
+    | some (i, m) =>
+      let X := nd.env.getD i zeroK
+      for ch in [nd.env.set i ⟨X.lo, m⟩, nd.env.set i ⟨m, X.hi⟩] do
+        n := n + 1
+        let lb := bbLower e ds maximize ch
+        let (u, a) := bbUpperAt e maximize ch
+        if u < U then U := u; arg := a
+        if lb < U then heap := heap.insert ⟨-lb, lb, nd.depth + 1, ch⟩
+  return { lower := lower, upper := U, arg := arg, boxes := n }
 
 /-! ### Reification -/
 
@@ -193,6 +378,16 @@ partial def dcertToExpr : DCert → Expr
   | .split i m l r => mkApp4 (mkConst ``DCert.split) (toExpr i) (toExpr m) (dcertToExpr l) (dcertToExpr r)
   | .mono i inc dc c => mkApp4 (mkConst ``DCert.mono) (toExpr i) (toExpr inc) (dcertToExpr dc) (dcertToExpr c)
   | .center i m => mkApp2 (mkConst ``DCert.center) (toExpr i) (toExpr m)
+
+partial def ecertToExpr : ECert → Expr
+  | .nat => mkConst ``ECert.nat
+  | .cen i m k => mkApp3 (mkConst ``ECert.cen) (toExpr i) (toExpr m) (ecertToExpr k)
+
+partial def mcertToExpr : MCert → Expr
+  | .enc k => mkApp (mkConst ``MCert.enc) (ecertToExpr k)
+  | .d c => mkApp (mkConst ``MCert.d) (dcertToExpr c)
+  | .split i m l r => mkApp4 (mkConst ``MCert.split) (toExpr i) (toExpr m) (mcertToExpr l) (mcertToExpr r)
+  | .mono i inc dc c => mkApp4 (mkConst ``MCert.mono) (toExpr i) (toExpr inc) (dcertToExpr dc) (mcertToExpr c)
 
 partial def certToExpr : Cert → Expr
   | .leaf => mkConst ``Cert.leaf
@@ -403,6 +598,53 @@ where
     setGoals saved
     instantiateMVars hM
 
+partial def proveCheckM (chunk : Nat) (eE gE upperE : Expr) (cert : MCert) (envE : Expr) :
+    TacticM Expr := do
+  match cert with
+  | .split i m l r =>
+    if mLeaves cert > chunk then
+      let lem := mkAppN (mkConst ``RealFP.checkM_split_of)
+        #[eE, gE, upperE, toExpr i, toExpr m, mcertToExpr l, mcertToExpr r, envE]
+      let ty ← inferType lem
+      let .forallE _ _ b1 _ := ty | throwError "interval: internal (split lemma)"
+      let .forallE _ hlT b2 _ := b1 | throwError "interval: internal (split lemma)"
+      let .forallE _ hrT _ _ := b2 | throwError "interval: internal (split lemma)"
+      let hm ← mkEqRefl (mkConst ``Bool.true)
+      let getEnv (t : Expr) : MetaM Expr := do
+        let some (_, lhs, _) := t.eq? | throwError "interval: internal (env)"
+        return lhs.appArg!
+      let hl ← proveCheckM chunk eE gE upperE l (← getEnv hlT)
+      let hr ← proveCheckM chunk eE gE upperE r (← getEnv hrT)
+      return mkAppN lem #[hm, hl, hr]
+    else leafChunk
+  | _ => leafChunk
+where
+  leafChunk : TacticM Expr := do
+    let chk := mkApp5 (mkConst ``checkM) eE gE upperE (mcertToExpr cert) envE
+    let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
+    let saved ← getGoals
+    setGoals [hM.mvarId!]
+    RealFP.closeCheck
+    setGoals saved
+    instantiateMVars hM
+
+/-- Certificate search for `interval` bounds: the derivative search (`searchD`) with a small
+budget, then the multivariate centred-form search (`searchM`), then `searchD` with the full
+budget. Returns the certificate and the number of native evaluations. -/
+def findCertDM (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (nvars : Nat)
+    (env : List KI) : Option (DCert ⊕ MCert) × Nat := Id.run do
+  let full := 2 * cfg.maxBoxes
+  let b1 := min full 6000
+  let (c1, n1) := (searchD cfg.deriv b1 e g upper cfg.order true cfg.depth env).run 0
+  if let some c := c1 then return (some (.inl c), n1)
+  let (c2, n2) := (searchM full e (derivs e nvars) g upper (cfg.depth + 8 * nvars) env).run 0
+  if let some c := c2 then return (some (.inr c), n1 + n2)
+  if b1 < full then
+    let (c3, n3) := (searchD cfg.deriv full e g upper cfg.order true cfg.depth env).run 0
+    if let some c := c3 then return (some (.inl c), n1 + n2 + n3)
+    return (none, n1 + n2 + n3)
+  return (none, n1 + n2)
+
 /-- Prove `lhs ≤ rhs` (`strict = false`) or `lhs < rhs` on the main goal. -/
 def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let goal ← getMainGoal
@@ -429,48 +671,62 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
     | true, true => (gLt cK.lo, ``gLt, ``proveD_lt)
     | false, false => (gGe cK.hi, ``gGe, ``proveD_ge)
     | true, false => (gGt cK.hi, ``gGt, ``proveD_gt)
-  let (cert?, evals) :=
-    (searchD cfg.deriv (2 * cfg.maxBoxes) e g upper cfg.order true cfg.depth env).run 0
+  let (cert?, evals) := findCertDM cfg e g upper vars.size env
   let some cert := cert? |
     throwError "interval: no certificate within depth {cfg.depth} / {cfg.maxBoxes} boxes \
       ({evals} evaluations); try larger (depth := _) (maxBoxes := _) or tighter bounds"
-  if dLeaves cert > cfg.maxBoxes then
-    throwError "interval: certificate needs {dLeaves cert} boxes > maxBoxes {cfg.maxBoxes}"
-  let st := dStats cert
-  trace[interval] "{vars.size} variable(s), {dLeaves cert} boxes ({st.1} splits, {st.2.1} mono, \
-    {st.2.2} centred), {evals} native evaluations"
-  let eE := iexprToExpr e
-  let bsE := toExpr bs.toList
-  let cE := toExpr c
-  let certE := dcertToExpr cert
-  let xsE ← mkListLit (mkConst ``Real) vars.toList
-  let kc := mkApp (mkConst (if upper then ``KI.lo else ``KI.hi)) (mkApp (mkConst ``KI.ofRat) cE)
-  let gE := mkApp (mkConst gName) kc
-  let hM ← proveCheckD cfg.chunk eE gE (toExpr upper) cert (mkApp (mkConst ``boxes) bsE)
-  let saved ← getGoals
-  let hxsTy := mkApp2 (mkConst ``InBoxes) xsE bsE
-  let hxsM ← mkFreshExprMVar hxsTy
-  setGoals [hxsM.mvarId!]
-  inBoxesTac
-  setGoals saved
-  let pf := mkAppN (mkConst pName) #[eE, bsE, cE, certE, hM, xsE, hxsM]
-  let pfTy ← inferType pf
-  -- close `lhs ≤ rhs` from `A ≤ B` via two equalities
-  let goal ← getMainGoal
-  let t ← whnfR (← instantiateMVars (← goal.getType))
-  let some (_, A, B) := (if strict then pfTy.lt? else pfTy.le?) | throwError "interval: internal"
-  let (_, a, b) ← match (if strict then t.lt? else t.le?) with
-    | some x => pure x | none => throwError "interval: internal (goal shape)"
-  let lem := if strict then ``close_lt else ``close_le
-  let ha ← mkFreshExprMVar (← mkEq a A)
-  let hb ← mkFreshExprMVar (← mkEq b B)
-  goal.assign (mkAppN (mkConst lem) #[a, b, A, B, pf, ha, hb])
-  for m in [ha, hb] do
-    setGoals [m.mvarId!]
-    denoteSimp
-    unless (← getGoals).isEmpty do
-      throwError "interval: could not match the goal with its reified form"
-  setGoals saved.tail
+  -- the (untrusted, native) search above does not count against `maxHeartbeats`
+  withCurrHeartbeats do
+    let leaves := match cert with | .inl c => dLeaves c | .inr c => mLeaves c
+    if leaves > cfg.maxBoxes then
+      throwError "interval: certificate needs {leaves} boxes > maxBoxes {cfg.maxBoxes}"
+    let stMsg : MessageData := match cert with
+      | .inl c =>
+        let st := dStats c
+        m!"{st.1} splits, {st.2.1} mono, {st.2.2} centred"
+      | .inr c =>
+        let st := mStats c
+        m!"{st.1} splits, {st.2.1} mono, {st.2.2} multivariate centred"
+    trace[interval] "{vars.size} variable(s), {leaves} boxes ({stMsg}), {evals} native evaluations"
+    let eE := iexprToExpr e
+    let bsE := toExpr bs.toList
+    let cE := toExpr c
+    let xsE ← mkListLit (mkConst ``Real) vars.toList
+    let kc := mkApp (mkConst (if upper then ``KI.lo else ``KI.hi)) (mkApp (mkConst ``KI.ofRat) cE)
+    let gE := mkApp (mkConst gName) kc
+    let envE := mkApp (mkConst ``boxes) bsE
+    let saved ← getGoals
+    let hxsTy := mkApp2 (mkConst ``InBoxes) xsE bsE
+    let hxsM ← mkFreshExprMVar hxsTy
+    let pf ← match cert with
+      | .inl dc => do
+        let hM ← proveCheckD cfg.chunk eE gE (toExpr upper) dc envE
+        setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
+        pure (mkAppN (mkConst pName) #[eE, bsE, cE, dcertToExpr dc, hM, xsE, hxsM])
+      | .inr mc => do
+        let hM ← proveCheckM cfg.chunk eE gE (toExpr upper) mc envE
+        setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
+        let pM := match strict, upper with
+          | false, true => ``proveM_le | true, true => ``proveM_lt
+          | false, false => ``proveM_ge | true, false => ``proveM_gt
+        pure (mkAppN (mkConst pM) #[eE, bsE, cE, mcertToExpr mc, hM, xsE, hxsM])
+    let pfTy ← inferType pf
+    -- close `lhs ≤ rhs` from `A ≤ B` via two equalities
+    let goal ← getMainGoal
+    let t ← whnfR (← instantiateMVars (← goal.getType))
+    let some (_, A, B) := (if strict then pfTy.lt? else pfTy.le?) | throwError "interval: internal"
+    let (_, a, b) ← match (if strict then t.lt? else t.le?) with
+      | some x => pure x | none => throwError "interval: internal (goal shape)"
+    let lem := if strict then ``close_lt else ``close_le
+    let ha ← mkFreshExprMVar (← mkEq a A)
+    let hb ← mkFreshExprMVar (← mkEq b B)
+    goal.assign (mkAppN (mkConst lem) #[a, b, A, B, pf, ha, hb])
+    for m in [ha, hb] do
+      setGoals [m.mvarId!]
+      denoteSimp
+      unless (← getGoals).isEmpty do
+        throwError "interval: could not match the goal with its reified form"
+    setGoals saved.tail
 
 theorem close_ne {a A : ℝ} (h : A ≠ 0) (ha : a = A) : a ≠ 0 := ha ▸ h
 theorem ne_of_sub_ne {a b : ℝ} (h : a - b ≠ 0) : a ≠ b := fun e => h (by rw [e, sub_self])

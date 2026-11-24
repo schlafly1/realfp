@@ -4,8 +4,7 @@ Multivariate centred-form certificates for tight global bounds (branch-and-bound
 
 * `ECert` describes a *nested* centred form: centre variable `i` at the float `m`, then
   enclose the remaining function (with `xᵢ := m`) by the next centring, and so on:
-  `f(X) ⊆ f(X[i:=m]) + ∂ᵢf(X)·(Xᵢ - m)`. `encK` computes this enclosure (intersected with the
-  natural one); invalid steps fall back to the natural enclosure, so `encK` is always sound.
+  `f(X) ⊆ f(X[i:=m]) + ∂ᵢf(X)·(Xᵢ - m)`. `encK` computes this enclosure; invalid steps fall back to the natural enclosure, so `encK` is always sound.
 * `MCert` is a bisection tree whose leaves are nested centred forms (`enc`), derivative
   certificates of `interval` (`d`, monotonicity etc.), or monotonicity steps continuing with an
   `MCert` on a face (`mono`).
@@ -37,9 +36,8 @@ def encK (e : IExpr) : ECert → List KI → KI
   | .nat, env => evalK env e
   | .cen i m k, env =>
     bif cenOK env e i m then
-      KI.meet (evalK env e)
-        (KI.add (encK e k (env.set i ⟨m, m⟩))
-          (KI.mul (evalK env (e.deriv i)) (KI.sub (env.getD i zeroK) ⟨m, m⟩)))
+      KI.add (encK e k (env.set i ⟨m, m⟩))
+        (KI.mul (evalK env (e.deriv i)) (KI.sub (env.getD i zeroK) ⟨m, m⟩))
     else evalK env e
 
 /-- Bisection tree with centred-form, derivative-certificate and monotonicity leaves. -/
@@ -120,8 +118,7 @@ theorem encK_mem (e : IExpr) : ∀ (k : ECert) (env : List KI) (xs : List ℝ),
     rw [← add_toI hfr.2 (mul_wf hdm.2 (sub_wf hwi hwp))] at hadd
     have heq : e.denote xs = e.denote (xs.set i r) + d * (xs.getD i 0 - r) := by linarith
     rw [← heq] at hadd
-    have hn := memK hw hxs e
-    exact meet_mem hn.2 (add_wf hfr.2 (mul_wf hdm.2 (sub_wf hwi hwp))) hn.1 hadd
+    exact ⟨hadd, add_wf hfr.2 (mul_wf hdm.2 (sub_wf hwi hwp))⟩
 
 theorem checkM_sound : ∀ (c : MCert) (e : IExpr) (g : KI → Bool) (upper : Bool) (P : ℝ → Prop),
     (∀ F, WF F → g F = true → ∀ y ∈ (toI F).toSet, P y) →
