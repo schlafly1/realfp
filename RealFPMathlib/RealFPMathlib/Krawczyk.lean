@@ -717,4 +717,55 @@ theorem coordsFin_to (n : Nat) (xs : List ℝ) (h : xs.length = n) :
 theorem coordsFin_inj (n : Nat) (p q : Fin n → ℝ) (h : List.ofFn p = List.ofFn q) : p = q :=
   List.ofFn_injective h
 
+
+/-! ### Sub-boxes (existence in a smaller box found by search) -/
+
+/-- `bs'` lies inside `bs`, coordinatewise. -/
+def subBoxes : List (ℚ × ℚ) → List (ℚ × ℚ) → Bool
+  | [], [] => true
+  | p :: s, q :: t => decide (q.1 ≤ p.1) && decide (p.2 ≤ q.2) && subBoxes s t
+  | _, _ => false
+
+theorem subBoxes_length : ∀ {bs' bs : List (ℚ × ℚ)}, subBoxes bs' bs = true → bs'.length = bs.length
+  | [], [], _ => rfl
+  | _ :: s, _ :: t, h => by
+    simp only [subBoxes, Bool.and_eq_true] at h
+    simp [subBoxes_length h.2]
+  | [], _ :: _, h => by simp [subBoxes] at h
+  | _ :: _, [], h => by simp [subBoxes] at h
+
+theorem inBoxes_sub {xs : List ℝ} {bs' : List (ℚ × ℚ)} (hx : InBoxes xs bs') :
+    ∀ {bs : List (ℚ × ℚ)}, subBoxes bs' bs = true → InBoxes xs bs := by
+  unfold InBoxes at *
+  induction hx with
+  | nil => intro bs h; cases bs with
+    | nil => exact .nil
+    | cons _ _ => simp [subBoxes] at h
+  | cons h1 _ ih =>
+    intro bs h
+    cases bs with
+    | nil => simp [subBoxes] at h
+    | cons q t =>
+      simp only [subBoxes, Bool.and_eq_true, decide_eq_true_eq] at h
+      exact .cons ⟨le_trans (by exact_mod_cast h.1.1) h1.1, le_trans h1.2 (by exact_mod_cast h.1.2)⟩
+        (ih h.2)
+
+/-- **Existence by sign change on a sub-interval** `[a', b'] ⊆ [a, b]`. -/
+theorem ivt_exists_in (e : IExpr) (a b a' b' : ℚ)
+    (h : (subBoxes [(a', b')] [(a, b)] && ivtCheck e a' b') = true) :
+    ∃ x : ℝ, InBoxes [x] [(a, b)] ∧ AllZero [e] [x] := by
+  simp only [Bool.and_eq_true] at h
+  obtain ⟨x, hx, hz⟩ := ivt_exists e a' b' h.2
+  exact ⟨x, inBoxes_sub hx h.1, hz⟩
+
+/-- **Krawczyk existence in a sub-box** `bs' ⊆ bs`. -/
+theorem kraw_exists_in {T : Type} (Fs : List IExpr) (bs bs' : List (ℚ × ℚ)) (c : KCert)
+    (toL : T → List ℝ) (ofL : List ℝ → T) (hto : ∀ xs, xs.length = bs.length → toL (ofL xs) = xs)
+    (h : (subBoxes bs' bs && krawCheck Fs bs' c) = true) :
+    ∃ p : T, InBoxes (toL p) bs ∧ AllZero Fs (toL p) := by
+  simp only [Bool.and_eq_true] at h
+  obtain ⟨xs, h1, h2⟩ := kraw_exists h.2
+  have e := hto xs ((List.Forall₂.length_eq h1).trans (subBoxes_length h.1))
+  exact ⟨ofL xs, by rw [e]; exact ⟨inBoxes_sub h1 h.1, h2⟩⟩
+
 end RealFP.Roots
