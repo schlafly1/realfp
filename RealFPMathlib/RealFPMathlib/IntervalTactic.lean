@@ -419,6 +419,36 @@ def bbUpperAt (e : IExpr) (maximize : Bool) (env : List KI) : Float × List Floa
   let u := fixNaN (if maximize then -(toFl F.lo) else toFl F.hi) (1.0/0.0)
   (u, pe.map fun X => toFl X.lo)
 
+/-- Rigorous upper bound of `s·e` at a float point. -/
+def bbUpperPt (e : IExpr) (maximize : Bool) (p : List Float) : Float :=
+  let F := evalF (p.map fun x => (⟨x.toBits.toNat, x.toBits.toNat⟩ : KI)) e
+  fixNaN (if maximize then -(toFl F.lo) else toFl F.hi) (1.0/0.0)
+
+/-- Local pattern search from `p` inside `env0` (improves the reported minimiser). -/
+def refineArg (e : IExpr) (maximize : Bool) (env0 : List KI) (p : List Float) (u : Float) :
+    Float × List Float := Id.run do
+  let n := p.length
+  let los := env0.map fun X => toFl X.lo
+  let his := env0.map fun X => toFl X.hi
+  let mut cur := p.toArray
+  let mut best := u
+  let mut step : Array Float := (List.range n).toArray.map fun i =>
+    (his.getD i 0 - los.getD i 0) / 64
+  for _ in [0:4000] do
+    let mut moved := false
+    for i in [0:n] do
+      for sgn in [1.0, -1.0] do
+        let x := cur[i]! + sgn * step[i]!
+        let x := max (los.getD i 0) (min (his.getD i 0) x)
+        let cand := cur.set! i x
+        let v := bbUpperPt e maximize cand.toList
+        if v < best then
+          best := v; cur := cand; moved := true
+    if !moved then
+      step := step.map (· / 2)
+      if step.all fun st => st < 1e-17 then break
+  return (best, cur.toList)
+
 /-- Best-first branch and bound for `min (±e)` on `env0`; stops when the gap is below `tol`
 (absolute, plus `tol·|upper|`) or after `maxBoxes` boxes. -/
 partial def bnbMin (e : IExpr) (maximize : Bool) (env0 : List KI) (maxBoxes : Nat := 20000)
@@ -452,7 +482,55 @@ partial def bnbMin (e : IExpr) (maximize : Bool) (env0 : List KI) (maxBoxes : Na
         let (u, a) := bbUpperAt e maximize ch
         if u < U then U := u; arg := a
         if lb < U then heap := heap.insert ⟨-lb, lb, nd.depth + 1, ch⟩
-  return { lower := lower, upper := U, arg := arg, boxes := n }
+  let (U', arg') := refineArg e maximize env0 arg U
+  return { lower := min lower U', upper := U', arg := arg', boxes := n }
+
+/-! ### Numbers for messages -/
+
+def floatRat? (x : Float) : Option ℚ := Interval64.Spec.bitsToRat? x.toBits
+
+def qToF (q : ℚ) : Float := Float.ofInt q.num / Float.ofNat q.den
+
+/-- `q` as a decimal if its denominator is a power of ten, else `num/den`. -/
+def fmtRat (q : ℚ) : String := Id.run do
+  if q.den == 1 then return s!"{q.num}"
+  let some k := (List.range 40).find? (fun k => (10 ^ k) % q.den == 0) |
+    return s!"{q.num}/{q.den}"
+  let num : Int := q.num * ((10 ^ k / q.den : Nat) : Int)
+  let a := toString num.natAbs
+  let a := if a.length ≤ k then String.ofList (List.replicate (k + 1 - a.length) '0') ++ a else a
+  let i := a.length - k
+  let s := String.ofList (a.toList.take i) ++ "." ++ String.ofList (a.toList.drop i)
+  return (if q.num < 0 then "-" else "") ++ s
+
+/-- Decimal string of a float with `d` significant digits (for messages). -/
+def fmtFloat (x : Float) : String :=
+  if x.isNaN then "NaN" else if x.isInf then (if x > 0 then "∞" else "-∞") else
+  match floatRat? x with
+  | none => toString x
+  | some q =>
+    -- 12 significant digits
+    let a := q.num.natAbs
+    if a == 0 then "0" else
+    let e := (Float.log10 x.abs).floor
+    let k : Int := 11 - e.toInt64.toInt
+    let scaled : ℚ := if k ≥ 0 then q * (10 ^ k.toNat : ℚ) else q / (10 ^ (-k).toNat : ℚ)
+    let r : Int := (scaled + (if q ≥ 0 then 1/2 else -1/2)).floor
+    let neg := r < 0
+    let ds := (toString r.natAbs).toList
+    let zeros (n : Nat) : List Char := List.replicate n '0'
+    let cs : List Char := if k ≤ 0 then ds ++ zeros (-k).toNat
+      else if ds.length > k.toNat then
+        let i := ds.length - k.toNat
+        ds.take i ++ ['.'] ++ ds.drop i
+      else ['0', '.'] ++ zeros (k.toNat - ds.length) ++ ds
+    let cs := if cs.contains '.' then
+        let t := (cs.reverse.dropWhile (· == '0'))
+        (if t.head? == some '.' then t.tail else t).reverse
+      else cs
+    let s := String.ofList cs
+    (if neg then "-" else "") ++ s
+
 
 /-! ### Reification -/
 
@@ -794,9 +872,25 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
     | false, false => (gGe cK.hi, ``gGe, ``proveD_ge)
     | true, false => (gGt cK.hi, ``gGt, ``proveD_gt)
   let (cert?, evals) := findCertDM cfg e g upper vars.size env
-  let some (e, cert) := cert? |
+  let some (e, cert) := cert? | do
+    -- explain with a branch-and-bound estimate of the extremum
+    let r := bnbMin e upper env 20000 1e-9
+    let (lo, hi, word) := if upper then (-r.upper, -r.lower, "maximum") else (r.lower, r.upper, "minimum")
+    let pt := MessageData.joinSep ((vars.toList.zip r.arg).map fun (v, x) =>
+      m!"{v} ≈ {fmtFloat x}") ", "
+    let cF := qToF c
+    let false? := if upper then (if strict then lo ≥ cF else lo > cF)
+      else (if strict then hi ≤ cF else hi < cF)
+    let expl := if false? then
+        m!"the bound is false: the {word} is ≈ {fmtFloat (if upper then lo else hi)} at {pt} \
+          (rigorous value at that point), beyond {fmtFloat cF}"
+      else
+        m!"the {word} on the box is in [{fmtFloat lo}, {fmtFloat hi}] (branch and bound, \
+          attained near {pt}), so the bound {fmtFloat cF} has a margin of only \
+          {fmtFloat (if upper then cF - hi else lo - cF)}; loosen it or raise (depth := _) / \
+          (maxBoxes := _)"
     throwError "interval: no certificate within depth {cfg.depth} / {cfg.maxBoxes} boxes \
-      ({evals} evaluations); try larger (depth := _) (maxBoxes := _) or tighter bounds"
+      ({evals} evaluations): {expl}"
   -- the (untrusted, native) search above does not count against `maxHeartbeats`
   withCurrHeartbeats do
     let leaves := match cert with | .inl c => dLeaves c | .inr c => mLeaves c

@@ -104,44 +104,10 @@ theorem exists_isMax_in_Icc (f : ℝ → ℝ) {a b a' b' q M : ℝ} (hf : Contin
 
 /-! ### Numbers -/
 
-def ratOfF (x : Float) : Option ℚ := Interval64.Spec.bitsToRat? x.toBits
-
-def qToF (q : ℚ) : Float := Float.ofInt q.num / Float.ofNat q.den
-
-def fmtQ (q : ℚ) : String := if q.den == 1 then s!"{q.num}" else s!"{q.num}/{q.den}"
-
-/-- Decimal string of a float with `d` significant digits (for messages). -/
-def fmtF (x : Float) : String :=
-  if x.isNaN then "NaN" else if x.isInf then (if x > 0 then "∞" else "-∞") else
-  match ratOfF x with
-  | none => toString x
-  | some q =>
-    -- 10 significant digits
-    let a := q.num.natAbs
-    if a == 0 then "0" else
-    let e := (Float.log10 x.abs).floor
-    let k : Int := 9 - e.toInt64.toInt
-    let scaled : ℚ := if k ≥ 0 then q * (10 ^ k.toNat : ℚ) else q / (10 ^ (-k).toNat : ℚ)
-    let r : Int := (scaled + (if q ≥ 0 then 1/2 else -1/2)).floor
-    let neg := r < 0
-    let ds := (toString r.natAbs).toList
-    let zeros (n : Nat) : List Char := List.replicate n '0'
-    let cs : List Char := if k ≤ 0 then ds ++ zeros (-k).toNat
-      else if ds.length > k.toNat then
-        let i := ds.length - k.toNat
-        ds.take i ++ ['.'] ++ ds.drop i
-      else ['0', '.'] ++ zeros (k.toNat - ds.length) ++ ds
-    let cs := if cs.contains '.' then
-        let t := (cs.reverse.dropWhile (· == '0'))
-        (if t.head? == some '.' then t.tail else t).reverse
-      else cs
-    let s := String.ofList cs
-    (if neg then "-" else "") ++ s
-
 /-- A short decimal `≤ x` (`down`) or `≥ x`, within `slack` of `x`. -/
 def niceRat (x : Float) (slack : Float) (down : Bool) : Option ℚ := do
-  let q ← ratOfF x
-  let s ← ratOfF slack
+  let q ← floatRat? x
+  let s ← floatRat? slack
   for k in [0:18] do
     let p : ℚ := (10 ^ k : ℚ)
     let c : ℚ := if down then ((q * p).floor : ℚ) / p else ((q * p).ceil : ℚ) / p
@@ -150,7 +116,7 @@ def niceRat (x : Float) (slack : Float) (down : Bool) : Option ℚ := do
 
 /-- Round `x` to the closest short decimal (`k` digits after the point), clamped to `[lo, hi]`. -/
 def roundQ (x : Float) (k : Nat) (lo hi : ℚ) : ℚ :=
-  match ratOfF x with
+  match floatRat? x with
   | none => (lo + hi) / 2
   | some q =>
     let p : ℚ := (10 ^ k : ℚ)
@@ -270,7 +236,7 @@ def findWitness (atoms : Array Atom) (bs : List (ℚ × ℚ)) : Option (List ℚ
       let q := (p.zip bs).map fun (x, (l, h)) => roundQ x k l h
       if atoms.all (atomHoldsAt · q) then return some q
     -- exact float point
-    let q? := (p.zip bs).mapM fun (x, (l, h)) => (ratOfF x).map fun r => max l (min h r)
+    let q? := (p.zip bs).mapM fun (x, (l, h)) => (floatRat? x).map fun r => max l (min h r)
     if let some q := q? then
       if atoms.all (atomHoldsAt · q) then return some q
   return none
@@ -367,7 +333,7 @@ def proveWitness : TacticM Unit := do
           let r := atomMin atoms[0] (boxes bs)
           let ext := if atoms[0].upper then r.upper else -r.upper
           s!" (branch and bound: the best value of the first condition's left side is ≈ \
-            {fmtF ext} at {r.arg.map fmtF})"
+            {fmtFloat ext} at {r.arg.map fmtFloat})"
           else ""
         throwError "realfp: no witness found{msg}; the condition may fail on the whole box or \
           be too tight"
@@ -445,7 +411,7 @@ def proveDiscover (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
     catch ex =>
       lastErr := ex.toMessageData
       s.restore
-  throwError "realfp: could not certify a bound near {fmtF ext}: {lastErr}"
+  throwError "realfp: could not certify a bound near {fmtFloat ext}: {lastErr}"
 
 /-! ### `sInf` / `sSup` goals -/
 
@@ -481,6 +447,7 @@ def reduceInfSup : TacticM Unit := do
         evalTactic (← `(tactic| refine RealFP.Opt.abs_sub_le_of_le_le ?_ ?_))
       | _ => throwError "realfp: unsupported sInf/sSup goal {t}"
   | (``GE.ge, _) => evalTactic (← `(tactic| show _ ≤ _))
+  | (``Eq, #[_, _, _]) => evalTactic (← `(tactic| refine le_antisymm ?_ ?_))
   | _ =>
     let _ := t'
     throwError "realfp: unsupported sInf/sSup goal {t}; expected `m ≤ sInf (f '' S)`, \
@@ -593,8 +560,8 @@ def proveArg (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
   let fqs := valAt q
   let fqv := if isMin then fqs else -fqs
   unless fqs < outMin do
-    throwError "realfp: cannot localise: the best value in [{fmtQ qa'}, {fmtQ qb'}] is ≈ \
-      {fmtF fqv}, but outside it ≈ {fmtF (if isMin then outMin else -outMin)}"
+    throwError "realfp: cannot localise: the best value in [{fmtRat qa'}, {fmtRat qb'}] is ≈ \
+      {fmtFloat fqv}, but outside it ≈ {fmtFloat (if isMin then outMin else -outMin)}"
   let Ms := (fqs + outMin) / 2
   let Mv := if isMin then Ms else -Ms
   let some M := niceRat Mv ((outMin - fqs) / 4) (!isMin) | throwError "realfp: internal (level)"
@@ -646,17 +613,20 @@ partial def reportGo (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (bod
     let word := if maximize then "maximum" else "minimum"
     let lo := if maximize then -r.upper else r.lower
     let hi := if maximize then -r.lower else r.upper
-    let pt := String.intercalate ", " ((names.toList.zip r.arg).map fun (n, v) => s!"{n} ≈ {fmtF v}")
-    let gap := hi - lo
+    let pt := String.intercalate ", " ((names.toList.zip r.arg).map fun (n, v) => s!"{n} ≈ {fmtFloat v}")
     let slack := 1e-6 * (1 + max lo.abs hi.abs)
     let c := (niceRat (if maximize then hi + slack else lo - slack) slack (!maximize)).getD 0
-    let binders := String.intercalate ", " ((names.toList.zip box.toList).map fun (n, (l, h)) =>
-      s!"∀ {n} ∈ Set.Icc ({fmtQ l} : ℝ) {fmtQ h}")
-    let stmt := if maximize then s!"{binders}, f ≤ {fmtQ c}" else s!"{binders}, {fmtQ c} ≤ f"
-    logInfo m!"{word} of {e} on the box ∈ [{fmtF lo}, {fmtF hi}] (gap {fmtF gap}, \
-      {r.boxes} boxes), attained near {pt}.\nBound `realfp` should prove: {stmt}\n\
-      (statements: `∀ x ∈ S, c ≤ f x`, `∃ x ∈ S, f x ≤ c`, `m ≤ sInf (f '' S)`, \
-      `sInf (f '' S) ≤ M`; the gap is that of the enclosures, not certified)"
+    let w := (niceRat (if maximize then lo - slack else hi + slack) slack maximize).getD 0
+    let fS ← PrettyPrinter.ppExpr e
+    let allB := String.intercalate ", " ((names.toList.zip box.toList).map fun (n, (l, h)) =>
+      s!"∀ {n} ∈ Set.Icc ({fmtRat l} : ℝ) {fmtRat h}")
+    let exB := String.intercalate ", " ((names.toList.zip box.toList).map fun (n, (l, h)) =>
+      s!"∃ {n} ∈ Set.Icc ({fmtRat l} : ℝ) {fmtRat h}")
+    let s1 := if maximize then s!"{allB}, {fS} ≤ {fmtRat c}" else s!"{allB}, {fmtRat c} ≤ {fS}"
+    let s2 := if maximize then s!"{exB}, {fmtRat w} ≤ {fS}" else s!"{exB}, {fS} ≤ {fmtRat w}"
+    logInfo m!"{word} ∈ [{fmtFloat lo}, {fmtFloat hi}] (gap {fmtFloat (hi - lo)}, {r.boxes} boxes; \
+      estimate from the enclosures, not a proof)\nattained near {pt}\nstatements `realfp` \
+      should prove:\n  {s1}\n  {s2}"
 
 def realfpReport (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (body : Term) :
     CommandElabM Unit := liftTermElabM (reportGo maximize bs body 0 #[] #[] #[])
