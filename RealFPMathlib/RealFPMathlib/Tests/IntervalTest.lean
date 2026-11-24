@@ -142,9 +142,20 @@ theorem p20 : sInf ((fun x : ℝ => x ^ 2 - x) '' Set.Icc 0 1) ∈ Set.Icc (-0.2
   realfp (precision := 128)
 theorem p21 : ∃! p : ℝ × ℝ, p.1 ∈ Set.Icc (0.9 : ℝ) 1.1 ∧ p.2 ∈ Set.Icc (0.9 : ℝ) 1.1 ∧
     p.1 ^ 2 + p.2 = 2 ∧ p.1 + p.2 ^ 2 = 2 := by root_unique (precision := 128)
+theorem p22 : ∃ x ∈ Set.Icc (0.6299605249474365 : ℝ) 0.6299605249474366,
+    ∀ y ∈ Set.Icc (0 : ℝ) 1, x ^ 4 - x ≤ y ^ 4 - y := by realfp (precision := 128)
+/--
+info: minimum ∈ [-0.250000000000000000000000000000009245, -0.25] (gap 0.00000000000000000000000000000000924, 210 boxes; 128-bit enclosures, not a proof)
+attained near x ≈ 0.5
+statements `realfp (precision := 128)` should prove:
+  ∀ x ∈ Set.Icc (0 : ℝ) 1, -0.25000000000000000000000000000002 ≤ x ^ 2 - x
+  ∃ x ∈ Set.Icc (0 : ℝ) 1, x ^ 2 - x ≤ -0.24999999999999999999999999999999
+-/
+#guard_msgs in
+#realfp_min (precision := 128) (x ∈ Set.Icc (0 : ℝ) 1), x ^ 2 - x
 theorem p19 : Real.exp 1 ≠ 2.71828182845904523536028747135 := by interval (precision := 128)
 
-/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` bounds and `root_exists` / `root_unique` so far, not for `integral_bound`; drop it to use precision 64 -/
+/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` bounds, argmin localisation and `root_exists` / `root_unique` so far, not for `integral_bound`; drop it to use precision 64 -/
 #guard_msgs in
 example : (0.7 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp (precision := 128)
 

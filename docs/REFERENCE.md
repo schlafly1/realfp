@@ -988,8 +988,20 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   simplified Newton `m ← m - Y F(m)` with 128-bit evaluations (rounded to multiples of
   `2⁻¹⁶⁰`). In one variable Krawczyk is the fallback when the derivative-sign certificate
   fails. Example: `x² + y² = 4, x y = 1` on a box of width `10⁻²⁸` (about 1.2 s).
-* Not yet at 128: argmin/argmax localisation, `#realfp_min` / `#realfp_max` (binary64
-  estimates), `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
+* **Argmin / argmax localisation at 128** (`RealFP.Opt.proveArgCore` with
+  `(precision := 128)`): `∃ x ∈ [a', b'], ∀ y ∈ [a, b], f x ≤ f y` (one variable). The witness
+  `q` is the stationary point from `refineStatQ` (bisection on the sign of `f'` at 128 bits),
+  rounded to a short decimal while `f(q)` stays within a quarter of the gap; the level `M` is a
+  short decimal between the 128-bit value `f(q)` and the 128-bit values of `f` at the outer
+  pieces' endpoints and binary64 minimisers. Side goals (`f q ≤ M`, `M < f` on `[a, a']` and
+  `[b', b]`) go to `interval (precision := 128)`. Since the value gap is quadratic in the
+  distance, `[a', b']` can be about `10⁻¹⁶` wide (about `10⁻⁸` at 64).
+* **`#realfp_min (precision := 128)` / `#realfp_max (precision := 128)`**: branch and bound with
+  128-bit enclosures (`RealFP.Opt.bnbMinQ`: the better of the natural enclosure and the centred
+  form `f(m) + ∑ⱼ ∂ⱼf(X)(Xⱼ - mⱼ)`, best-first, bisection of the widest coordinate, stop at a
+  relative gap of `10⁻³²` or 20000 boxes); prints the enclosure to 36 digits, the point and two
+  statements for `realfp (precision := 128)`. Untrusted (nothing is proved).
+* Not yet at 128: `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
   accepted everywhere.
 * When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests
   `(precision := 128)`.

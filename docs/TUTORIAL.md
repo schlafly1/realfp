@@ -386,8 +386,9 @@ evaluated with Interval64 precision, and a failure message says so. The search u
 bisection at dyadic midpoints, monotonicity and centred forms (as at precision 64, one variable
 at a time); the kernel check costs about 10–30 ms per box for arithmetic and 0.2–0.7 s per
 elementary-function evaluation. The same `trust` options apply. `≠` goals, `root_exists` / `root_unique`
-(systems by Krawczyk), `sInf` / `sSup` bounds and witnesses also accept `(precision := 128)`;
-argmin localisation and integrals reject it for now. More
+(systems by Krawczyk), `sInf` / `sSup` bounds, witnesses and argmin localisation also accept
+`(precision := 128)`, and `#realfp_min (precision := 128) (x ∈ Set.Icc a b), f` reports a
+128-bit enclosure of the minimum; integrals reject it for now. More
 examples: `RealFPMathlib/Examples/Precision128.lean`.
 
 ### `integral_bound`: definite integrals

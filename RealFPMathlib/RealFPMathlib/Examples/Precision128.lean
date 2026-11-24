@@ -278,6 +278,31 @@ theorem quartic_witness : ∃ x ∈ Set.Icc (0 : ℝ) 1, x ^ 4 - x ≤ -0.472470
   fail_if_success realfp
   realfp (precision := 128)
 
+/-! ### Argmin / argmax localisation at 128
+
+`∃ x ∈ [a', b'], ∀ y ∈ [a, b], f x ≤ f y` with `[a', b']` of width `10⁻¹⁶`: a witness near the
+stationary point (bisection on the sign of `f'` at 128 bits) and a level `M` between `f(q)` and
+the values outside `[a', b']`; the three side goals are `interval (precision := 128)` goals.
+At precision 64 the gap `f(outside) - f(q) ≈ 10⁻³³` is far below binary64 resolution. -/
+
+/-- The minimiser `4^(-1/3) = 0.62996052494743658238…` of `x⁴ - x` (about 0.7 s). -/
+theorem quartic_argmin : ∃ x ∈ Set.Icc (0.6299605249474365 : ℝ) 0.6299605249474366,
+    ∀ y ∈ Set.Icc (0 : ℝ) 1, x ^ 4 - x ≤ y ^ 4 - y := by
+  fail_if_success realfp
+  realfp (precision := 128)
+
+/-- The maximiser `π/4 = 0.78539816339744830961…` of `sin x + cos x` (about 3.8 s). -/
+theorem sincos_argmax : ∃ x ∈ Set.Icc (0.7853981633974483 : ℝ) 0.7853981633974484,
+    ∀ y ∈ Set.Icc (0 : ℝ) 1.5, Real.sin y + Real.cos y ≤ Real.sin x + Real.cos x := by
+  fail_if_success realfp
+  realfp (precision := 128)
+
+/-! `#realfp_min (precision := 128)` / `#realfp_max (precision := 128)` report 128-bit
+enclosures of the extremum (branch and bound with natural and centred forms), e.g.
+`#realfp_min (precision := 128) (x ∈ Set.Icc (0 : ℝ) 1), x ^ 4 - x` gives
+`minimum ∈ [-0.472470393710577436787703977729340736, -0.472470393710577436787703977729335233]`
+(298 boxes, well under a second). -/
+
 /-! ### Functions without a 128-bit implementation
 
 `arctan`, `atan2`, `tan`, `arcsin`, `arccos` and extension functions (and `log` on arguments

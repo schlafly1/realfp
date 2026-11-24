@@ -28,9 +28,10 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   systems and fallback: Krawczyk with 128-bit interval arithmetic; the preconditioner `Y` is a
   binary64 inverse, so very ill-conditioned Jacobians, condition number near `10¹⁶`, fail),
   `sInf` / `sSup` bounds and witnesses `∃ x ∈ S, f x ≤ c` (128-bit checks; in one variable the
-  witness is refined at 128 bits by bisection on the sign of `f'`). Argmin/argmax
-  localisation, `#realfp_min` / `#realfp_max` (still binary64 estimates), `integral_bound` and
-  `pos_def` reject it or ignore it.
+  witness is refined at 128 bits by bisection on the sign of `f'`), argmin/argmax
+  localisation in one variable (box width down to about `10⁻¹⁶`, limited by the quadratic value
+  gap) and `#realfp_min` / `#realfp_max (precision := 128)` (an untrusted report).
+  `integral_bound` and `pos_def` reject it.
 - `≠` at 128 is plain bisection (no derivative certificates for exclusion).
 - 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
   enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,

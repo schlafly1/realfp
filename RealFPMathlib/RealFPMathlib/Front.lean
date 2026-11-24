@@ -22,7 +22,7 @@ Options (any order): `(trust := kernel|native)` (default `kernel`: `decide +kern
 standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom), and for
 `interval`/root/optimisation goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`,
 `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)` (128: 128-bit dyadic
-endpoints; `interval` goals only so far). Integrals take `order` (Taylor order 2/4/6/8) and
+endpoints; not for integrals or `pos_def` yet). Integrals take `order` (Taylor order 2/4/6/8) and
 `maxBoxes` (cells); `pos_def` takes only `trust`. An option a backend cannot use is an error.
 -/
 import RealFPMathlib.IntervalTactic
@@ -88,10 +88,10 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
   let prec128 := rest.any fun o => o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 128
   if prec128 then
     match r with
-    | .conj | .infsup | .interval | .unique | .exists | .witness | .discover => pure ()
+    | .conj | .infsup | .interval | .unique | .exists | .witness | .discover | .argmin => pure ()
     | _ => throwError "(precision := 128) is supported only for `interval` goals (bounds \
         `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` \
-        bounds and `root_exists` / `root_unique` so far, not for `{r.name}`; drop it \
+        bounds, argmin localisation and `root_exists` / `root_unique` so far, not for `{r.name}`; drop it \
         to use precision 64"
   let rest := if r matches .interval | .unique | .exists then rest else
     rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)

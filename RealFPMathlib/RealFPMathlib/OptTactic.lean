@@ -236,8 +236,8 @@ def atomHoldsAtQ (a : Atom) (q : List ℚ) : Bool :=
 /-- One variable at precision 128: a stationary point of the atom's left side near `x₀`, by
 bisection on the sign of the derivative at dyadic points (110 steps from a bracket around `x₀`
 inside `[l, h]`). -/
-def refineQ (a : Atom) (l h : ℚ) (x0 : Float) : Option ℚ := Id.run do
-  let d := a.f.deriv 0
+def refineStatQ (f : IExpr) (l h : ℚ) (x0 : Float) : Option ℚ := Id.run do
+  let d := f.deriv 0
   let sgn (q : ℚ) : Option Bool :=   -- `some true`: f' > 0
     let F := Interval128.Dy.evalQ [Interval128.Dy.DI.ofRatI q q] d
     if Interval128.Dy.gGt 0 F then some true else if Interval128.Dy.gLt 0 F then some false
@@ -263,6 +263,134 @@ def refineQ (a : Atom) (l h : ℚ) (x0 : Float) : Option ℚ := Id.run do
     | some b => if b == up then hi := m else lo := m
     | none => return some m
   return some lo
+
+def refineQ (a : Atom) (l h : ℚ) (x0 : Float) : Option ℚ := refineStatQ a.f l h x0
+
+/-! ### 128-bit helpers (localisation and `#realfp_min (precision := 128)`) -/
+
+def isPrec128 (opts : Array (TSyntax `intervalOpt)) : Bool :=
+  opts.any fun o => o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 128
+
+/-- Rigorous upper end of the 128-bit enclosure of `±f` at the point `q` (`-f` for `max`). -/
+def valQ (f : IExpr) (isMin : Bool) (q : List ℚ) : Option ℚ :=
+  let F := Interval128.Dy.evalQ (q.map fun r => Interval128.Dy.DI.ofRatI r r) f
+  if isMin then F.hi.map Interval128.Dy.toRat else F.lo.map fun d => -Interval128.Dy.toRat d
+
+/-- Midpoint of the 128-bit enclosure of `±f` at `q`. -/
+def midValQ (f : IExpr) (isMin : Bool) (q : List ℚ) : Option ℚ :=
+  let F := Interval128.Dy.evalQ (q.map fun r => Interval128.Dy.DI.ofRatI r r) f
+  match F.lo, F.hi with
+  | some a, some b =>
+    let m := (Interval128.Dy.toRat a + Interval128.Dy.toRat b) / 2
+    some (if isMin then m else -m)
+  | _, _ => none
+
+/-- The shortest decimal in `[lo, hi]` (`lo` if none with at most 60 digits). -/
+def shortIn (lo hi : ℚ) : ℚ := Id.run do
+  for k in [0:61] do
+    let p : ℚ := 10 ^ k
+    let c : ℚ := ((lo * p).ceil : ℚ) / p
+    if c ≤ hi then return c
+  return lo
+
+/-- Decimal string of `q` with `d` digits after the point (rounded toward `-∞`). -/
+def fmtDec (q : ℚ) (d : Nat := 36) : String :=
+  let p : ℚ := 10 ^ d
+  let n : ℤ := (q * p).floor
+  let s := toString n.natAbs
+  let s := if s.length ≤ d then String.ofList (List.replicate (d + 1 - s.length) '0') ++ s else s
+  let ip := String.ofList (s.toList.take (s.length - d))
+  let fp := ((s.toList.drop (s.length - d)).reverse.dropWhile (· == '0')).reverse
+  (if n < 0 then "-" else "") ++ ip ++ (if fp.isEmpty then "" else "." ++ String.ofList fp)
+
+/-- Short decimal for display (significant digits `d`). -/
+def fmtSig (q : ℚ) (d : Nat := 36) : String := Id.run do
+  if q == 0 then return "0"
+  let a := |q|
+  let mut k : Nat := 0
+  -- digits after the point so that about `d` significant digits show
+  let mut t := a
+  while t < 1 && k < 400 do
+    t := t * 10; k := k + 1
+  let mut ip : Nat := 0
+  let mut u := a
+  while u ≥ 10 do
+    u := u / 10; ip := ip + 1
+  fmtDec q (if k > 0 then k + d - 1 else d - min d (ip + 1))
+
+/-- Centred-form lower bound of `g` on the box `env` (128 bits), and the natural one. -/
+def lowerQ (g : IExpr) (dg : List IExpr) (env : List Interval128.Dy.DI) : Option ℚ := do
+  let nat := (Interval128.Dy.evalQ env g).lo.map Interval128.Dy.toRat
+  let ms ← env.mapM fun X => do
+    let a ← X.lo; let b ← X.hi; pure (Interval128.Dy.centre a b)
+  let pts := ms.map Interval128.Dy.DI.pt
+  let fm := Interval128.Dy.evalQ pts g
+  let terms := (List.range env.length).map fun j =>
+    let X := env.getD j Interval128.Dy.DI.zero
+    let m := Interval128.Dy.DI.pt (ms.getD j Interval128.Dy.zero)
+    Interval128.Dy.DI.mul (Interval128.Dy.evalQ env (dg.getD j (.rat 0))) (Interval128.Dy.DI.sub X m)
+  let cen := (terms.foldl Interval128.Dy.DI.add fm).lo.map Interval128.Dy.toRat
+  match nat, cen with
+  | some a, some b => pure (max a b)
+  | some a, none => pure a
+  | none, some b => pure b
+  | none, none => none
+
+structure QNode where
+  env : List Interval128.Dy.DI
+  lb : ℚ
+  deriving Inhabited
+
+/-- Branch and bound with 128-bit enclosures (natural and centred forms): minimum of `g` on the
+box. Returns `(lower, upper, argmin, boxes)`; nothing is proved. -/
+def bnbMinQ (g : IExpr) (bs : List (ℚ × ℚ)) (maxBoxes : Nat := 20000) (relTol : ℚ := 1 / 10 ^ 32) :
+    ℚ × ℚ × List ℚ × Nat := Id.run do
+  let n := bs.length
+  let dg := (List.range n).map g.deriv
+  let env0 := Interval128.Dy.boxes bs
+  let centreOf (env : List Interval128.Dy.DI) : List ℚ := env.map fun X =>
+    match X.lo, X.hi with
+    | some a, some b => Interval128.Dy.toRat (Interval128.Dy.centre a b)
+    | _, _ => 0
+  let upAt (q : List ℚ) : Option ℚ :=
+    (Interval128.Dy.evalQ (q.map fun r => Interval128.Dy.DI.ofRatI r r) g).hi.map Interval128.Dy.toRat
+  let c0 := centreOf env0
+  let mut best : ℚ := (upAt c0).getD (10 ^ 300)
+  let mut arg := c0
+  let mut work : Array QNode := #[⟨env0, (lowerQ g dg env0).getD (-(10 ^ 300))⟩]
+  let mut count := 0
+  let mut lower : ℚ := work[0]!.lb
+  while !work.isEmpty do
+    -- the node with the smallest lower bound
+    let mut bi := 0
+    for i in [1:work.size] do
+      if work[i]!.lb < work[bi]!.lb then bi := i
+    let nd := work[bi]!
+    lower := nd.lb
+    if best - nd.lb ≤ relTol * max 1 |best| || count ≥ maxBoxes then break
+    work := work.eraseIdxIfInBounds bi
+    -- split the widest coordinate at its centre
+    let mut wi := 0
+    let mut ww : ℚ := -1
+    for j in [0:n] do
+      let X := nd.env.getD j Interval128.Dy.DI.zero
+      if let (some a, some b) := (X.lo, X.hi) then
+        let w := Interval128.Dy.toRat b - Interval128.Dy.toRat a
+        if w > ww then ww := w; wi := j
+    let X := nd.env.getD wi Interval128.Dy.DI.zero
+    let some a := X.lo | break
+    let some b := X.hi | break
+    let d := Interval128.Dy.centre a b
+    for Y in [Interval128.Dy.leftAt X d, Interval128.Dy.rightAt X d] do
+      count := count + 1
+      let env := nd.env.set wi Y
+      let c := centreOf env
+      if let some u := upAt c then
+        if u < best then best := u; arg := c
+      let lb := (lowerQ g dg env).getD (-(10 ^ 300))
+      if lb < best then work := work.push ⟨env, lb⟩
+  if work.isEmpty then lower := best
+  return (min lower best, best, arg, count)
 
 /-! ### Witnesses for `∃ x ∈ S, …` -/
 
@@ -654,21 +782,54 @@ def proveArgCore (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
   let inner := bnbMin fI (!isMin) (boxes [(qa', qb')]) 4000 1e-12
   let outer := [(qa, qa'), (qb', qb)].filter (fun (l, h) => l ≤ h)
   let outs := outer.map fun bx => bnbMin fI (!isMin) (boxes [bx]) 4000 1e-9
-  let outMin := outs.foldl (fun m r => min m r.lower) (1.0/0.0)   -- of ±f
-  let valAt (q : ℚ) : Float :=
-    let F := evalF [KI.ofRat q] fI
-    if isMin then fixNaN (toFl F.hi) (1.0/0.0) else fixNaN (-(toFl F.lo)) (1.0/0.0)
-  let target := inner.upper + (outMin - inner.upper) / 4
-  let cands := (List.range 18).map fun k => roundQ (inner.arg.headD 0) k qa' qb'
-  let q := (cands.find? fun q => valAt q ≤ target).getD (cands.getLast?.getD qa')
-  let fqs := valAt q
-  let fqv := if isMin then fqs else -fqs
-  unless fqs < outMin do
-    throwError "realfp: cannot localise: the best value in [{fmtRat qa'}, {fmtRat qb'}] is ≈ \
-      {fmtFloat fqv}, but outside it ≈ {fmtFloat (if isMin then outMin else -outMin)}"
-  let Ms := (fqs + outMin) / 2
-  let Mv := if isMin then Ms else -Ms
-  let some M := niceRat Mv ((outMin - fqs) / 4) (!isMin) | throwError "realfp: internal (level)"
+  let (q, M) ← if isPrec128 opts then do
+      -- 128 bits: a stationary point by derivative bisection, values from `evalQ`
+      let x0 := inner.arg.headD 0
+      let clampQ (r : ℚ) : ℚ := max qa' (min qb' r)
+      let qs := (refineStatQ fI qa' qb' x0).getD (clampQ ((floatRat? x0).getD ((qa' + qb') / 2)))
+      let some fqs := valQ fI isMin [qs] |
+        throwError "realfp: (precision := 128) no 128-bit value of f at {fmtRat qs}"
+      let mut outPts : List ℚ := []
+      for (l, h) in outer do outPts := outPts ++ [l, h]
+      for r in outs do
+        if let some v := floatRat? (r.arg.headD 0) then
+          if outer.any (fun (l, h) => l ≤ v && v ≤ h) then outPts := outPts ++ [v]
+      let outVals := outPts.filterMap fun p => midValQ fI isMin [p]
+      let some outMin := outVals.min? |
+        throwError "realfp: (precision := 128) no outer piece to compare with"
+      unless fqs < outMin do
+        throwError "realfp: (precision := 128) cannot localise: the best value in \
+          [{fmtRat qa'}, {fmtRat qb'}] is ≈ {fmtSig (if isMin then fqs else -fqs) 20}, but outside \
+          it ≈ {fmtSig (if isMin then outMin else -outMin) 20} (the gap must exceed the 128-bit \
+          resolution)"
+      let target := fqs + (outMin - fqs) / 4
+      let mut q := qs
+      for k in [0:60] do
+        let p : ℚ := 10 ^ k
+        let c := clampQ (((qs * p).floor : ℚ) / p)
+        let c' := clampQ (((qs * p).ceil : ℚ) / p)
+        if (valQ fI isMin [c]).any (· ≤ target) then q := c; break
+        if (valQ fI isMin [c']).any (· ≤ target) then q := c'; break
+      let fq := (valQ fI isMin [q]).getD fqs
+      let Ms := shortIn (fq + (outMin - fq) / 3) (fq + 2 * (outMin - fq) / 3)
+      pure (q, if isMin then Ms else -Ms)
+    else do
+      let outMin := outs.foldl (fun m r => min m r.lower) (1.0/0.0)   -- of ±f
+      let valAt (q : ℚ) : Float :=
+        let F := evalF [KI.ofRat q] fI
+        if isMin then fixNaN (toFl F.hi) (1.0/0.0) else fixNaN (-(toFl F.lo)) (1.0/0.0)
+      let target := inner.upper + (outMin - inner.upper) / 4
+      let cands := (List.range 18).map fun k => roundQ (inner.arg.headD 0) k qa' qb'
+      let q := (cands.find? fun q => valAt q ≤ target).getD (cands.getLast?.getD qa')
+      let fqs := valAt q
+      let fqv := if isMin then fqs else -fqs
+      unless fqs < outMin do
+        throwError "realfp: cannot localise: the best value in [{fmtRat qa'}, {fmtRat qb'}] is ≈ \
+          {fmtFloat fqv}, but outside it ≈ {fmtFloat (if isMin then outMin else -outMin)}"
+      let Ms := (fqs + outMin) / 2
+      let Mv := if isMin then Ms else -Ms
+      let some M := niceRat Mv ((outMin - fqs) / 4) (!isMin) | throwError "realfp: internal (level)"
+      pure (q, M)
   let lem := if isMin then ``exists_isMin_in_Icc else ``exists_isMax_in_Icc
   let qT ← qStx q
   let MT ← qStx M
@@ -698,7 +859,7 @@ declare_syntax_cat realfpBinder
 syntax "(" ident " ∈ " term ")" : realfpBinder
 
 partial def reportGo (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (body : Term)
-    (i : Nat) (vars : Array Expr) (box : Array (ℚ × ℚ)) (names : Array Name) :
+    (i : Nat) (vars : Array Expr) (box : Array (ℚ × ℚ)) (names : Array Name) (prec128 : Bool := false) :
       TermElabM Unit := do
   if h : i < bs.size then
     let b := bs[i]
@@ -711,13 +872,35 @@ partial def reportGo (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (bod
     let some ql ← ratOf? l | throwError "#realfp_min: {l} is not a numeral"
     let some qu ← ratOf? u | throwError "#realfp_min: {u} is not a numeral"
     withLocalDeclD x (mkConst ``Real) fun xv =>
-      reportGo maximize bs body (i + 1) (vars.push xv) (box.push (ql, qu)) (names.push x)
+      reportGo maximize bs body (i + 1) (vars.push xv) (box.push (ql, qu)) (names.push x) prec128
   else
     let e ← elabTerm body (some (mkConst ``Real))
     Term.synthesizeSyntheticMVarsNoPostponing
     let e ← instantiateMVars e
     let ie ← reify vars e
     let tbl ← runtimeTbl (← entriesIn e)
+    if prec128 then
+      let g := if maximize then IExpr.neg ie else ie
+      let (l, u, arg, nb) := @bnbMinQ tbl g box.toList 20000 (1 / 10 ^ 32)
+      let word := if maximize then "maximum" else "minimum"
+      let (lo, hi) := if maximize then (-u, -l) else (l, u)
+      let pt := String.intercalate ", " ((names.toList.zip arg).map fun (n, v) => s!"{n} ≈ {fmtSig v 36}")
+      let gap := hi - lo
+      let slack := max gap (1 / 10 ^ 34 * (1 + max |lo| |hi|))
+      let below := shortIn (lo - 2 * slack) (lo - slack)
+      let above := shortIn (hi + slack) (hi + 2 * slack)
+      let (c, w) := if maximize then (above, below) else (below, above)
+      let fS ← PrettyPrinter.ppExpr e
+      let allB := String.intercalate ", " ((names.toList.zip box.toList).map fun (n, (l, h)) =>
+        s!"∀ {n} ∈ Set.Icc ({fmtRat l} : ℝ) {fmtRat h}")
+      let exB := String.intercalate ", " ((names.toList.zip box.toList).map fun (n, (l, h)) =>
+        s!"∃ {n} ∈ Set.Icc ({fmtRat l} : ℝ) {fmtRat h}")
+      let s1 := if maximize then s!"{allB}, {fS} ≤ {fmtRat c}" else s!"{allB}, {fmtRat c} ≤ {fS}"
+      let s2 := if maximize then s!"{exB}, {fmtRat w} ≤ {fS}" else s!"{exB}, {fS} ≤ {fmtRat w}"
+      logInfo m!"{word} ∈ [{fmtSig lo 36}, {fmtSig hi 36}] (gap {fmtSig gap 3}, {nb} boxes; \
+        128-bit enclosures, not a proof)\nattained near {pt}\nstatements `realfp (precision := 128)` \
+        should prove:\n  {s1}\n  {s2}"
+      return
     let r := @bnbMin tbl ie maximize (boxes box.toList) 50000 1e-9
     let word := if maximize then "maximum" else "minimum"
     let lo := if maximize then -r.upper else r.lower
@@ -737,15 +920,28 @@ partial def reportGo (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (bod
       estimate from the enclosures, not a proof)\nattained near {pt}\nstatements `realfp` \
       should prove:\n  {s1}\n  {s2}"
 
-def realfpReport (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (body : Term) :
-    CommandElabM Unit := liftTermElabM do
+def realfpReport (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (body : Term)
+    (prec128 : Bool := false) : CommandElabM Unit := liftTermElabM do
   RealFP.requireNative
-  reportGo maximize bs body 0 #[] #[] #[]
+  reportGo maximize bs body 0 #[] #[] #[] prec128
+
+def precArg (n : TSyntax `num) : CommandElabM Bool := do
+  match n.getNat with
+  | 64 => pure false
+  | 128 => pure true
+  | k => throwErrorAt n "#realfp_min: (precision := {k}): expected 64 or 128"
 
 /-- `#realfp_min (x ∈ Set.Icc a b) (y ∈ Set.Icc c d), f x y`: approximate minimum, minimiser
 and a bound for `realfp` (branch and bound with the interval enclosures; nothing is proved). -/
 elab "#realfp_min " bs:realfpBinder+ ", " e:term : command => realfpReport false bs e
 /-- `#realfp_max (x ∈ Set.Icc a b), f x`: like `#realfp_min` for the maximum. -/
 elab "#realfp_max " bs:realfpBinder+ ", " e:term : command => realfpReport true bs e
+/-- `#realfp_min (precision := 128) (x ∈ Set.Icc a b), f x`: the same search with 128-bit
+dyadic enclosures (natural and centred forms), reporting the extremum to about 35 digits. -/
+elab "#realfp_min " "(" &"precision" " := " n:num ")" bs:realfpBinder+ ", " e:term : command => do
+  realfpReport false bs e (← precArg n)
+/-- `#realfp_max (precision := 128) …`: like `#realfp_min (precision := 128)` for the maximum. -/
+elab "#realfp_max " "(" &"precision" " := " n:num ")" bs:realfpBinder+ ", " e:term : command => do
+  realfpReport true bs e (← precArg n)
 
 end RealFP.Opt
