@@ -174,7 +174,7 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
   let pm ← mkFreshExprMVar ty
   let saved ← getGoals
   setGoals [pm.mvarId!]
-  evalTactic (← `(tactic| decide +kernel))
+  RealFP.closeCheck
   setGoals saved
   let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundW) ((args.push hw).push pm)
   let goal ← getMainGoal

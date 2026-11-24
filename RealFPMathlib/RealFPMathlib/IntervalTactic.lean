@@ -23,6 +23,8 @@ How it works:
 -/
 import RealFPMathlib.IntervalSound
 import RealFPMathlib.IntervalDeriv
+import RealFPMathlib.Roots
+import RealFPMathlib.Trust
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Ring
@@ -219,6 +221,9 @@ def natOf? (e : Expr) : MetaM (Option Nat) := do
 partial def reify (vars : Array Expr) (e : Expr) : MetaM IExpr := do
   let e ← instantiateMVars e
   if let some i := vars.findIdx? (· == e) then return .var i
+  if e.hasFVar && (e.isApp || e.isProj) then
+    for i in [0:vars.size] do
+      if ← withReducible (isDefEq e vars[i]!) then return .var i
   if let some q ← ratOf? e then return .rat q
   let r := reify vars
   match e.getAppFnArgs with
@@ -364,7 +369,7 @@ where
     let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
     let saved ← getGoals
     setGoals [hM.mvarId!]
-    evalTactic (← `(tactic| decide +kernel))
+    RealFP.closeCheck
     setGoals saved
     instantiateMVars hM
 
@@ -394,7 +399,7 @@ where
     let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
     let saved ← getGoals
     setGoals [hM.mvarId!]
-    evalTactic (← `(tactic| decide +kernel))
+    RealFP.closeCheck
     setGoals saved
     instantiateMVars hM
 
@@ -467,6 +472,52 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
       throwError "interval: could not match the goal with its reified form"
   setGoals saved.tail
 
+theorem close_ne {a A : ℝ} (h : A ≠ 0) (ha : a = A) : a ≠ 0 := ha ▸ h
+theorem ne_of_sub_ne {a b : ℝ} (h : a - b ≠ 0) : a ≠ b := fun e => h (by rw [e, sub_self])
+
+/-- Prove `lhs ≠ rhs` (exclusion of zeros of `lhs - rhs` on the box) by bisection until every
+box excludes `0`. -/
+def proveNe (cfg : Cfg) (lhs rhs : Expr) : TacticM Unit := do
+  let goal ← getMainGoal
+  let f ← goal.withContext do
+    if let some q ← ratOf? rhs then
+      if q == 0 then return lhs
+    let gs ← goal.apply (mkConst ``ne_of_sub_ne)
+    replaceMainGoal gs
+    mkAppM ``HSub.hSub #[lhs, rhs]
+  let goal ← getMainGoal
+  goal.withContext do
+  let vars ← collectVars f
+  let e ← reify vars f
+  let bs ← vars.mapM (fun v => (findBounds v : MetaM (ℚ × ℚ)))
+  let env := boxes bs.toList
+  let (cert?, evals) := (search e RealFP.Roots.gNe (2 * cfg.maxBoxes) cfg.depth env).run 0
+  let some cert := cert? |
+    throwError "interval: could not show {f} ≠ 0: no bisection certificate within depth \
+      {cfg.depth} / {cfg.maxBoxes} boxes ({evals} evaluations). The expression may vanish on \
+      the box (if it does, `root_exists` proves that); otherwise try larger (depth := _)"
+  trace[interval] "≠ 0: {certLeaves cert} boxes, {evals} native evaluations"
+  let eE := iexprToExpr e
+  let bsE := toExpr bs.toList
+  let certE := certToExpr cert
+  let xsE ← mkListLit (mkConst ``Real) vars.toList
+  let hM ← proveCheck cfg.chunk eE (mkConst ``RealFP.Roots.gNe) cert
+    (mkApp (mkConst ``boxes) bsE)
+  let saved ← getGoals
+  let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
+  setGoals [hxsM.mvarId!]
+  inBoxesTac
+  setGoals saved
+  let pf := mkAppN (mkConst ``RealFP.Roots.prove_ne) #[eE, bsE, certE, hM, xsE, hxsM]
+  let goal ← getMainGoal
+  let ha ← mkFreshExprMVar (← mkEq f (mkApp2 (mkConst ``IExpr.denote) xsE eE))
+  goal.assign (mkAppN (mkConst ``close_ne) #[f, mkApp2 (mkConst ``IExpr.denote) xsE eE, pf, ha])
+  setGoals [ha.mvarId!]
+  denoteSimp
+  unless (← getGoals).isEmpty do
+    throwError "interval: could not match the goal with its reified form"
+  setGoals saved.tail
+
 partial def intervalCore (cfg : Cfg) : TacticM Unit := do
   let goal ← getMainGoal
   goal.withContext do
@@ -486,23 +537,32 @@ partial def intervalCore (cfg : Cfg) : TacticM Unit := do
       evalTactic (← `(tactic| rw [Set.mem_Icc]))
       intervalCore cfg
     | _ => throwError "interval: unsupported set membership {t}"
+  | (``Not, #[p]) =>
+    let p ← whnfR (← instantiateMVars p)
+    match p.getAppFnArgs with
+    | (``Eq, #[ty, a, b]) =>
+      unless ← isDefEq ty (mkConst ``Real) do throwError "interval: goal is not over ℝ"
+      proveNe cfg a b
+    | _ => throwError "interval: unsupported goal {t}"
   | (``LE.le, #[ty, _, a, b]) =>
     unless ← isDefEq ty (mkConst ``Real) do throwError "interval: goal is not over ℝ"
     proveCmp cfg false a b
   | (``LT.lt, #[ty, _, a, b]) =>
     unless ← isDefEq ty (mkConst ``Real) do throwError "interval: goal is not over ℝ"
     proveCmp cfg true a b
-  | _ => throwError "interval: unsupported goal {t}"
+  | _ => throwError "interval: unsupported goal {t}; expected `f ≤ g`, `f < g`, `f ≠ g`, \
+      `f ∈ Set.Icc a b` or a conjunction of these (over ℝ, variables bounded in context)"
 
 declare_syntax_cat intervalOpt
 syntax "(" ident " := " num ")" : intervalOpt
 syntax "(" ident " := " ident ")" : intervalOpt
 /-- `interval` with options in any order: `(depth := n)`, `(maxBoxes := n)`, `(chunk := n)`,
-    `(deriv := false)`, `(order := n)`. -/
+    `(deriv := false)`, `(order := n)`, `(trust := kernel|native)`. -/
 syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
 
 @[tactic intervalTac] def evalInterval : Tactic := fun stx => do
   let mut cfg : Cfg := {}
+  let mut trust : Name := `kernel
   for o in stx[1].getArgs do
     let k := o[1].getId
     let v := o[3]
@@ -512,7 +572,10 @@ syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
     else if k == `chunk then cfg := { cfg with chunk := n.getD cfg.chunk }
     else if k == `order then cfg := { cfg with order := n.getD cfg.order }
     else if k == `deriv then cfg := { cfg with deriv := v.getId != `false }
-    else throwErrorAt o "interval: unknown option {k}"
+    else if k == `trust then trust := v.getId
+    else throwErrorAt o "interval: unknown option {k} (expected depth, maxBoxes, chunk, deriv, \
+      order, trust)"
+  RealFP.withTrust trust do
   evalTactic (← `(tactic| intros))
   evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
     ge_iff_le, gt_iff_lt] at *))
