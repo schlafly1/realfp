@@ -174,6 +174,13 @@ theorem native_demo' : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.cos x ≥ 1/2 := by r
 -- interval directly
 example (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 : ℝ) 1.1 := by interval
 
+-- precision 128: double-double endpoints for bounds below binary64 resolution
+example : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by realfp (precision := 128)
+example : 4.99e-11 < Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 := by interval (precision := 128)
+example : Real.pi < 3.1415926535897932385 := by
+  fail_if_success interval      -- binary64: π < 3.14159265358979356 is the best it can do
+  interval (precision := 128)
+
 -- integrals
 example : (0.7468 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp
 example : (∫ x in (1 : ℝ)..2, 1 / x) ∈ Set.Icc (0.6931 : ℝ) 0.6932 := by integral_bound

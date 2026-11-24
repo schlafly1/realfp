@@ -1,6 +1,6 @@
 # Known limitations
 
-Current as of commit `3d051fa` (November 2026). These are known gaps, not bugs in soundness:
+Current as of November 2026. These are known gaps, not bugs in soundness:
 every proof that succeeds is checked by Lean, and the axiom audit runs in the default build.
 
 ## Extension registry (`Registry.lean`)
@@ -22,6 +22,19 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   artanh bounds) use `trust := native`; looser versions of each are kernel-checked.
 - Example files for the new functions take 37–104 s each to build.
 
+## Precision 128 (`(precision := 128)`)
+- Only `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`) are supported; `≠`, roots
+  (`root_exists`, `root_unique`), optimisation, `integral_bound` and `pos_def` reject it.
+- Double-double only for `+ - * / ⁻¹ √ |·| ^n`, rational constants and `π` (20 digits, about
+  `1e-20`). `exp`, `log`, `sin`, `cos` and all other functions, including registered ones, are
+  evaluated with Interval64 precision (about `1e-16` relative).
+- Plain bisection only: no monotonicity, centred-form or Taylor certificates, so dependency
+  (e.g. `x * c - x` on a wide box) is not reduced, and tight bounds on wide boxes need many
+  boxes.
+- Kernel cost: each double-double operation takes roughly 0.1–0.3 s in `decide +kernel`
+  (there is no `Nat`-level fast path like Interval64's `KF`/`KI` yet), so a one-variable
+  bound with about 120 boxes takes about 30 s; `trust := native` is much faster.
+
 ## Optimization tactics
 - First-order bounds only, over boxes only; localisation (argmin) is 1D only.
 
@@ -31,7 +44,7 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 ## Tooling and API
 - Plain `lake env lean` needs `--load-dynlib` and `--plugin` flags for the C runtime; without them
   tactics give a clear error, but `#eval` gives Lean's own error.
-- The `Interval128` type name is unchanged, and `Interval128` is not yet used inside the tactics.
+- The `Interval128` type name is unchanged (`Interval128.Interval128`).
 - `X.width` is still a `Float`.
 - CI on GitHub Actions builds the portable RN+err C backend (runners may lack AVX-512);
   the default local x86_64 build is still AVX-512. The slow Examples and the full axiom

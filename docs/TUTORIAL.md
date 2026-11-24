@@ -242,6 +242,7 @@ Options go after the tactic, in any order:
 | `(order := n)` | 3 | how many derivatives deep the monotonicity proofs may go |
 | `(deriv := false)` | on | plain bisection, no derivative certificates |
 | `(chunk := n)` | 32 | boxes per kernel `decide` call; smaller keeps kernel memory bounded |
+| `(precision := 64 \| 128)` | 64 | endpoint precision: Interval64 or Interval128 (double-double, §5) |
 
 ```lean
 example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by
@@ -351,6 +352,29 @@ one face is checked); a centred form `f(m) + f′(X)(X − m)`; monotonicity wit
 sign proved recursively (up to `order` derivatives); otherwise it splits. Derivatives are
 symbolic (`IExpr.diff`) and proved correct against Mathlib's `HasDerivAt`. Trace with
 `set_option trace.interval true`.
+
+### Precision 128: bounds below binary64 resolution
+
+Interval64 endpoints are binary64 numbers, so no bound can be tighter than about `1e-16`
+relative. `(precision := 128)` makes `interval` (and `realfp` on interval goals) evaluate
+with `Interval128`, whose endpoints are double-doubles (about `1e-32` relative):
+
+```lean
+example : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by realfp (precision := 128)
+example : 4.99e-11 < Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 := by interval (precision := 128)
+example : Real.pi < 3.1415926535897932385 := by
+  fail_if_success interval      -- binary64: π < 3.14159265358979356 is the best it can do
+  interval (precision := 128)
+```
+
+What is double-double: `+ - * / ⁻¹ √ |·| ^n`, rational constants, and `π` (Mathlib's
+20-digit bounds). Every other function (`exp`, `log`, `sin`, `cos`, …, registered
+functions) is accepted but evaluated with Interval64 precision, and a failure message
+says so. The search is plain bisection at rational midpoints (no derivative
+certificates yet), and each kernel step is slower than at precision 64, so use
+it for tight bounds on small boxes. The same `trust` options apply. Other backends
+(roots, optimisation, integrals, `≠`) reject `(precision := 128)` for now. More
+examples: `RealFPMathlib/Examples/Precision128.lean`.
 
 ### `integral_bound`: definite integrals
 
