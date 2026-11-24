@@ -26,6 +26,9 @@ of those scalars, so they inherit both the spec and the fast path.
 **Proving real inequalities, integral bounds, roots and positive definiteness in Mathlib:**
 see the front-door tactic [`realfp`](#realfp-one-tactic-for-kernel-checked-real-numerics-mathlib-layer)
 (kernel-checked by default, standard axioms only).
+Comparisons with [FloatLib](https://github.com/lean-dojo/FloatLib),
+[LeanCert](https://docs.leancert.io/), and two research showcases are in
+[COMPARISONS.md](COMPARISONS.md).
 
 ## Kernels
 
@@ -680,7 +683,7 @@ statements `realfp` should then prove; they produce no proof. On failure, `realf
 estimate and says whether the bound is false (with a point value) or how small the margin is.
 Options `trust`, `depth`, `maxBoxes`, `order` apply. Examples:
 `RealFPMathlib/Examples/Optimization.lean` (Rosenbrock, camel, Himmelblau, 3 variables, sin/exp;
-builds in ~100 s, kernel). Comparison with LeanCert: `leancert-bench/COMPARISON.md`.
+builds in ~100 s, kernel). Comparison with LeanCert: see [COMPARISONS.md](COMPARISONS.md).
 Limitations: kernel cost ~0.1 s per box for a degree-6 polynomial, much more for multivariate
 `sin`/`cos`/`exp` (use `trust := native` there); first-order (centred) forms only, no
 Hessian/second-order or Taylor-model bounds; boxes only (no constraints); `sInf = v` needs `v`
