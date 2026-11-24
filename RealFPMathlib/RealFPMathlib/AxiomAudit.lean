@@ -21,6 +21,7 @@ import RealFPMathlib.Examples.IntegralTactic
 import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.MatrixPD
 import RealFPMathlib.Examples.Ops
+import RealFPMathlib.Examples.Optimization
 import RealFPMathlib.Examples.PolyQuad
 import RealFPMathlib.Examples.Pow
 import RealFPMathlib.Examples.Quad2

@@ -229,6 +229,14 @@ def findWitness (atoms : Array Atom) (bs : List (ℚ × ℚ)) : Option (List ℚ
   let mut cands : Array (List Float) := #[mid.map qToF]
   for a in atoms do
     cands := cands.push (atomMin a env).arg
+  -- short grid points (exact minimisers are often simple numbers)
+  let n := bs.length
+  let grids := if n ≤ 2 then [2, 4, 8, 10, 16, 20] else if n == 3 then [2, 4, 10] else [2]
+  let mut gridPts : Array (List ℚ) := #[]
+  for g in grids do
+    let axes := bs.map fun (l, h) => (List.range (g + 1)).map fun k => l + (h - l) * k / g
+    let pts := axes.foldr (fun ax acc => ax.flatMap fun v => acc.map (v :: ·)) [[]]
+    gridPts := gridPts ++ pts.toArray
   -- simple coordinate refinement of the first candidate list is unnecessary: the B&B point is
   -- within the final box of the search
   for p in cands do
@@ -239,6 +247,8 @@ def findWitness (atoms : Array Atom) (bs : List (ℚ × ℚ)) : Option (List ℚ
     let q? := (p.zip bs).mapM fun (x, (l, h)) => (floatRat? x).map fun r => max l (min h r)
     if let some q := q? then
       if atoms.all (atomHoldsAt · q) then return some q
+  for q in gridPts do
+    if atoms.all (atomHoldsAt · q) then return some q
   return none
 
 /-- Close a goal made of `∃ x : ℝ`, `∧` and atoms, using the witnesses `qs` in binder order. -/
@@ -398,7 +408,7 @@ def proveDiscover (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
   let r := bnbMin bg.f (!bg.lower) (boxes bg.bs) 20000 1e-6
   let ext := if bg.lower then r.lower else -r.lower   -- bound on f from the enclosures
   let mut lastErr : MessageData := m!""
-  for k in [3, 2, 1, 0] do
+  for k in [2, 1, 0] do
     let slack : Float := (10 : Float) ^ (-(k.toFloat)) * (1 + ext.abs)
     let target := if bg.lower then ext - slack / 2 else ext + slack / 2
     let some c := niceRat target (slack / 2) bg.lower | throwError "realfp: internal (bound)"
