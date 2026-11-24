@@ -32,7 +32,15 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   localisation in one variable (box width down to about `10⁻¹⁶`, limited by the quadratic value
   gap) and `#realfp_min` / `#realfp_max (precision := 128)` (an untrusted report).
   `pos_def (precision := 128)` is an exact rational check (no 128-bit arithmetic involved).
-  `integral_bound` rejects it.
+  `integral_bound (precision := 128)` uses Taylor models (below).
+- `integral_bound (precision := 128)`: one-variable Taylor models of order 8–30 with interval
+  coefficients, for `+ - * / ^n`, rationals, `π`, `exp`, `sin`, `cos`, `log` (other functions
+  give an unbounded model, so the search fails; `1/·` and `log` need the argument away from 0
+  on each cell). The kernel check is slow: the kernel re-evaluates shared intermediate
+  results of the long Taylor-model computations (`eagerReduce` helps about 2×), so 18 digits
+  of `∫₀¹ e^{-x²}` take about 75 s (order 20, two cells) and 30 digits take many minutes.
+  With `(trust := native)` 30-digit integrals take about 1 s. A witness-per-step kernel
+  certificate (as the 64-bit `quadBoundW`) would remove the re-evaluation; not done yet.
 - `≠` at 128 is plain bisection (no derivative certificates for exclusion).
 - 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
   enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,
@@ -52,7 +60,11 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   functions are never differentiated at 128.
 - Kernel cost of transcendental boxes: a monotonicity step on `sin x + cos x` costs about 1.1 s
   (derivative and endpoint values), so a tight bound at an interior maximum (30 splits, 36
-  monotonicity steps for a `1e-16` margin) takes about 55 s in the kernel.
+  monotonicity steps for a `1e-16` margin) takes about 36–55 s in the kernel; with
+  `(trust := native)` the same proof takes about 0.9 s (`interval (precision := 128)
+  (trust := native) (depth := 60) (order := 2)`), so native mode is not the slow part. Most of
+  the kernel time is one chunk (about 22 s) re-evaluating the transcendental enclosures;
+  `eagerReduce` does not help there.
 - Kernel cost: about 10–30 ms per box with the dyadic `Nat`/`Int` path (a one-variable bound
   with 60–100 boxes takes about 1 s). Boxes are still plain bisection, so wide boxes with tight
   margins need many of them. The double-double `Interval128` type and its proved checker

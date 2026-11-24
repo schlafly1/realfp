@@ -17,6 +17,7 @@ example : (0.7468 : ℝ) ≤ ∫ x in (0:ℝ)..1, Real.exp (-x^2) := by integral
 import RealFPMathlib.KQuad
 import RealFPMathlib.KQuadShare
 import RealFPMathlib.IntervalTactic
+import RealFPMathlib.I128TM
 
 open Lean Meta Elab Tactic
 open Interval64 Interval64.KF Interval64.KF.KQ RealFP.IntervalTactic
@@ -199,6 +200,92 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {}) 
   let (_, g) ← g.intro1P
   replaceMainGoal [g]
 
+/-! ### Precision 128: Taylor models (`RealFPMathlib/I128TM.lean`) -/
+
+/-- A rational strictly between `a < b` with a short decimal expansion. -/
+def between (a b : ℚ) : ℚ := Id.run do
+  for k in List.range 60 do
+    let d : ℚ := 10 ^ k
+    let x : ℚ := ((a * d).floor + 1 : ℤ) / d
+    if a < x && x < b then return x
+  return (a + b) / 2
+
+def dyRat? (d : Option Interval128.Dy.Dy) : Option ℚ := d.map Interval128.Dy.toRat
+
+/-- Adaptive cells for order `N` (bisect the widest cells until the bounds hold). -/
+def adaptQ (e : IExpr) (N : Nat) (qa qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
+    Option (List ℚ × ℚ × ℚ) := Id.run do
+  let mut cs : List (ℚ × ℚ) := [(qa, qb)]
+  for _ in List.range 64 do
+    let ivs := cs.map fun (l, h) => Interval128.Dy.cellQ N e l h
+    let tot := ivs.foldr Interval128.Dy.DI.add Interval128.Dy.DI.zero
+    match dyRat? tot.lo, dyRat? tot.hi with
+    | some l, some h =>
+      let okL := match lower with
+        | some (c, true) => decide (c < l) | some (c, false) => decide (c ≤ l) | none => true
+      let okU := match upper with
+        | some (c, true) => decide (h < c) | some (c, false) => decide (h ≤ c) | none => true
+      if okL && okU then
+        if cs.all fun (l, h) => Interval128.Dy.domOKQ (Interval128.Dy.boxes [(l, h)]) e then
+          return some (cs.map (·.2), l, h)
+        else return none
+    | _, _ => pure ()
+    if cs.length ≥ maxCells then return none
+    let ws : List ℚ := ivs.map fun I => (match dyRat? I.lo, dyRat? I.hi with
+      | some l, some h => h - l
+      | _, _ => (1000000 : ℚ))
+    let wmax := ws.foldl max 0
+    cs := (cs.zip ws).flatMap fun ((l, h), w) =>
+      if w * 4 ≥ wmax then [(l, (l + h) / 2), ((l + h) / 2, h)] else [(l, h)]
+  return none
+
+/-- Orders tried at precision 128 (kernel cost grows quickly with the order). -/
+def orders128 : List Nat := [8, 12, 16, 20, 24, 30]
+
+/-- `ql ≤ ∫ ∧ ∫ ≤ qh` by a Taylor-model certificate (`integral_bounds_of_quadBoundQ`). -/
+def addBound128 (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {}) : TacticM Unit := do
+  let some (f, aE, bE) ← (do
+      let (fn, as) := I.getAppFnArgs
+      if fn == ``intervalIntegral && as.size ≥ 4 then
+        pure (some (as[as.size - 4]!, as[as.size - 3]!, as[as.size - 2]!))
+      else pure none) | throwError "integral_bound: expected `∫ x in a..b, f x`, got {I}"
+  let some qa ← ratOf? aE | throwError "integral_bound: lower limit is not a numeral"
+  let some qb ← ratOf? bE | throwError "integral_bound: upper limit is not a numeral"
+  unless qa ≤ qb do throwError "integral_bound (precision := 128): needs a ≤ b"
+  let e ← lambdaTelescope f fun xs body => do
+    unless xs.size == 1 do throwError "integral_bound: unexpected integrand"
+    reify xs body
+  let orders : List Nat := if cfg.orders == [2, 4, 6, 8] then orders128 else cfg.orders
+  let maxCells := if cfg.maxCells == 512 then 64 else cfg.maxCells
+  let mut found : Option (Nat × List ℚ × ℚ × ℚ) := none
+  let mut bestCost := 0
+  for N in orders do
+    if let some (ds, l, h) := adaptQ e N qa qb lower upper maxCells then
+      let cost := ds.length * N ^ 3
+      if found.isNone || cost < bestCost then
+        found := some (N, ds, l, h); bestCost := cost
+  let some (N, ds, l, h) := found |
+    throwError "integral_bound (precision := 128): no Taylor-model certificate with order in \
+      {orders} and ≤ {maxCells} cells (supported: + - * / ^, exp, log, sin, cos, π; \
+      log and 1/· need the argument bounded away from 0 on each cell); loosen the bound"
+  let ql := match lower with
+    | some (c, false) => c | some (c, true) => between c l | none => ((l.floor : ℤ) : ℚ) - 1
+  let qh := match upper with
+    | some (c, false) => c | some (c, true) => -between (-c) (-h) | none => ((h.ceil : ℤ) : ℚ) + 1
+  let args := #[toExpr N, iexprToExpr e, toExpr qa, toExpr qb, toExpr ds, toExpr ql, toExpr qh]
+  let ty := mkApp3 (mkConst ``Eq [Level.one]) (mkConst ``Bool)
+    (mkAppN ((← mkC ``Interval128.Dy.quadBoundQ)) args) (mkConst ``Bool.true)
+  let pm ← mkFreshExprMVar ty
+  let saved ← getGoals
+  setGoals [pm.mvarId!]
+  RealFP.closeCheckEager
+  setGoals saved
+  let pf := mkAppN ((← mkC ``RealFP.TMQ.integral_bounds_of_quadBoundQ)) (args.push pm)
+  let goal ← getMainGoal
+  let g ← goal.assert `hI (← inferType pf) pf
+  let (_, g) ← g.intro1P
+  replaceMainGoal [g]
+
 def closeTac : TacticM Unit := do
   let h := mkIdent `hI
   let h1 := mkIdent `hI1
@@ -214,7 +301,7 @@ def closeTac : TacticM Unit := do
      | linarith
      | (norm_num at $h1:ident $h2:ident ⊢; linarith))))
 
-partial def core (cfg : ICfg := {}) : TacticM Unit := do
+partial def core (cfg : ICfg := {}) (prec128 : Bool := false) : TacticM Unit := do
   let goal ← getMainGoal
   let t ← whnfR (← instantiateMVars (← goal.getType))
   match t.getAppFnArgs with
@@ -222,11 +309,12 @@ partial def core (cfg : ICfg := {}) : TacticM Unit := do
     evalTactic (← `(tactic| constructor))
     let gs ← getGoals
     for g in gs do
-      setGoals [g]; core cfg
+      setGoals [g]; core cfg prec128
   | (``LE.le, #[_, _, l, r]) | (``LT.lt, #[_, _, l, r]) =>
     let strict := t.isAppOf ``LT.lt
-    if let some c ← ratOf? l then addBound r (some (c, strict)) none cfg
-    else if let some c ← ratOf? r then addBound l none (some (c, strict)) cfg
+    let add := fun I lo up => if prec128 then addBound128 I lo up cfg else addBound I lo up cfg
+    if let some c ← ratOf? l then add r (some (c, strict)) none
+    else if let some c ← ratOf? r then add l none (some (c, strict))
     else throwError "integral_bound: one side must be a rational numeral"
     closeTac
   | _ => throwError "integral_bound: unsupported goal {t}"
@@ -241,23 +329,31 @@ default: try all and keep the cheapest), `(maxBoxes := n)` (at most `n` cells, d
 @[tactic integralBoundTac] def evalIntegralBound : Tactic := fun stx => do
   let mut cfg : ICfg := {}
   let mut trust : Name := `inherit
+  let mut prec128 := false
   for o in stx[1].getArgs do
     let k := o[1].getId
     let n := o[3].isNatLit?
     if k == `trust then trust := o[3].getId
     else if k == `order then
       let some K := n | throwErrorAt o "integral_bound: (order := K) needs a numeral"
-      unless K ∈ [2, 4, 6, 8] do
-        throwErrorAt o "integral_bound: order must be 2, 4, 6 or 8 (got {K})"
       cfg := { cfg with orders := [K] }
     else if k == `maxBoxes then
       let some m := n | throwErrorAt o "integral_bound: (maxBoxes := n) needs a numeral"
       cfg := { cfg with maxCells := m }
+    else if k == `precision then
+      match n with
+      | some 64 => prec128 := false
+      | some 128 => prec128 := true
+      | _ => throwErrorAt o "integral_bound: precision must be 64 or 128"
     else throwErrorAt o "integral_bound: option `{k}` does not apply (integral_bound takes \
-      `trust`, `order`, `maxBoxes`)"
+      `trust`, `order`, `maxBoxes`, `precision`)"
+  unless prec128 do
+    if let [K] := cfg.orders then
+      unless K ∈ [2, 4, 6, 8] do
+        throwError "integral_bound: order must be 2, 4, 6 or 8 at precision 64 (got {K})"
   RealFP.requireNative
   RealFP.withTrust trust do
   evalTactic (← `(tactic| try simp only [Set.mem_Icc] ))
-  withRegistered (core cfg)
+  withRegistered (core cfg prec128)
 
 end RealFP.IntegralTactic

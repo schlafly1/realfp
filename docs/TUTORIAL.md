@@ -253,8 +253,8 @@ example : ∀ x ∈ Set.Icc (0 : ℝ) 1, x * (1 - x) ≤ 1/4 + 1/100 := by realf
 `set_option realfp.native true` sets the trust default for a whole section or declaration.
 
 The table is for the `interval` backend (and optimisation). The other backends take their own
-options (§5): `integral_bound` takes `trust`, `order` and `maxBoxes`; `pos_def` takes only
-`trust`; `root_exists`/`root_unique` take the same options as `interval`. The same syntax
+options (§5): `integral_bound` takes `trust`, `order`, `maxBoxes` and `precision`; `pos_def` takes
+`trust` and `precision`; `root_exists`/`root_unique` take the same options as `interval`. The same syntax
 works whether you call `realfp` or the backend by name, and an option the chosen backend
 cannot use is an error, not silently ignored:
 

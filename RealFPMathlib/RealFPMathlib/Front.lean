@@ -84,16 +84,7 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
       realfpCore rest
       acc := acc ++ (← getGoals)
     setGoals acc.toList
-  -- `(precision := 128)` is implemented by `interval` only so far
-  let prec128 := rest.any fun o => o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 128
-  if prec128 then
-    match r with
-    | .conj | .infsup | .interval | .unique | .exists | .witness | .discover | .argmin | .posDef =>
-      pure ()
-    | _ => throwError "(precision := 128) is supported only for `interval` goals (bounds \
-        `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` \
-        bounds, argmin localisation, `root_exists` / `root_unique` and `pos_def` so far, not for `{r.name}`; drop it \
-        to use precision 64"
+  -- `(precision := 128)` is passed on to every backend (all of them implement it)
   let rest := if r matches .interval | .unique | .exists then rest else
     rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)
   try

@@ -19,6 +19,22 @@ register_option realfp.native : Bool := {
 
 namespace RealFP
 
+/-- Close `b = true` by `eagerReduce (Eq.refl true)` in an auxiliary theorem: the kernel
+evaluates the check with eager (call-by-value) reduction, which avoids re-evaluating shared
+intermediate results (about 2× faster than `decide +kernel` on the Taylor-model quadrature at 128). Only the
+kernel checks the term; on failure we fall back to `decide +kernel` for its diagnostics. -/
+def kernelEager : TacticM Unit := do
+  let g ← getMainGoal
+  let ty ← instantiateMVars (← g.getType)
+  let rf := mkApp2 (mkConst ``Eq.refl [Level.one]) (mkConst ``Bool) (mkConst ``Bool.true)
+  let pf := mkApp2 (mkConst ``eagerReduce [Level.zero]) ty rf
+  try
+    let pf' ← Meta.mkAuxTheorem ty pf
+    g.assign pf'
+    replaceMainGoal []
+  catch _ =>
+    evalTactic (← `(tactic| decide +kernel))
+
 /-- Close the main goal `check = true` with `decide +kernel`, or `native_decide` when
 `realfp.native` is set. -/
 def closeCheck : TacticM Unit := do
@@ -26,6 +42,15 @@ def closeCheck : TacticM Unit := do
     evalTactic (← `(tactic| native_decide))
   else
     evalTactic (← `(tactic| decide +kernel))
+
+/-- As `closeCheck`, but the kernel path uses `kernelEager`. -/
+def closeCheckEager : TacticM Unit := do
+  if realfp.native.get (← getOptions) then
+    evalTactic (← `(tactic| native_decide))
+  else
+    -- large kernel evaluations: no heartbeat limit for this one check
+    withTheReader Core.Context (fun c => { c with maxHeartbeats := 0 }) kernelEager
+
 
 /-- Run `k` with the trust option given by an identifier (`kernel` or `native`); `inherit`
 (the tactics' default when no `trust` option is given) keeps the current `realfp.native`. -/

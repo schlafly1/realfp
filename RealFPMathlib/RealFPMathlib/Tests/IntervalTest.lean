@@ -157,9 +157,9 @@ theorem p23 : (!![1, 1; 1, 1 + 1 / 10 ^ 25] : Matrix (Fin 2) (Fin 2) ℝ).PosDef
   realfp (precision := 128)
 theorem p19 : Real.exp 1 ≠ 2.71828182845904523536028747135 := by interval (precision := 128)
 
-/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` bounds, argmin localisation, `root_exists` / `root_unique` and `pos_def` so far, not for `integral_bound`; drop it to use precision 64 -/
-#guard_msgs in
-example : (0.7 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp (precision := 128)
+/-- `integral_bound` at 128 (Taylor models; a polynomial is exact up to rounding). -/
+theorem p24 : (∫ x in (0 : ℝ)..1, (x ^ 3 - x + 1 / 3)) ≤ 0.0833333333333333333333334 := by
+  realfp (precision := 128)
 
 /-- error: interval: (precision := _) must be 64 (default, Interval64) or 128 (128-bit dyadic endpoints) -/
 #guard_msgs in

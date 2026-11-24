@@ -2,7 +2,7 @@
 `(precision := 128)`: intervals with 128-bit dyadic endpoints (`Interval128/Dyadic.lean`, about
 38 significant digits) in `interval` and `realfp`. Every bound below is out of reach at the
 default precision 64 (pinned by `fail_if_success`) and is proved with `decide +kernel` at
-precision 128 (standard axioms only), except `sqrt2_native`, which uses `trust := native`.
+precision 128 (standard axioms only), except `sqrt2_native`, `pi_integral_native` and `gauss_native`, which use `trust := native`.
 `π` comes from the 40-digit bounds `RealFP.pi_gt_d40` / `pi_lt_d40` (`RealFPMathlib/PiBounds.lean`).
 
 Elaboration times on the dev box (whole declaration, minus the file's import time), 64-bit attempt
@@ -319,6 +319,27 @@ against about 23 s with the binary64 certificate. -/
 theorem hilbert10_posDef :
     (Matrix.of fun i j : Fin 10 => (1 : ℝ) / ((i : ℝ) + j + 1)).PosDef := by
   pos_def (precision := 128)
+
+/-! ### `integral_bound` at 128 (Taylor models)
+
+`integral_bound (precision := 128)` encloses the integrand on each cell by a Taylor model of
+order `N` (interval coefficients in `x - m` plus a remainder interval; `exp`, `sin`, `cos`,
+`log`, `1/·` composed through their series at the centre value with Mathlib's remainder
+bounds) and integrates the polynomial exactly (`RealFPMathlib/I128TM.lean`,
+`RealFP.TMQ.integral_bounds_of_quadBoundQ`). The kernel check is slow (about 75 s here: an
+order-20 model on two cells); with `(trust := native)` the same certificates take about 1 s.
+Precision 64 stops near `1e-15`. -/
+theorem gauss_18_digits : (0.746824132812427025 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by
+  integral_bound (precision := 128)
+
+/-- `π` to 30 digits as `∫₀¹ 4 / (1 + x²)` (native, about 1 s). -/
+theorem pi_integral_native :
+    (∫ x in (0 : ℝ)..1, 4 / (1 + x ^ 2)) ≤ 3.14159265358979323846264338328 := by
+  integral_bound (precision := 128) (trust := native)
+
+/-- `∫₀¹ e^{-x²}` to 31 digits (native). -/
+theorem gauss_native : (0.7468241328124270253994674361318 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by
+  integral_bound (precision := 128) (trust := native)
 
 /-! ### Functions without a 128-bit implementation
 

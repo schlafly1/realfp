@@ -1008,8 +1008,20 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   `RealFP.Mat.posDef_of_diagDom` and `posDef_of_posDef_congr`. Works for any condition number;
   the cost is the size of the rationals (Hilbert 10×10: 1.3 s kernel) and matching the entries
   (`ext; fin_cases; simp`, which dominates beyond about 10×10).
-* Not yet at 128: `integral_bound`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
-  accepted everywhere.
+* **`integral_bound (precision := 128)`** (`RealFPMathlib/I128TM.lean`): Taylor-model
+  quadrature. On each cell `[l, h]` with centre `m`, `tmE` builds a model `⟨P, R⟩` (interval
+  coefficients in `x - m`, remainder interval) with `TMok`: some real polynomial `p` with
+  coefficients in `P` has `f x - p (x - m) ∈ R` on the cell. Products truncate at order `N`
+  (dropped part bounded with `(x-m)^N` over the cell); `exp`, `sin`, `cos`, `1/·`, `log` split
+  off the centre coefficient `p₀` and compose with their series (`Real.exp_bound`,
+  `Complex.exp_bound` via `cos_taylor_bound`/`sin_taylor_bound`, the geometric series,
+  `Real.abs_log_sub_add_sum_range_le`), with the 128-bit `exp`/`sin`/`cos`/`log` at `p₀`. The
+  cell integral is the exact integral of the polynomial plus `R·(h - l)`; `quadBoundQ` sums the
+  cells, `integral_bounds_of_quadBoundQ` gives `ql ≤ ∫ ∧ ∫ ≤ qh`. The search tries orders
+  8–30 with adaptive bisection (≤ 64 cells, or `maxBoxes`) and keeps the smallest
+  `cells × N³`; `(order := N)` fixes the order. Kernel checks use `eagerReduce` and no
+  heartbeat limit; they are slow (see LIMITATIONS), `(trust := native)` is fast.
+* Every backend accepts `(precision := 128)`; `(precision := 64)` is accepted everywhere.
 * When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests
   `(precision := 128)`.
 
