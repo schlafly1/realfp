@@ -27,7 +27,7 @@ rigorous proof. That is wrong, for three reasons.
    produce a number guaranteed to be at most, or at least, the true value.
 2. **Approximations can prove exact theorems.** If a computation encloses a quantity in an
    interval that excludes zero, the quantity is not zero, and that is an exact statement.
-   Rigorous numerics of this kind settled Hales's proof of the Kepler conjecture (formally
+   Rigorous numerics of this kind were essential to Hales's proof of the Kepler conjecture (formally
    verified by the Flyspeck project in 2014), Tucker's proof that the Lorenz attractor exists
    (2002), and the verification that the first 10¹³ or so nontrivial zeros of the Riemann zeta
    function lie on the critical line.
