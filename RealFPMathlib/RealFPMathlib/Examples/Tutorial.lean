@@ -180,6 +180,11 @@ example : 4.99e-11 < Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 := by interval (precision
 example : Real.pi < 3.1415926535897932385 := by
   fail_if_success interval      -- binary64: π < 3.14159265358979356 is the best it can do
   interval (precision := 128)
+example : Real.exp 1 < 2.7182818284590452353602874713527 := by interval (precision := 128)
+example : 0.6931471805599453094172321214581 < Real.log 2 := by interval (precision := 128)
+example : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
+  fail_if_success interval      -- binary64: exp (1e-10) is only known to about 2e-16
+  interval (precision := 128)
 
 -- integrals
 example : (0.7468 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp

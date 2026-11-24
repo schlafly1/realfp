@@ -12,6 +12,10 @@ Elaboration times on the dev box (whole declaration, minus the file's import tim
 * `quad_box`         fails / about 1 s (60 boxes at depth 70)  [about 31 s]
 * `quad_box_30`      fails / about 1.5 s (100 boxes at depth 110)  [not feasible]
 * `pi_*_30`, `pi_sq_*` fails / under 0.5 s each  [`π` known to 20 digits only]
+* `exp_one_*`, `log_two_*`, `exp_cancel`, `sin_cancel`, `log_cancel`  fails / under 0.3 s each
+* `sin_one_*`, `cos_one_*`, `logb_two_ten`, `cosh_sinh_one`, `sin_cos_two`  fails / 0.2–0.9 s
+* `exp_box` (bisection, plain enclosures)  about 2.8 s
+  [before the 128-bit elementary functions, all of these but `exp_box` failed at 128 too]
 -/
 import RealFPMathlib.Front
 
@@ -98,18 +102,91 @@ theorem quad_box (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 
 theorem quad_box_30 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
   interval (precision := 128) (depth := 110)
 
-/-! ### Functions without a 128-bit implementation
+/-! ### Elementary functions to about 30 digits
 
-`exp`, `log`, `sin`, `cos`, … are still accepted at precision 128, but evaluated with
-Interval64 precision; the failure message says so. -/
+`exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`, `logb 2`, `logb 10` have 128-bit
+implementations (Taylor series with argument reduction and proved remainder bounds,
+`RealFPMathlib/I128DyTransc.lean`); point enclosures are about `10⁻³³` wide.
+`e = 2.71828182845904523536028747135266…`, `log 2 = 0.69314718055994530941723212145817…`,
+`sin 1 = 0.84147098480789650665250232163029…`, `cos 1 = 0.54030230586813971740093660744297…`. -/
+
+theorem exp_one_upper : Real.exp 1 < 2.7182818284590452353602874713527 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+theorem exp_one_lower : 2.7182818284590452353602874713526 < Real.exp 1 := by
+  interval (precision := 128)
+
+theorem log_two_upper : Real.log 2 < 0.6931471805599453094172321214582 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+theorem log_two_lower : 0.6931471805599453094172321214581 < Real.log 2 := by
+  interval (precision := 128)
+
+theorem sin_one_upper : Real.sin 1 < 0.8414709848078965066525023216303 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+theorem sin_one_lower : 0.8414709848078965066525023216302 < Real.sin 1 := by
+  interval (precision := 128)
+
+theorem cos_one_upper : Real.cos 1 < 0.5403023058681397174009366074430 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+theorem cos_one_lower : 0.5403023058681397174009366074429 < Real.cos 1 := by
+  interval (precision := 128)
+
+/-- `log₂ 10 = 3.32192809488736234787031942948939…` -/
+theorem logb_two_ten : Real.logb 2 10 < 3.3219280948873623478703194294894 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-! ### Cancellation with elementary functions
+
+At precision 64 each of these is only known to about `10⁻¹⁶`. -/
+
+/-- `exp(10⁻¹⁰) - 1 - 10⁻¹⁰ = 5·10⁻²¹ + 1.7·10⁻³¹ + …` -/
+theorem exp_cancel : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-- `sin(10⁻⁸) - 10⁻⁸ = -1.6666…·10⁻²⁵` -/
+theorem sin_cancel : -1.66667e-25 < Real.sin (1 / 10 ^ 8) - 1 / 10 ^ 8 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-- `log(1 + 10⁻¹²) - 10⁻¹² = -5·10⁻²⁵ + …` -/
+theorem log_cancel : Real.log (1 + 1 / 10 ^ 12) - 1 / 10 ^ 12 < -4.9999e-25 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-- `cosh² 1 - sinh² 1 = 1`, up to `10⁻³⁰`. -/
+theorem cosh_sinh_one : Real.cosh 1 ^ 2 - Real.sinh 1 ^ 2 < 1 + 1e-30 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-- `sin² 2 + cos² 2 = 1`, up to `10⁻³⁰`. -/
+theorem sin_cos_two : 1 - 1e-30 < Real.sin 2 ^ 2 + Real.cos 2 ^ 2 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-! ### A transcendental box -/
 
 theorem exp_box : ∀ x : ℝ, 0 ≤ x → x ≤ 1 → Real.exp x - x ≤ 1.72 := by
   realfp (precision := 128)
 
+/-! ### Functions without a 128-bit implementation
+
+`arctan`, `atan2`, `tan`, `arcsin`, `arccos` and extension functions (and `log` on arguments
+not known to be positive) are still accepted at precision 128, but evaluated with Interval64
+precision; the failure message says so. -/
+
 /--
-error: realfp (trust := kernel): via `interval`: interval (precision := 128): no certificate within depth 24 / 50000 boxes (1 evaluations); enclosure on the whole box: [1.718281828459045090795598298427649, 1.718281828459045534884808148490265], bound 1.71828182845904523536028747135; note: exp is evaluated with Interval64 precision (about 1e-16 relative) even at precision 128
+error: realfp (trust := kernel): via `interval`: interval (precision := 128): no certificate within depth 24 / 50000 boxes (1 evaluations); enclosure on the whole box: [-3.061616997868382943065411628248267e-17, 8.040613248383182461171198926247642e-17], bound 0.0000000000000000000000001; note: arctan is evaluated with Interval64 precision (about 1e-16 relative) even at precision 128
 -/
 #guard_msgs in
-example : Real.exp 1 - 1 ≤ 1.71828182845904523536028747135 := by realfp (precision := 128)
+example : Real.arctan 1 - Real.pi / 4 ≤ 1e-25 := by realfp (precision := 128)
 
 end RealFP.Examples.Precision128

@@ -883,6 +883,7 @@ the reified `IExpr` with 128-bit dyadic endpoints instead of Interval64:
 ```lean
 example : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by interval (precision := 128)
 example : Real.pi < 3.14159265358979323846264338327951 := by interval (precision := 128)
+example : Real.exp 1 < 2.7182818284590452353602874713527 := by interval (precision := 128)
 example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
   interval (precision := 128) (depth := 110)
 ```
@@ -899,12 +900,37 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   line), `√`, `|·|`, `^ n` (even powers from `|X|`), rational constants, `π` from
   `[3.1415926535897932384626433832795028841971, …972]` (`RealFP.pi_gt_d40` / `pi_lt_d40` in
   `RealFPMathlib/PiBounds.lean`: Mathlib's `pi_lower_bound` / `pi_upper_bound` with 70 square
-  roots, witnesses from `scripts/pigen.py 40 70`, standard axioms). **Everything else** (`exp`,
-  `log`, `sin`, `cos`, `atan`, `atan2`, hyperbolic, `logb`, `tan`, `arcsin`, `arccos`,
-  registered functions) goes through `lift1` / `lift2`: `KI.ofRatInterval` of the endpoints,
-  the Interval64 kernel evaluator `evalK`, and the exact rational value of the result bits
-  (`decLo` / `decHi`). Those results are only as tight as Interval64; the failure message
-  lists them.
+  roots, witnesses from `scripts/pigen.py 40 70`, standard axioms).
+* **Elementary functions at 128 bits** (`Interval128/Dyadic.lean`, soundness in
+  `RealFPMathlib/I128DyTransc.lean`):
+  * `exp`: `expPt d` halves `d` `s = halvings d` times (to `|y| ≤ 2⁻⁸`), evaluates the Taylor
+    polynomial of degree 13 (`horner` with point products `DI.mulPt`) plus `± remT`
+    (`Real.exp_bound`), and squares `s` times (`sqIter`). `DI.exp` takes both endpoints
+    (monotone).
+  * `sin`, `cos`: the same halving, Taylor polynomials with coefficients `Re/Im (I^m) / m!`,
+    remainder from `Complex.exp_bound` at `y·I`, then `s` double-angle steps
+    (`sin 2t = 2 S C`, `cos 2t = C² - S²`, `dblIter`). An interval is the value at a dyadic
+    centre `± radius` (`|sin x - sin c| ≤ |x - c|`), clamped to `[-1, 1]`.
+  * `log`: `j = roots d` square roots (`sqrtIter`, `log x = 2^j log (√…√x)`) bring `x` to
+    `|1 - w| ≤ 1/64`, then the series `-∑ u^k / k` (23 terms) plus `± 2·64⁻²⁴`
+    (`Real.abs_log_sub_add_sum_range_le`). `DI.log?` returns `none` unless the lower endpoint is
+    positive; `evalQ` then falls back to `lift1`.
+  * `logb 2`, `logb 10`: `log X / DI.logConst q` (`Real.log_div_log`).
+  * `sinh`: odd Taylor series for `|d| ≤ 2⁻⁸` (no cancellation), else `(E - 1/E) / 2`;
+    `cosh = (E + 1/E) / 2` (from `|X|`); `tanh`: `sinh / cosh` for `|d| ≤ 2⁻⁸`, else
+    `1 - 2 / (exp (2d) + 1)`, clamped. All monotone in the endpoints.
+  * Accuracy (`interval128_tests`, 117 points against 50-digit `mpmath` values from
+    `scripts/dytransc_ref.py`): width / `|f x|` at most `2.6e5 · 2⁻¹²⁸ ≈ 8e-34` for `exp`,
+    `sinh`, `cosh`, `5e-36` for `log`, `logb`, `5e-35` for `tanh`, `3e-31` for `sin`/`cos`
+    (worst at `x ≈ -1764`).
+  * Kernel cost per point: `exp` about 0.5 s at `x = 1` (fewer halvings for small `x`), `log`
+    about 0.2 s, `sin`/`cos` about 0.7 s.
+
+  **Still through Interval64** (`lift1` / `lift2`: `KI.ofRatInterval` of the endpoints, the
+  Interval64 kernel evaluator `evalK`, and the exact rational value of the result bits,
+  `decLo` / `decHi`): `atan`, `atan2`, `tan`, `arcsin`, `arccos`, registered functions, and
+  `log`/`logb` on intervals not known to be positive. Those results are only as tight as
+  Interval64; the failure message lists them (`Interval128.Dy.lifted`).
 * **Goal predicates** `gLe c` / `gLt c` / `gGe c` / `gGt c` compare the exact rational value of
   an endpoint (`toRat`) with `c`.
 * **Certificates** `Interval128.Dy.Cert`: bisection trees whose split points are dyadics (the
@@ -916,7 +942,9 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
 * **Soundness** (`RealFPMathlib/I128Dyadic.lean`, namespace `RealFP.I128Q`, no `sorry`,
   standard axioms): `val d = m · 2^e`, `val_rdn` / `val_rup` / `val_ofRatDn` / `val_ofRatUp` /
   `val_invDnPos` / `val_sqrtDn` …, `mem_add` / `mem_mul` / `mem_inv` / `mem_sqrt` /
-  `mem_abs` / `mem_pow` / `mem_pi` / `mem_lift1` / `mem_lift2`, `evalQ_sound`,
+  `mem_abs` / `mem_pow` / `mem_pi` / `mem_lift1` / `mem_lift2` (`I128DyBase.lean`), `mem_exp` /
+  `mem_log?` / `mem_sin` / `mem_cos` / `mem_sinh` / `mem_cosh` / `mem_tanh` / `mem_logConst`
+  (`I128DyTransc.lean`), `evalQ_sound`,
   `checkQ_sound`, `checkQ_split_of`, `prove_le` / `prove_lt` / `prove_ge` / `prove_gt`.
 * **Checking.** `trust := kernel` closes `checkQ … = true` with `decide +kernel`, `chunk`
   boxes per call; `trust := native` uses `native_decide`. Kernel cost is about 10–30 ms per

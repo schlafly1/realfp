@@ -368,12 +368,23 @@ example : Real.pi < 3.1415926535897932385 := by
   interval (precision := 128)
 ```
 
-What is computed at 128 bits: `+ - * / ⁻¹ √ |·| ^n`, rational constants, and `π` (40-digit
+What is computed at 128 bits: `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (40-digit
 bounds proved with Mathlib's `pi_lower_bound` / `pi_upper_bound`, `RealFP.pi_gt_d40` /
-`pi_lt_d40`), so for example `Real.pi < 3.14159265358979323846264338327951` is provable. Every other function (`exp`, `log`, `sin`, `cos`, …, registered
-functions) is accepted but evaluated with Interval64 precision, and a failure message
-says so. The search is plain bisection at dyadic midpoints (no derivative
-certificates yet); the kernel check costs about 10–30 ms per box, so it is
+`pi_lt_d40`), and `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`, `logb 2`, `logb 10`
+(Taylor series with argument reduction and proved remainders, about `1e-33` relative):
+
+```lean
+example : Real.exp 1 < 2.7182818284590452353602874713527 := by interval (precision := 128)
+example : 0.6931471805599453094172321214581 < Real.log 2 := by interval (precision := 128)
+example : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
+  fail_if_success interval      -- binary64: exp (1e-10) is only known to about 2e-16
+  interval (precision := 128)
+```
+
+`arctan`, `tan`, `arcsin`, `arccos`, `atan2` and registered functions are accepted but
+evaluated with Interval64 precision, and a failure message says so. The search is plain
+bisection at dyadic midpoints (no derivative certificates yet); the kernel check costs about
+10–30 ms per box for arithmetic and 0.2–0.7 s per elementary-function evaluation, so it is
 best for tight bounds on small boxes. The same `trust` options apply. Other backends
 (roots, optimisation, integrals, `≠`) reject `(precision := 128)` for now. More
 examples: `RealFPMathlib/Examples/Precision128.lean`.

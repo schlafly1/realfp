@@ -153,6 +153,8 @@ lean_exe interval64_tests where
 
 lean_lib Interval128Tests
 
+lean_lib Interval128DyTests
+
 /-- Lean-only reference copies of the C-backed specifications (tests, benchmarks). -/
 lean_lib Interval64CSpec
 

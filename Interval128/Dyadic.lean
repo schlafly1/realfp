@@ -195,6 +195,188 @@ def piLo : Rat := 31415926535897932384626433832795028841971 / 10 ^ 40
 def piHi : Rat := 31415926535897932384626433832795028841972 / 10 ^ 40
 def DI.pi : DI := DI.ofRatI piLo piHi
 
+/-! ### 128-bit elementary functions
+
+Point enclosures from Taylor polynomials (Horner in interval arithmetic) with Mathlib's
+remainder bounds, after exact argument halving (`exp`, `sin`, `cos`) or square roots (`log`).
+Soundness: `RealFPMathlib/I128DyTransc.lean`. -/
+
+def DI.pt (d : Dy) : DI := ⟨some d, some d⟩
+
+/-- `[-r, r]` for a rational `r ≥ 0`. -/
+def DI.pm (r : Rat) : DI := ⟨some (ofRatDn (-r)), some (ofRatUp r)⟩
+
+/-- Multiply by `2^j` (exact). -/
+def Dy.scale (j : Int) (d : Dy) : Dy := ⟨d.m, d.e + j⟩
+def DI.scale (j : Int) (X : DI) : DI := ⟨X.lo.map (Dy.scale j), X.hi.map (Dy.scale j)⟩
+
+/-- Coefficient list `[f k, f (k+1), …]` of length `n`. -/
+def coefs (f : Nat → Rat) : Nat → Nat → List Rat
+  | _, 0 => []
+  | k, n + 1 => f k :: coefs f (k + 1) n
+
+/-- `d · X` for a point `d` (two products instead of four corners). -/
+def DI.mulPt (d : Dy) (X : DI) : DI :=
+  match X.lo, X.hi with
+  | some l, some h =>
+    if 0 ≤ d.m then
+      let p := mulX d l; let q := mulX d h
+      ⟨some (rdn p.m p.e), some (rup q.m q.e)⟩
+    else
+      let p := mulX d h; let q := mulX d l
+      ⟨some (rdn p.m p.e), some (rup q.m q.e)⟩
+  | _, _ => DI.whole
+
+/-- Horner evaluation of `c₀ + c₁ d + …` at a point `d`. -/
+def horner (cs : List Rat) (d : Dy) : DI :=
+  match cs with
+  | [] => DI.zero
+  | c :: cs => DI.add (DI.ofRat c) (DI.mulPt d (horner cs d))
+
+/-- Taylor length and remainder for `|y| ≤ 2⁻⁸` (`Real.exp_bound`, `Complex.exp_bound`). -/
+def fact : Nat → Nat
+  | 0 => 1
+  | n + 1 => (n + 1) * fact n
+
+def nT : Nat := 14
+def remT : Rat := (1 / 256) ^ nT * (nT + 1 : Nat) / ((fact nT * nT : Nat) : Rat)
+
+def expCoef (m : Nat) : Rat := 1 / (fact m : Rat)
+/-- `Re (I^m) / m!` and `Im (I^m) / m!`. -/
+def cosCoef (m : Nat) : Rat :=
+  (if m % 4 = 0 then 1 else if m % 4 = 2 then -1 else 0) / (fact m : Rat)
+def sinCoef (m : Nat) : Rat :=
+  (if m % 4 = 1 then 1 else if m % 4 = 3 then -1 else 0) / (fact m : Rat)
+
+/-- Halvings bringing `d` to `|d / 2^s| ≤ 2⁻⁸` (any value is sound). -/
+def halvings (d : Dy) : Nat := (((bitlen d.m.natAbs : Nat) : Int) + d.e + 8).toNat
+
+def small (y : Dy) : Bool := decide (-(1 / 256) ≤ toRat y ∧ toRat y ≤ 1 / 256)
+
+def sqIter : Nat → DI → DI
+  | 0, X => X
+  | n + 1, X => sqIter n (DI.mul X X)
+
+/-- Enclosure of `exp d` (whole line if `d` is too large). -/
+def expPt (d : Dy) : DI :=
+  let s := halvings d
+  let y : Dy := ⟨d.m, d.e - s⟩
+  if small y && decide (s ≤ 64) then
+    sqIter s (DI.add (horner (coefs expCoef 0 nT) y) (DI.pm remT))
+  else DI.whole
+
+def DI.exp (X : DI) : DI :=
+  ⟨match X.lo with | some a => (expPt a).lo | none => some Dy.zero,
+   match X.hi with | some b => (expPt b).hi | none => none⟩
+
+def dblIter : Nat → DI × DI → DI × DI
+  | 0, p => p
+  | n + 1, (S, C) => dblIter n (DI.scale 1 (DI.mul S C), DI.sub (DI.mul C C) (DI.mul S S))
+
+/-- `(sin d, cos d)`. -/
+def sinCosPt (d : Dy) : DI × DI :=
+  let s := halvings d
+  let y : Dy := ⟨d.m, d.e - s⟩
+  if small y && decide (s ≤ 64) then
+    dblIter s (DI.add (horner (coefs sinCoef 0 nT) y) (DI.pm remT),
+      DI.add (horner (coefs cosCoef 0 nT) y) (DI.pm remT))
+  else (DI.whole, DI.whole)
+
+def negOne : Dy := ⟨-1, 0⟩
+def one : Dy := ⟨1, 0⟩
+
+/-- Intersect with `[-1, 1]`. -/
+def DI.clamp1 (X : DI) : DI :=
+  ⟨some (match X.lo with | some l => Dy.max l negOne | none => negOne),
+   some (match X.hi with | some h => Dy.min h one | none => one)⟩
+
+/-- Centre and radius of a finite interval: `|x - c| ≤ r` on `[a, b]`. -/
+def centre (a b : Dy) : Dy := let s := addX a b; rdn s.m (s.e - 1)
+def radius (a b c : Dy) : Dy := Dy.max (addX b (Dy.neg c)) (addX c (Dy.neg a))
+
+/-- `sin` / `cos` on an interval: value at the centre plus the Lipschitz bound, in `[-1, 1]`. -/
+def DI.sinCos (cosQ : Bool) (X : DI) : DI :=
+  match X.lo, X.hi with
+  | some a, some b =>
+    let c := centre a b
+    let r := radius a b c
+    let p := sinCosPt c
+    DI.clamp1 (DI.add (if cosQ then p.2 else p.1) ⟨some (Dy.neg r), some r⟩)
+  | _, _ => DI.clamp1 DI.whole
+
+/-- Log series point: `log w = log (1 - u)`, `u = 1 - w`, `|u| ≤ 2⁻⁶`
+(`Real.abs_log_sub_add_sum_range_le`). -/
+def nL : Nat := 23
+def remL : Rat := 2 * (1 / 64) ^ (nL + 1)
+def logCoef (i : Nat) : Rat := 1 / ((i + 1 : Nat) : Rat)
+
+def logSer (w : Dy) : DI :=
+  let u := addX one (Dy.neg w)
+  if decide (-(1 / 64) ≤ toRat u ∧ toRat u ≤ 1 / 64) then
+    DI.add (DI.neg (DI.mulPt u (horner (coefs logCoef 0 nL) u))) (DI.pm remL)
+  else DI.whole
+
+def sqrtIter : Nat → DI → DI
+  | 0, X => X
+  | n + 1, X => sqrtIter n (DI.sqrt X)
+
+/-- Square roots bringing `d` near `1`. -/
+def roots (d : Dy) : Nat :=
+  if decide (-(1 / 128) ≤ toRat (addX one (Dy.neg d)) ∧ toRat (addX one (Dy.neg d)) ≤ 1 / 128) then 0
+  else bitlen ((((bitlen d.m.natAbs : Nat) : Int) + d.e).natAbs + 1) + 7
+
+/-- Lower / upper bound of `log d` for `d > 0`. -/
+def logLo (d : Dy) : Option Dy :=
+  let j := roots d
+  match (sqrtIter j (DI.pt d)).lo with
+  | some w => if 0 < w.m then ((logSer w).lo).map (Dy.scale j) else none
+  | none => none
+def logHi (d : Dy) : Option Dy :=
+  let j := roots d
+  match (sqrtIter j (DI.pt d)).hi with
+  | some w => if 0 < w.m then ((logSer w).hi).map (Dy.scale j) else none
+  | none => none
+
+/-- `log` on an interval with a positive lower end (else `none`: the caller falls back). -/
+def DI.log? (X : DI) : Option DI :=
+  match X.lo with
+  | some a => if 0 < a.m then some ⟨logLo a, X.hi.bind logHi⟩ else none
+  | none => none
+
+/-- `log 2`, `log 10` enclosures. -/
+def DI.logConst (q : Rat) : DI := ⟨logLo (ofRatDn q), logHi (ofRatUp q)⟩
+
+/-- `sinh m / m!` at `0`: odd Taylor coefficients of `sinh`. -/
+def sinhCoef (m : Nat) : Rat := (if m % 2 = 1 then 1 else 0) / (fact m : Rat)
+
+/-- `sinh d`: odd Taylor series when `|d| ≤ 2⁻⁸` (no cancellation), else `(E - 1/E) / 2`. -/
+def sinhPt (d : Dy) : DI :=
+  if small d then DI.add (horner (coefs sinhCoef 0 nT) d) (DI.pm remT)
+  else
+    let E := expPt d
+    DI.scale (-1) (DI.sub E (DI.inv E))
+
+def coshPt (d : Dy) : DI :=
+  let E := expPt d
+  DI.scale (-1) (DI.add E (DI.inv E))
+
+def DI.sinh (X : DI) : DI :=
+  ⟨X.lo.bind (fun a => (sinhPt a).lo), X.hi.bind (fun b => (sinhPt b).hi)⟩
+
+def DI.cosh (X : DI) : DI :=
+  let A := DI.abs X
+  ⟨match A.lo with | some a => if 0 ≤ a.m then (coshPt a).lo else some one | none => some one,
+   A.hi.bind (fun b => (coshPt b).hi)⟩
+
+/-- `tanh d`: `sinh d / cosh d` when `|d| ≤ 2⁻⁸`, else `1 - 2 / (exp (2d) + 1)`. -/
+def tanhPt (d : Dy) : DI :=
+  if small d then DI.div (sinhPt d) (coshPt d)
+  else DI.sub (DI.ofRat 1) (DI.mul (DI.ofRat 2) (DI.inv (DI.add (expPt (Dy.scale 1 d)) (DI.ofRat 1))))
+
+/-- `tanh` is increasing: endpoint values, clamped to `[-1, 1]`. -/
+def DI.tanh (X : DI) : DI :=
+  DI.clamp1 ⟨X.lo.bind (fun a => (tanhPt a).lo), X.hi.bind (fun b => (tanhPt b).hi)⟩
+
 /-! ### Functions through the Interval64 kernel evaluator -/
 
 /-- Lower endpoint from a binary64 bit pattern (`none` if infinite / NaN). -/
@@ -231,22 +413,47 @@ def evalQ (env : List DI) : IExpr → DI
   | .sqrt a => DI.sqrt (evalQ env a)
   | .abs a => DI.abs (evalQ env a)
   | .pow a n => DI.pow (evalQ env a) n
-  | .exp a => lift1 (.exp (.var 0)) (evalQ env a)
-  | .log a => lift1 (.log (.var 0)) (evalQ env a)
-  | .sin a => lift1 (.sin (.var 0)) (evalQ env a)
-  | .cos a => lift1 (.cos (.var 0)) (evalQ env a)
+  | .exp a => DI.exp (evalQ env a)
+  | .log a =>
+    let X := evalQ env a
+    match DI.log? X with | some Y => Y | none => lift1 (.log (.var 0)) X
+  | .sin a => DI.sinCos false (evalQ env a)
+  | .cos a => DI.sinCos true (evalQ env a)
   | .pi => DI.pi
   | .atan a => lift1 (.atan (.var 0)) (evalQ env a)
   | .atan2 a b => lift2 (.atan2 (.var 0) (.var 1)) (evalQ env a) (evalQ env b)
-  | .sinh a => lift1 (.sinh (.var 0)) (evalQ env a)
-  | .cosh a => lift1 (.cosh (.var 0)) (evalQ env a)
-  | .tanh a => lift1 (.tanh (.var 0)) (evalQ env a)
-  | .log2 a => lift1 (.log2 (.var 0)) (evalQ env a)
-  | .log10 a => lift1 (.log10 (.var 0)) (evalQ env a)
+  | .sinh a => DI.sinh (evalQ env a)
+  | .cosh a => DI.cosh (evalQ env a)
+  | .tanh a => DI.tanh (evalQ env a)
+  | .log2 a =>
+    let X := evalQ env a
+    match DI.log? X with
+    | some Y => DI.div Y (DI.logConst 2) | none => lift1 (.log2 (.var 0)) X
+  | .log10 a =>
+    let X := evalQ env a
+    match DI.log? X with
+    | some Y => DI.div Y (DI.logConst 10) | none => lift1 (.log10 (.var 0)) X
   | .tan a => lift1 (.tan (.var 0)) (evalQ env a)
   | .asin a => lift1 (.asin (.var 0)) (evalQ env a)
   | .acos a => lift1 (.acos (.var 0)) (evalQ env a)
   | .ext k d a => lift1 (.ext k d (.var 0)) (evalQ env a)
+
+/-- Functions evaluated through Interval64 (binary64 precision) at precision 128. `log`,
+`logb 2`, `logb 10` are listed too: they fall back when the argument is not known to be `> 0`. -/
+def lifted : IExpr → List String
+  | .var _ | .rat _ | .pi => []
+  | .add a b | .sub a b | .mul a b | .div a b => lifted a ++ lifted b
+  | .neg a | .inv a | .sqrt a | .abs a | .pow a _ | .exp a | .sin a | .cos a | .sinh a
+  | .cosh a | .tanh a => lifted a
+  | .log a => "log (on arguments not known to be positive)" :: lifted a
+  | .log2 a => "logb 2 (on arguments not known to be positive)" :: lifted a
+  | .log10 a => "logb 10 (on arguments not known to be positive)" :: lifted a
+  | .atan a => "arctan" :: lifted a
+  | .atan2 a b => "atan2" :: (lifted a ++ lifted b)
+  | .tan a => "tan" :: lifted a
+  | .asin a => "arcsin" :: lifted a
+  | .acos a => "arccos" :: lifted a
+  | .ext _ _ a => "extension function" :: lifted a
 
 /-! ### Goal predicates and certificates -/
 

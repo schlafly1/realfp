@@ -25,9 +25,17 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 ## Precision 128 (`(precision := 128)`)
 - Only `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`) are supported; `≠`, roots
   (`root_exists`, `root_unique`), optimisation, `integral_bound` and `pos_def` reject it.
-- 128-bit only for `+ - * / ⁻¹ √ |·| ^n`, rational constants and `π` (Mathlib-proved 40-digit
-  bounds, enclosure width about `1e-38` after rounding). `exp`, `log`, `sin`, `cos` and all other functions, including registered ones, are
-  evaluated with Interval64 precision (about `1e-16` relative).
+- 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
+  enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,
+  `logb 2`, `logb 10` (point enclosures about `1e-33` relative; `sin`/`cos` of arguments around
+  `10³` about `3e-31`, since the double-angle steps amplify the error). `arctan`, `atan2`, `tan`,
+  `arcsin`, `arccos`, registered functions, and `log` / `logb` on intervals not known to be
+  positive are evaluated with Interval64 precision (about `1e-16` relative); the failure message
+  lists them.
+- Kernel cost of the elementary functions: about 0.1–0.4 s per point evaluation (`exp`, `log`,
+  `sinh`, …; `sin`/`cos` together about 0.4–0.7 s), and an interval needs two (`exp`, `log`,
+  hyperbolic: both endpoints) or one (`sin`/`cos`: centre plus a Lipschitz radius, so wide
+  intervals are coarse).
 - Plain bisection only: no monotonicity, centred-form or Taylor certificates, so dependency
   (e.g. `x * c - x` on a wide box) is not reduced, and tight bounds on wide boxes need many
   boxes.

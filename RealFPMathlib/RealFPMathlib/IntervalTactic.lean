@@ -735,14 +735,15 @@ def denoteSimp : TacticM Unit := do
   let ext ← if ids.isEmpty then `(tactic| skip) else `(tactic| try simp only [$ids,*])
   evalTactic (← `(tactic|
     first
-    | rfl
+    | (with_reducible rfl)
     | ((try simp only [Interval64.KF.IExpr.denote, List.getD_cons_zero, List.getD_cons_succ]); $ext:tactic
-       first
-       | rfl
+       all_goals first
+       | (with_reducible rfl)
        | (push_cast; done)
        | (push_cast; ring_nf; done)
        | (norm_num; done)
-       | (norm_num <;> ring_nf; done))))
+       | (norm_num <;> ring_nf; done)
+       | rfl)))
 
 def inBoxesTac : TacticM Unit := do
   evalTactic (← `(tactic|
@@ -957,7 +958,7 @@ def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) 
     | false, false => (Interval128.Dy.gGe c, ``Interval128.Dy.gGe, ``RealFP.I128Q.prove_ge)
     | true, false => (Interval128.Dy.gGt c, ``Interval128.Dy.gGt, ``RealFP.I128Q.prove_gt)
   let (cert?, evals) := (Interval128.Dy.search e g cfg.depth cfg.maxBoxes env).run 0
-  let lifted := (Interval128.Refl.lifted e).eraseDups
+  let lifted := (Interval128.Dy.lifted e).eraseDups
   let note : MessageData := if lifted.isEmpty then m!"" else
     m!"; note: {", ".intercalate lifted} {if lifted.length == 1 then "is" else "are"} evaluated \
       with Interval64 precision (about 1e-16 relative) even at precision 128"
