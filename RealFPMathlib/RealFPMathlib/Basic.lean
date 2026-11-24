@@ -64,10 +64,9 @@ end RealFP
 
 open RealFP
 
-set_option linter.dupNamespace false in
 /-- The set of reals enclosed by an interval (extended-real reading of the
     endpoints; empty when an endpoint is NaN). -/
-def Interval64.Interval64.toSet (I : Interval64) : Set ℝ :=
+def Interval64.toSet (I : Interval64) : Set ℝ :=
   {x | loR (bitsToEVal I.lo.toBits) x ∧ hiR (bitsToEVal I.hi.toBits) x}
 
 namespace RealFP

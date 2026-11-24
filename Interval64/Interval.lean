@@ -21,10 +21,15 @@ namespace Interval64
 
 open Interval64.Directed
 
-structure Interval64 where
+/-- A binary64 interval `[lo, hi]`. Declared at the root, so the operations in namespace
+`Interval64` work with dot notation (`X.width`, `X.mid`, `X.sqrt`). -/
+structure _root_.Interval64 where
   lo : Float
   hi : Float
   deriving Repr, Inhabited
+
+/- The type used to be `Interval64.Interval64`; keep that name as an alias for older code. -/
+export _root_ (Interval64)
 
 instance : BEq Interval64 where
   beq a b := sameBitsOrNaN a.lo b.lo && sameBitsOrNaN a.hi b.hi

@@ -1197,7 +1197,7 @@ theorem zero_le_iff_rat {f : Float} {q : Rat}
           simp [hu, UnpackedFloat.le, UnpackedFloat.compare, Option.any]
     exact (float_le_iff 0 f).mpr hleU
 
-theorem isInvalid_eq_false_of_rats {I : Interval64.Interval64} {lo hi : Rat}
+theorem isInvalid_eq_false_of_rats {I : Interval64} {lo hi : Rat}
     (hlo : bitsToRat? I.lo.toBits = some lo)
     (hhi : bitsToRat? I.hi.toBits = some hi) :
     Interval64.isInvalid I = false := by
@@ -1205,7 +1205,7 @@ theorem isInvalid_eq_false_of_rats {I : Interval64.Interval64} {lo hi : Rat}
   have hnhi := not_isNaN_of_bitsToEVal (bitsToEVal_rat_of_bitsToRat? hhi)
   simp only [Interval64.isInvalid, hnlo, hnhi, Bool.or_false]
 
-theorem containsZero_iff {Y : Interval64.Interval64} {blo bhi : Rat}
+theorem containsZero_iff {Y : Interval64} {blo bhi : Rat}
     (hlo : bitsToRat? Y.lo.toBits = some blo)
     (hhi : bitsToRat? Y.hi.toBits = some bhi) :
     Interval64.containsZero Y = true ↔ blo ≤ 0 ∧ 0 ≤ bhi := by
@@ -1224,7 +1224,7 @@ theorem rat_lt_of_lt_of_le {a b c : Rat} (h₁ : a < b) (h₂ : b ≤ c) : a < c
     (Rat.lt_iff_le_and_not_ge.mp h₁).2 (he ▸ h₂)
   exact Rat.lt_of_le_of_ne hle hne
 
-theorem not_containsZero_same_sign {Y : Interval64.Interval64} {blo bhi : Rat}
+theorem not_containsZero_same_sign {Y : Interval64} {blo bhi : Rat}
     (hlo : bitsToRat? Y.lo.toBits = some blo)
     (hhi : bitsToRat? Y.hi.toBits = some bhi)
     (hz : Interval64.containsZero Y = false) :
@@ -1472,7 +1472,7 @@ theorem not_nan_of_hiEncloses {f : Float} {z : Rat}
     `memIv_whole`). `y ≠ 0` is required because `x / 0` is not a
     meaningful quotient (Lean would send it to `0`). An invalid
     interval has no rational members (`not_memIv_invalid`). -/
-theorem div_mem_iv {x y : Rat} {X Y : Interval64.Interval64}
+theorem div_mem_iv {x y : Rat} {X Y : Interval64}
     (hx : MemIv x X) (hy : MemIv y Y) (hy0 : y ≠ 0)
     (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q)
     (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q)

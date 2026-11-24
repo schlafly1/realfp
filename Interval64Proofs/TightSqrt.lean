@@ -338,7 +338,7 @@ theorem sqrtUp_float_tight {a : Float} {qa : Rat} (ha : bitsToRat? a.toBits = so
 
 /-- `Interval64.sqrt X` endpoints are the tight roots of the clipped lower endpoint
 and of the upper endpoint (finite endpoints, `0 ≤ h`). -/
-theorem sqrt_iv_tight {X : Interval64.Interval64} {l h : Rat} (hX : FinIv X l h)
+theorem sqrt_iv_tight {X : Interval64} {l h : Rat} (hX : FinIv X l h)
     (hh : 0 ≤ h) :
     IsSqrtDown (if l < 0 then 0 else l) (bitsToEVal (Interval64.sqrt X).lo.toBits) ∧
       IsSqrtUp h (bitsToEVal (Interval64.sqrt X).hi.toBits) := by
@@ -372,7 +372,7 @@ theorem sqrt_iv_tight {X : Interval64.Interval64} {l h : Rat} (hX : FinIv X l h)
 /-- **Interval sqrt is optimal** (finite endpoints, `0 ≤ h`): the lower endpoint is
 the greatest representable `f ≥ 0` with `f² ≤ x` for every `x ∈ X` with `x ≥ 0`, and the
 upper endpoint the least representable `f ≥ 0` with `x ≤ f²` for all such `x`. -/
-theorem sqrt_iv_optimal {X : Interval64.Interval64} {l h : Rat} (hX : FinIv X l h)
+theorem sqrt_iv_optimal {X : Interval64} {l h : Rat} (hX : FinIv X l h)
     (hh : 0 ≤ h) :
     (∀ f, Representable f → 0 ≤ f → (∀ x, MemIv x X → 0 ≤ x → f * f ≤ x) →
         hiEncloses? (bitsToEVal (Interval64.sqrt X).lo.toBits) f) ∧

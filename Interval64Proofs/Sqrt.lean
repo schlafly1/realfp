@@ -911,7 +911,7 @@ theorem hiEncloses_sqrtUp {a : Float} {qa r : Rat}
     NaN or `hi < 0` would yield `invalid` (which has no rational members),
     but those cases cannot arise under these hypotheses; a negative `lo`
     is clipped to `0.0` so the lower bound is `sqrt(0) = 0`. -/
-theorem sqrt_mem_iv {x r : Rat} {X : Interval64.Interval64}
+theorem sqrt_mem_iv {x r : Rat} {X : Interval64}
     (hx : MemIv x X) (hx0 : 0 ≤ x) (hr : 0 ≤ r) (hsq : r * r = x)
     (hXlo : ∃ q, bitsToRat? X.lo.toBits = some q)
     (hXhi : ∃ q, bitsToRat? X.hi.toBits = some q) :
