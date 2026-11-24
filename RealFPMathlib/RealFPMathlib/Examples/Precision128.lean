@@ -240,6 +240,21 @@ theorem dottie_unique :
     ∃! x : ℝ, x ∈ Set.Icc (0.7390851332151606416 : ℝ) 0.7390851332151606417 ∧ Real.cos x = x := by
   realfp (precision := 128)
 
+/-! ### `sInf` / `sSup` and witnesses at 128
+
+`min_{[0,1]} (x⁴ - x) = -(3/4)·4^(-1/3) = -0.47247039371057743678770…` at `x = 4^(-1/3)`. The lower
+bound is a 128-bit `interval` goal (34 splits, 34 monotonicity steps); the upper bound needs a
+witness within about `6e-11` of the minimiser, found by bisection on the sign of `f'` with
+128-bit evaluations and checked at 128 bits. -/
+theorem quartic_sInf : sInf ((fun x : ℝ => x ^ 4 - x) '' Set.Icc 0 1) ∈
+    Set.Icc (-0.4724703937105774368) (-0.4724703937105774367) := by
+  fail_if_success realfp
+  realfp (precision := 128) (depth := 60)
+
+theorem quartic_witness : ∃ x ∈ Set.Icc (0 : ℝ) 1, x ^ 4 - x ≤ -0.47247039371057743678 := by
+  fail_if_success realfp
+  realfp (precision := 128)
+
 /-! ### Functions without a 128-bit implementation
 
 `arctan`, `atan2`, `tan`, `arcsin`, `arccos` and extension functions (and `log` on arguments

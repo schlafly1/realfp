@@ -138,9 +138,11 @@ theorem p17 (x y : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) (h2 : 0 ≤ y) (h3 : y ≤
   interval (precision := 128)
 
 theorem p18 : ∃ x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp (precision := 128)
+theorem p20 : sInf ((fun x : ℝ => x ^ 2 - x) '' Set.Icc 0 1) ∈ Set.Icc (-0.2500000000000000000001) (-0.2499999999999999999999) := by
+  realfp (precision := 128)
 theorem p19 : Real.exp 1 ≠ 2.71828182845904523536028747135 := by interval (precision := 128)
 
-/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box) and one-variable `root_exists` / `root_unique` so far, not for `integral_bound`; drop it to use precision 64 -/
+/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` bounds and one-variable `root_exists` / `root_unique` so far, not for `integral_bound`; drop it to use precision 64 -/
 #guard_msgs in
 example : (0.7 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp (precision := 128)
 

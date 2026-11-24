@@ -223,6 +223,47 @@ def atomHoldsAt (a : Atom) (q : List ℚ) : Bool :=
 /-- Signed objective for the search: minimise `f` for `f ≤ c`, maximise for `c ≤ f`. -/
 def atomMin (a : Atom) (env : List KI) : BBResult := bnbMin a.f (!a.upper) env 4000 1e-12
 
+/-- The atom's goal predicate on a 128-bit enclosure. -/
+def Atom.goalQ (a : Atom) : Interval128.Dy.DI → Bool :=
+  match a.strict, a.upper with
+  | false, true => Interval128.Dy.gLe a.c | true, true => Interval128.Dy.gLt a.c
+  | false, false => Interval128.Dy.gGe a.c | true, false => Interval128.Dy.gGt a.c
+
+/-- Does the atom hold at `q` with the 128-bit evaluator? -/
+def atomHoldsAtQ (a : Atom) (q : List ℚ) : Bool :=
+  a.goalQ (Interval128.Dy.evalQ (q.map fun r => Interval128.Dy.DI.ofRatI r r) a.f)
+
+/-- One variable at precision 128: a stationary point of the atom's left side near `x₀`, by
+bisection on the sign of the derivative at dyadic points (110 steps from a bracket around `x₀`
+inside `[l, h]`). -/
+def refineQ (a : Atom) (l h : ℚ) (x0 : Float) : Option ℚ := Id.run do
+  let d := a.f.deriv 0
+  let sgn (q : ℚ) : Option Bool :=   -- `some true`: f' > 0
+    let F := Interval128.Dy.evalQ [Interval128.Dy.DI.ofRatI q q] d
+    if Interval128.Dy.gGt 0 F then some true else if Interval128.Dy.gLt 0 F then some false
+    else none
+  let x0q := (floatRat? x0).getD ((l + h) / 2)
+  -- bracket: widen around x0 until the derivative signs differ
+  let mut r : ℚ := (h - l) / 2 ^ 20
+  let mut br : Option (ℚ × ℚ) := none
+  for _ in [0:21] do
+    let lo := max l (x0q - r)
+    let hi := min h (x0q + r)
+    match sgn lo, sgn hi with
+    | some sl, some sh => if sl != sh then br := some (lo, hi); break
+    | _, _ => pure ()
+    r := r * 2
+  let some (lo0, hi0) := br | return none
+  let up := (sgn hi0).getD true
+  let mut lo := lo0
+  let mut hi := hi0
+  for _ in [0:110] do
+    let m := Interval128.Dy.toRat (Interval128.Dy.ofRatDn ((lo + hi) / 2))
+    match sgn m with
+    | some b => if b == up then hi := m else lo := m
+    | none => return some m
+  return some lo
+
 /-! ### Witnesses for `∃ x ∈ S, …` -/
 
 /-- Find a short rational point in the box satisfying every atom. -/
@@ -254,8 +295,43 @@ def findWitness (atoms : Array Atom) (bs : List (ℚ × ℚ)) : Option (List ℚ
     if atoms.all (atomHoldsAt · q) then return some q
   return none
 
+/-- `findWitness` checked with the 128-bit evaluator (plus a 128-bit refinement of a stationary
+point in one variable). -/
+def findWitnessQ (atoms : Array Atom) (bs : List (ℚ × ℚ)) : Option (List ℚ) := Id.run do
+  let env := boxes bs
+  let mid := bs.map fun (l, h) => (l + h) / 2
+  let mut cands : Array (List Float) := #[mid.map qToF]
+  for a in atoms do
+    cands := cands.push (atomMin a env).arg
+  -- short grid points (exact minimisers are often simple numbers)
+  let n := bs.length
+  let grids := if n ≤ 2 then [2, 4, 8, 10, 16, 20] else if n == 3 then [2, 4, 10] else [2]
+  let mut gridPts : Array (List ℚ) := #[]
+  for g in grids do
+    let axes := bs.map fun (l, h) => (List.range (g + 1)).map fun k => l + (h - l) * k / g
+    let pts := axes.foldr (fun ax acc => ax.flatMap fun v => acc.map (v :: ·)) [[]]
+    gridPts := gridPts ++ pts.toArray
+  -- simple coordinate refinement of the first candidate list is unnecessary: the B&B point is
+  -- within the final box of the search
+  for p in cands do
+    for k in [0:18] do
+      let q := (p.zip bs).map fun (x, (l, h)) => roundQ x k l h
+      if atoms.all (atomHoldsAtQ · q) then return some q
+    -- exact float point
+    let q? := (p.zip bs).mapM fun (x, (l, h)) => (floatRat? x).map fun r => max l (min h r)
+    if let some q := q? then
+      if atoms.all (atomHoldsAtQ · q) then return some q
+  for q in gridPts do
+    if atoms.all (atomHoldsAtQ · q) then return some q
+  -- one variable: refine a stationary point of each atom at 128 bits
+  if let [(l, h)] := bs then
+    for a in atoms do
+      if let some q := refineQ a l h ((atomMin a env).arg.headD 0) then
+        if atoms.all (atomHoldsAtQ · [q]) then return some [q]
+  return none
+
 /-- Close a goal made of `∃ x : ℝ`, `∧` and atoms, using the witnesses `qs` in binder order. -/
-partial def closeWith (qs : Array ℚ) (i : Nat) : TacticM Nat := do
+partial def closeWith (qs : Array ℚ) (i : Nat) (prec128 : Bool := false) : TacticM Nat := do
   let goal ← getMainGoal
   let t ← instantiateMVars (← goal.getType)
   match t.getAppFnArgs with
@@ -264,22 +340,28 @@ partial def closeWith (qs : Array ℚ) (i : Nat) : TacticM Nat := do
     let some q := qs[i]? | throwError "realfp: internal (witness count)"
     let qt ← qStx q
     evalTactic (← `(tactic| refine ⟨$qt, ?_⟩))
-    closeWith qs (i + 1)
+    closeWith qs (i + 1) prec128
   | (``And, #[_, _]) =>
     evalTactic (← `(tactic| refine ⟨?_, ?_⟩))
     let gs ← getGoals
     let rest := gs.drop 2
     setGoals [gs[0]!]
-    let i ← closeWith qs i
+    let i ← closeWith qs i prec128
     setGoals [gs[1]!]
-    let i ← closeWith qs i
+    let i ← closeWith qs i prec128
     setGoals rest
     return i
   | _ =>
-    evalTactic (← `(tactic| first
-      | (norm_num; done)
-      | (simp only [Set.mem_Icc]; constructor <;> norm_num; done)
-      | interval))
+    if prec128 then
+      evalTactic (← `(tactic| first
+        | (norm_num; done)
+        | (simp only [Set.mem_Icc]; constructor <;> norm_num; done)
+        | interval (precision := 128)))
+    else
+      evalTactic (← `(tactic| first
+        | (norm_num; done)
+        | (simp only [Set.mem_Icc]; constructor <;> norm_num; done)
+        | interval))
     return i
 
 /-- Peel `∃ x : ℝ` binders and conjunctions; `k` gets the variables and the atoms. -/
@@ -300,7 +382,7 @@ partial def peel {α} (todo : List Expr) (vars : Array Expr) (atoms : Array Expr
     | _ => peel rest vars (atoms.push t) k
 
 /-- Prove `∃ x ∈ S, P x` (inequalities `P`) by a witness. -/
-def proveWitnessCore : TacticM Unit := do
+def proveWitnessCore (prec128 : Bool := false) : TacticM Unit := do
   evalTactic (← `(tactic| try simp only [Prod.exists, Set.mem_prod, and_assoc, exists_prop]))
   let goal ← getMainGoal
   let qs ← goal.withContext do
@@ -341,7 +423,7 @@ def proveWitnessCore : TacticM Unit := do
         | some a => atoms := atoms.push a
         | none => throwError "realfp: unsupported condition {p} in an existential goal \
             (expected inequalities; equations go to `root_exists`)"
-      let some q := findWitness atoms bs |
+      let some q := (if prec128 then findWitnessQ atoms bs else findWitness atoms bs) |
         let msg := if h : 0 < atoms.size then
           let r := atomMin atoms[0] (boxes bs)
           let ext := if atoms[0].upper then r.upper else -r.upper
@@ -351,7 +433,7 @@ def proveWitnessCore : TacticM Unit := do
         throwError "realfp: no witness found{msg}; the condition may fail on the whole box or \
           be too tight"
       return q.toArray
-  let _ ← closeWith qs 0
+  let _ ← closeWith qs 0 prec128
   pure ()
 
 /-! ### Discovery: `∃ m, ∀ x ∈ S, m ≤ f x` -/
@@ -365,7 +447,8 @@ structure BoundGoal where
 
 
 /-- `proveWitnessCore` with the registered functions of the goal. -/
-def proveWitness : TacticM Unit := withRegistered (proveWitnessCore)
+def proveWitness (prec128 : Bool := false) : TacticM Unit :=
+  withRegistered (proveWitnessCore prec128)
 
 /-- Analyse `∀ x, x ∈ S → … → R m (f x)` with the bound variable `m`. -/
 def analyseBound (m : Expr) (body : Expr) : MetaM BoundGoal := do

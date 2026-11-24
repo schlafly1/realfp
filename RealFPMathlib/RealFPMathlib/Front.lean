@@ -88,10 +88,11 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
   let prec128 := rest.any fun o => o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 128
   if prec128 then
     match r with
-    | .conj | .infsup | .interval | .unique | .exists => pure ()
+    | .conj | .infsup | .interval | .unique | .exists | .witness | .discover => pure ()
     | _ => throwError "(precision := 128) is supported only for `interval` goals (bounds \
-        `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box) and one-variable `root_exists` / \
-        `root_unique` so far, not for `{r.name}`; drop it to use precision 64"
+        `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` \
+        bounds and one-variable `root_exists` / `root_unique` so far, not for `{r.name}`; drop it \
+        to use precision 64"
   let rest := if r matches .interval | .unique | .exists then rest else
     rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)
   try
@@ -105,7 +106,8 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
       setGoals ((← getGoals) ++ others)
     | .unique => evalTactic (← `(tactic| root_unique $rest*))
     | .exists => evalTactic (← `(tactic| root_exists $rest*))
-    | .witness => RealFP.Opt.proveWitness
+    | .witness => RealFP.Opt.proveWitness (rest.any fun o => o.raw[1].getId == `precision &&
+        o.raw[3].isNatLit? == some 128)
     | .discover => RealFP.Opt.proveDiscover rest
     | .argmin => RealFP.Opt.proveArg rest
     | .infsup =>

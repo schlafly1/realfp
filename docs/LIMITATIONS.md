@@ -24,8 +24,11 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 
 ## Precision 128 (`(precision := 128)`)
 - Supported at 128: `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`, `f ≠ c`) and
-  one-variable `root_exists` / `root_unique` (sign change; for `∃!` a strict derivative sign).
-  Systems of equations (Krawczyk), optimisation, `integral_bound` and `pos_def` reject it.
+  one-variable `root_exists` / `root_unique` (sign change; for `∃!` a strict derivative sign),
+  `sInf` / `sSup` bounds and witnesses `∃ x ∈ S, f x ≤ c` (128-bit checks; in one variable the
+  witness is refined at 128 bits by bisection on the sign of `f'`). Systems of equations
+  (Krawczyk), argmin/argmax localisation, `#realfp_min` / `#realfp_max` (still binary64
+  estimates), `integral_bound` and `pos_def` reject it or ignore it.
 - `≠` at 128 is plain bisection (no derivative certificates for exclusion).
 - 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
   enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,

@@ -972,9 +972,15 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   `ivt_existsQ` / `ivt_exists_inQ`, continuity from `domOKQ`), `root_unique` by a sign change
   plus a strict sign of `f'` proved by a `DCert` (`derivSignQ`, `unique_oneQ`). Example:
   `∃! x ∈ [1.4142135623730950488, 1.4142135623730950489], x² = 2` (fails at 64).
+* **`sInf` / `sSup` and witnesses at 128**: `realfp (precision := 128)` reduces `sInf`/`sSup`
+  goals as at 64 (`reduceInfSup`); the `∀` bounds go to `interval (precision := 128)`, the
+  existential witnesses are checked with `evalQ` (`RealFP.Opt.findWitnessQ`, `atomHoldsAtQ`) and
+  closed with `interval (precision := 128)`; in one variable `refineQ` bisects on the sign of
+  `f'` at dyadic points (110 steps) to put the witness within about `10⁻³⁰` of a stationary
+  point. Example: `sInf ((x ↦ x⁴ - x) '' [0, 1]) ∈ [-0.4724703937105774368, -…4367]`.
 * Not yet at 128: systems (`root_exists` / `root_unique` with Krawczyk, which needs 128-bit
-  interval matrices), optimisation (`#realfp_min`, `sInf`, witnesses), `integral_bound`,
-  `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
+  interval matrices), argmin/argmax localisation, `#realfp_min` / `#realfp_max` (binary64
+  estimates), `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
   accepted everywhere.
 * When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests
   `(precision := 128)`.
