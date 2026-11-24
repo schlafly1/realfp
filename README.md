@@ -600,6 +600,7 @@ subgoal, the box, the contraction factor, an approximate root) with a suggestion
 | `∃ p, box ∧ F p = 0` (systems) | `root_exists` | Newton (multi-start) finds an approximate root, Krawczyk on a small box around it |
 | `M.PosDef`, `M : Matrix (Fin n) (Fin n) ℝ` with rational entries | `pos_def` | binary64 congruence certificate (Rump/Gershgorin) → `posDef_of_ratMat` |
 | anything containing `∫ x in a..b, f x` with numeral bounds | `integral_bound` | adaptive Taylor quadrature (orders 2–8) |
+| `∃ m, ∀ …`, `sInf`/`sSup`, witnesses, argmin | optimisation (below) | branch-and-bound + multivariate centred forms |
 | `≤ < ≥ > ≠`, `∈ Set.Icc`, `∧`, `∀ x ∈ box` | `interval` | bisection + derivative certificates; `≠` via `f - g < 0 ∨ f - g > 0` boxwise |
 
 Box and bound syntax for root goals: each coordinate needs one numeral lower and one numeral
@@ -642,7 +643,7 @@ injective, so fixed points of `G` are exactly the zeros of `F`. Banach's theorem
 box (`ContractingWith.fixedPoint`) gives existence and uniqueness; no Brouwer theorem is needed.
 
 **Axiom audit.** `RealFPMathlib/AxiomAudit.lean` is part of the default `lake build`: it walks
-every `RealFP.*` theorem (1365 at the time of writing, all examples included) and fails the
+every `RealFP.*` theorem (1418 at the time of writing, all examples included) and fails the
 build if any uses an axiom beyond the standard three (`native_decide` axioms are allowed only in
 `RealFP.Demo.*` / `RealFP.Examples.*`; `sorryAx` never). `RealFPMathlib/scripts/audit_axioms.sh`
 prints the report.
@@ -652,6 +653,39 @@ transcendental systems, PD). Limitations: `∃!` for systems needs Krawczyk to c
 whole given box (no automatic splitting into exclusion + isolation boxes), so wide boxes need
 `∃` or a smaller box (the error message prints an approximate root); boxes are closed with
 numeral bounds; square systems only; `|·|` and atan2 are excluded from root goals.
+
+### Optimisation over boxes (`RealFPMathlib/Opt.lean`, `RealFPMathlib/OptTactic.lean`)
+
+```lean
+example : ∀ x ∈ Set.Icc (0 : ℝ) 1, x ^ 2 - x ≥ -1/4 := by realfp                 -- exact min
+example : ∃ m : ℚ, ∀ x ∈ Set.Icc (-2 : ℝ) 2, ∀ y ∈ Set.Icc (-1 : ℝ) 1,
+    4*x^2 - 2.1*x^4 + x^6/3 + x*y - 4*y^2 + 4*y^4 ≥ m := by realfp              -- discovery
+example : sInf ((fun x : ℝ => x ^ 2 - x) '' Set.Icc 0 1) = -1/4 := by realfp      -- sInf = v
+example : sSup ((fun x : ℝ => x * Real.exp (-x)) '' Set.Icc 0 3) ∈ Set.Icc 0.367879 0.36788 := by realfp
+example : ∃ x ∈ Set.Icc (0 : ℝ) 1, ∀ y ∈ Set.Icc (0 : ℝ) 1, x^2 - x ≤ y^2 - y := by realfp  -- argmin
+#realfp_min (x ∈ Set.Icc (-2:ℝ) 2) (y ∈ Set.Icc (-1:ℝ) 1), 4*x^2 - 2.1*x^4 + x^6/3 + x*y - 4*y^2 + 4*y^4
+```
+
+| Goal shape | Method |
+|---|---|
+| `∀ x ∈ box…, f ≥ c` (`≤ < > ≥`, any number of variables) | bisection + monotonicity + multivariate nested centred forms (`MCert`, checked by `checkM_sound`); polynomials are also tried in Horner form (equality proved by `ring_nf`) |
+| `∃ m : ℚ/ℝ, ∀ x ∈ box…, f ≥ m` (or `≤ M`) | best-first branch-and-bound finds the minimum natively; a rounded `m` slightly below it is proved as above |
+| `∃ x ∈ box…, f ≤ c` (witness; `∧` of inequalities) | rational candidates (B&B minimiser, short grid points) checked at the point |
+| `sInf (f '' S) ≥ / ≤ / = v`, `∈ Set.Icc a b`, `\|sInf … − v\| ≤ ε`, same for `sSup`; `S` an `Icc` or `Icc ×ˢ Icc` | `≥`: `le_csInf` + the ∀ bound; `≤`: a witness; `=`: both (exact `v` needs a point attaining it) |
+| `∃ x ∈ S, ∀ y ∈ S, f x ≤ f y` (argmin/argmax) | `IsCompact.exists_isMinOn` + `fun_prop` continuity |
+| `∃ x ∈ Icc a' b', ∀ y ∈ Icc a b, f x ≤ f y` (1D localisation) | min on the sub-box (compactness) + a value `q` with `f ≤ q` somewhere inside and `f > q` on the rest |
+
+`#realfp_min` / `#realfp_max` print an enclosure of the minimum, the approximate minimiser and two
+statements `realfp` should then prove; they produce no proof. On failure, `realfp` prints the B&B
+estimate and says whether the bound is false (with a point value) or how small the margin is.
+Options `trust`, `depth`, `maxBoxes`, `order` apply. Examples:
+`RealFPMathlib/Examples/Optimization.lean` (Rosenbrock, camel, Himmelblau, 3 variables, sin/exp;
+builds in ~100 s, kernel). Comparison with LeanCert: `leancert-bench/COMPARISON.md`.
+Limitations: kernel cost ~0.1 s per box for a degree-6 polynomial, much more for multivariate
+`sin`/`cos`/`exp` (use `trust := native` there); first-order (centred) forms only, no
+Hessian/second-order or Taylor-model bounds; boxes only (no constraints); `sInf = v` needs `v`
+attained at a rational point; localisation is one-dimensional; argmin needs `fun_prop` to prove
+continuity.
 
 ## `interval` tactic (Mathlib layer, `RealFPMathlib/IntervalTactic.lean`)
 
