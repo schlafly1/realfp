@@ -23,6 +23,10 @@ Each directed scalar operation (`+`, `-`, `*`, `/`, `sqrt`, down and up) has:
 Interval operations (`Interval64.add`, `mul`, …) are defined in Lean on top
 of those scalars, so they inherit both the spec and the fast path.
 
+**Proving real inequalities, integral bounds, roots and positive definiteness in Mathlib:**
+see the front-door tactic [`realfp`](#realfp-one-tactic-for-kernel-checked-real-numerics-mathlib-layer)
+(kernel-checked by default, standard axioms only).
+
 ## Kernels
 
 - **AVX-512 embedded rounding** (does not change MXCSR; x86_64 backend).
@@ -567,6 +571,87 @@ Kernel time per operation (`decide +kernel`, x86-64, Lean 4.36):
 | interval `+` / `*` / `inv` / `sqrt` / `square` | not measured (≥ 2 spec ops each) | 0.6 / 1.7 / 1.1 / 0.8 / 0.5 ms |
 | `ofRat` constant | 5–6 ms | 5–6 ms (Rat-based, cached per check) |
 | `exp` / `log` / `sin` / `cos` | 48 ms / 98 ms / 0.5 s / 0.37 s | same (spec is rational Ziv; gap) |
+
+## `realfp`: one tactic for kernel-checked real numerics (Mathlib layer)
+
+```lean
+import RealFPMathlib.Front
+
+example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by realfp          -- interval
+example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.exp x ≠ 2 * x := by realfp               -- exclusion
+example : (0.74 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp          -- integral
+example : ∃! x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp                        -- unique root
+example : ∃ x ∈ Set.Icc (0 : ℝ) 1, Real.cos x = x := by realfp                    -- existence
+example : ∃! p : ℝ × ℝ, p.1 ∈ Set.Icc (0.9 : ℝ) 1.1 ∧ p.2 ∈ Set.Icc (0.9 : ℝ) 1.1 ∧
+    p.1 ^ 2 + p.2 = 2 ∧ p.1 + p.2 ^ 2 = 2 := by realfp                            -- Krawczyk
+example : (!![2, 1; 1, 2] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by realfp         -- PD
+example : … := by realfp (trust := native) (depth := 30)
+```
+
+`realfp` (`RealFPMathlib/Front.lean`) looks at the goal and calls one backend; each backend is
+also available on its own. Errors name the backend, the trust mode and what failed (the
+subgoal, the box, the contraction factor, an approximate root) with a suggestion.
+
+| Goal shape | Backend | Method |
+|---|---|---|
+| `∃! x, x ∈ Icc a b ∧ f x = 0`, `∃! x ∈ Icc a b, f x = g x` | `root_unique` | sign change at the ends (IVT) + derivative enclosure of one sign (strict monotonicity) |
+| `∃! p : ℝ×ℝ / ℝ×ℝ×ℝ / Fin n → ℝ, box ∧ F p = 0` (n equations) | `root_unique` | Krawczyk operator on the whole box: inclusion + contraction ⇒ Banach fixed point ⇒ unique zero |
+| `∃ x ∈ Icc a b, f x = 0` | `root_exists` | sign change on a 512-point grid (IVT on the sub-interval) |
+| `∃ p, box ∧ F p = 0` (systems) | `root_exists` | Newton (multi-start) finds an approximate root, Krawczyk on a small box around it |
+| `M.PosDef`, `M : Matrix (Fin n) (Fin n) ℝ` with rational entries | `pos_def` | binary64 congruence certificate (Rump/Gershgorin) → `posDef_of_ratMat` |
+| anything containing `∫ x in a..b, f x` with numeral bounds | `integral_bound` | adaptive Taylor quadrature (orders 2–8) |
+| `≤ < ≥ > ≠`, `∈ Set.Icc`, `∧`, `∀ x ∈ box` | `interval` | bisection + derivative certificates; `≠` via `f - g < 0 ∨ f - g > 0` boxwise |
+
+Box and bound syntax for root goals: each coordinate needs one numeral lower and one numeral
+upper bound (`x ∈ Set.Icc a b`, or `a ≤ x` and `x ≤ b`, any order); equations are `f = g`
+(moved to `f - g = 0`); the number of equations must equal the number of unknowns.
+
+**Supported operations** (all backends share the reflected language `IExpr`):
+
+| Operation | `interval` / `≠` | integrals, roots (need `domOK`: derivatives exist on the box) |
+|---|---|---|
+| `+ - *`, numerals (`0.1`, `1/3`, anything `norm_num` evaluates to ℚ) | ✓ | ✓ |
+| `/`, `⁻¹` | ✓ | ✓ (denominator enclosure must exclude 0) |
+| `^ n` (numeral `n : ℕ`) | ✓ | ✓ |
+| `Real.sqrt`, `Real.log`, `Real.logb 2`, `Real.logb 10` | ✓ | ✓ (argument enclosure must be positive) |
+| `Real.exp`, `Real.sin`, `Real.cos`, `Real.arctan`, `Real.sinh`, `Real.cosh`, `Real.tanh`, `Real.pi` | ✓ | ✓ |
+| `Real.tan`, `Real.arcsin`, `Real.arccos` | ✓ | ✓ (strictly inside their domains) |
+| `abs` (`\|x\|`), `Complex.arg (↑x + ↑y * I)` (atan2) | ✓ | ✗ (not differentiable everywhere) |
+| variables | any number | integrals: 1; roots: `ℝ`, `ℝ×ℝ`, `ℝ×ℝ×ℝ`, `Fin n → ℝ` |
+
+**Options** (any order): `(trust := kernel|native)`, `(depth := n)`, `(maxBoxes := n)`,
+`(order := n)`, `(deriv := false)`, `(chunk := n)`. `pos_def` and `integral_bound` take only
+`trust`.
+
+**Trust.** `trust := kernel` is the default: every certificate check is closed by
+`decide +kernel`, the Lean kernel re-runs the (Nat/Int) evaluator, and the theorem depends only
+on `propext`, `Classical.choice`, `Quot.sound`. `trust := native` (or
+`set_option realfp.native true`) closes the same checks with `native_decide` — faster on very
+large certificates, but `#print axioms` then shows a `…native_decide.ax…` axiom and the proof
+trusts the Lean compiler. The search (bisection, Newton, Krawczyk preconditioners, PD
+congruences) always runs natively and is untrusted; only its output is checked.
+
+**Soundness of the root tactics** (`RealFPMathlib/Roots.lean`, `RealFPMathlib/Krawczyk.lean`,
+no `sorry`): `RealFP.Roots.prove_ne` (exclusion), `ivt_exists`/`ivt_exists_in` (IVT),
+`unique_one` (IVT + strictly monotone from the derivative certificate), `kraw_exists`,
+`kraw_existsUnique`, `kraw_exists_in` (Krawczyk). The Krawczyk check verifies, in interval
+arithmetic with the kernel evaluator, that `G(x) = x − Y F(x)` maps the box into itself
+(`m − Y F(m) + (I − Y J(X))(X − m) ⊆ X`, with `J(X)` an enclosure of the Jacobian over the box)
+and that `‖I − Y J(X)‖∞ ≤ q < 1`; a second matrix `Z ≈ J(m)` with `‖I − Z Y‖∞ ≤ q` shows `Y` is
+injective, so fixed points of `G` are exactly the zeros of `F`. Banach's theorem on the closed
+box (`ContractingWith.fixedPoint`) gives existence and uniqueness; no Brouwer theorem is needed.
+
+**Axiom audit.** `RealFPMathlib/AxiomAudit.lean` is part of the default `lake build`: it walks
+every `RealFP.*` theorem (1365 at the time of writing, all examples included) and fails the
+build if any uses an axiom beyond the standard three (`native_decide` axioms are allowed only in
+`RealFP.Demo.*` / `RealFP.Examples.*`; `sorryAx` never). `RealFPMathlib/scripts/audit_axioms.sh`
+prints the report.
+
+Examples: `RealFPMathlib/RealFPMathlib/Examples/Roots.lean` (roots, exclusion, 2×2/3×3 and
+transcendental systems, PD). Limitations: `∃!` for systems needs Krawczyk to contract on the
+whole given box (no automatic splitting into exclusion + isolation boxes), so wide boxes need
+`∃` or a smaller box (the error message prints an approximate root); boxes are closed with
+numeral bounds; square systems only; `|·|` and atan2 are excluded from root goals.
 
 ## `interval` tactic (Mathlib layer, `RealFPMathlib/IntervalTactic.lean`)
 
