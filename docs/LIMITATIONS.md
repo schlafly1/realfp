@@ -25,15 +25,16 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 ## Precision 128 (`(precision := 128)`)
 - Only `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`) are supported; `≠`, roots
   (`root_exists`, `root_unique`), optimisation, `integral_bound` and `pos_def` reject it.
-- Double-double only for `+ - * / ⁻¹ √ |·| ^n`, rational constants and `π` (20 digits, about
-  `1e-20`). `exp`, `log`, `sin`, `cos` and all other functions, including registered ones, are
+- 128-bit only for `+ - * / ⁻¹ √ |·| ^n`, rational constants and `π` (Mathlib-proved 40-digit
+  bounds, enclosure width about `1e-38` after rounding). `exp`, `log`, `sin`, `cos` and all other functions, including registered ones, are
   evaluated with Interval64 precision (about `1e-16` relative).
 - Plain bisection only: no monotonicity, centred-form or Taylor certificates, so dependency
   (e.g. `x * c - x` on a wide box) is not reduced, and tight bounds on wide boxes need many
   boxes.
-- Kernel cost: each double-double operation takes roughly 0.1–0.3 s in `decide +kernel`
-  (there is no `Nat`-level fast path like Interval64's `KF`/`KI` yet), so a one-variable
-  bound with about 120 boxes takes about 30 s; `trust := native` is much faster.
+- Kernel cost: about 10–30 ms per box with the dyadic `Nat`/`Int` path (a one-variable bound
+  with 60–100 boxes takes about 1 s). Boxes are still plain bisection, so wide boxes with tight
+  margins need many of them. The double-double `Interval128` type and its proved checker
+  (`Interval128.Refl`) remain in the library, but the tactic no longer uses them.
 
 ## Optimization tactics
 - First-order bounds only, over boxes only; localisation (argmin) is 1D only.

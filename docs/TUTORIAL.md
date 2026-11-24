@@ -242,7 +242,7 @@ Options go after the tactic, in any order:
 | `(order := n)` | 3 | how many derivatives deep the monotonicity proofs may go |
 | `(deriv := false)` | on | plain bisection, no derivative certificates |
 | `(chunk := n)` | 32 | boxes per kernel `decide` call; smaller keeps kernel memory bounded |
-| `(precision := 64 \| 128)` | 64 | endpoint precision: Interval64 or Interval128 (double-double, §5) |
+| `(precision := 64 \| 128)` | 64 | endpoint precision: Interval64 or 128-bit dyadic endpoints (§5) |
 
 ```lean
 example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by
@@ -357,7 +357,8 @@ symbolic (`IExpr.diff`) and proved correct against Mathlib's `HasDerivAt`. Trace
 
 Interval64 endpoints are binary64 numbers, so no bound can be tighter than about `1e-16`
 relative. `(precision := 128)` makes `interval` (and `realfp` on interval goals) evaluate
-with `Interval128`, whose endpoints are double-doubles (about `1e-32` relative):
+with 128-bit dyadic endpoints `m · 2^e` (about `3e-39` relative, rounded outward after
+every operation):
 
 ```lean
 example : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by realfp (precision := 128)
@@ -367,12 +368,13 @@ example : Real.pi < 3.1415926535897932385 := by
   interval (precision := 128)
 ```
 
-What is double-double: `+ - * / ⁻¹ √ |·| ^n`, rational constants, and `π` (Mathlib's
-20-digit bounds). Every other function (`exp`, `log`, `sin`, `cos`, …, registered
+What is computed at 128 bits: `+ - * / ⁻¹ √ |·| ^n`, rational constants, and `π` (40-digit
+bounds proved with Mathlib's `pi_lower_bound` / `pi_upper_bound`, `RealFP.pi_gt_d40` /
+`pi_lt_d40`), so for example `Real.pi < 3.14159265358979323846264338327951` is provable. Every other function (`exp`, `log`, `sin`, `cos`, …, registered
 functions) is accepted but evaluated with Interval64 precision, and a failure message
-says so. The search is plain bisection at rational midpoints (no derivative
-certificates yet), and each kernel step is slower than at precision 64, so use
-it for tight bounds on small boxes. The same `trust` options apply. Other backends
+says so. The search is plain bisection at dyadic midpoints (no derivative
+certificates yet); the kernel check costs about 10–30 ms per box, so it is
+best for tight bounds on small boxes. The same `trust` options apply. Other backends
 (roots, optimisation, integrals, `≠`) reject `(precision := 128)` for now. More
 examples: `RealFPMathlib/Examples/Precision128.lean`.
 

@@ -676,9 +676,9 @@ upper bound (`x ∈ Set.Icc a b`, or `a ≤ x` and `x ≤ b`, any order); equati
 
 **Options** (any order): `(trust := kernel|native)`, `(depth := n)`, `(maxBoxes := n)`,
 `(order := n)`, `(deriv := false)`, `(chunk := n)` for `interval`, the root backends and
-optimisation. `(precision := 64|128)` (default 64) selects Interval64 or Interval128
-(double-double) endpoints; 128 is implemented for `interval` goals only so far (see
-[Precision 128](#precision-128-in-interval-interval128reflectlean-realfpmathlibi128soundlean)),
+optimisation. `(precision := 64|128)` (default 64) selects Interval64 or 128-bit dyadic
+endpoints; 128 is implemented for `interval` goals only so far (see
+[Precision 128](#precision-128-in-interval-interval128dyadiclean-realfpmathlibi128dyadiclean)),
 and other backends reject it. `integral_bound` takes `trust`, `(order := n)` (fix the Taylor order: 2, 4, 6 or
 8) and `(maxBoxes := n)` (maximum cells, default 512). `pos_def` takes only `trust`. The same
 options work through `realfp`; an option the chosen backend cannot use is an error
@@ -875,47 +875,55 @@ example (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x^3/6 ≤ Real.sin x := by
   Per test 2.5–3.7 s including ~2 s Lean startup (before: up to 12.6 s).
 * Tests: `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`.
 
-### Precision 128 in `interval` (`Interval128/Reflect.lean`, `RealFPMathlib/I128Sound.lean`)
+### Precision 128 in `interval` (`Interval128/Dyadic.lean`, `RealFPMathlib/I128Dyadic.lean`)
 
 `interval (precision := 128)` (also `realfp (precision := 128)` on interval goals) evaluates
-the reified `IExpr` with `Interval128` endpoints instead of Interval64:
+the reified `IExpr` with 128-bit dyadic endpoints instead of Interval64:
 
 ```lean
 example : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by interval (precision := 128)
-example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-18 := by
-  interval (precision := 128) (depth := 70)
+example : Real.pi < 3.14159265358979323846264338327951 := by interval (precision := 128)
+example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
+  interval (precision := 128) (depth := 110)
 ```
 
-* **Evaluator** `Interval128.Refl.evalD` (core, Mathlib-free). Double-double: `+ - *`
-  (`Interval128.add/sub/mul`), `/` and `⁻¹` (`Interval128.div` when the divisor is finite and
-  excludes 0, else the whole line, since `x / 0 = 0` in `ℝ`), `√` (double-double when the
-  argument is finite and `≥ 0`), `|·|` (exact when the argument has a sign), `^ n` (repeated
-  multiplication, even powers from `|X|`), rational constants (`Interval128.ofRat`, about
-  `2⁻¹⁰⁶`), `π` (`[3.14159265358979323846, 3.14159265358979323847]`, Mathlib's `pi_gt_d20` /
-  `pi_lt_d20`). **Everything else** (`exp`, `log`, `sin`, `cos`, `atan`, `atan2`,
-  `sinh`/`cosh`/`tanh`, `logb`, `tan`, `arcsin`, `arccos`, registered functions) goes through
-  `lift1`/`lift2`: the outward binary64 hull of the argument, the Interval64 kernel evaluator
-  `evalK`, and an exact embedding back. Those results are only as tight as Interval64; the
-  failure message lists the functions that were lifted.
+* **Numbers** (`Interval128/Dyadic.lean`, namespace `Interval128.Dy`, core, Mathlib-free).
+  `Dy = ⟨m e : Int⟩` is `m · 2^e`; `rdn` / `rup` round to `prec = 128` significant bits
+  (floor / ceiling division by a power of two), `addX` / `mulX` are exact, `ofRatDn` /
+  `ofRatUp` round a rational, `invDnPos` / `invUpPos` bound `1 / (m · 2^e)`, `sqrtDn` /
+  `sqrtUp` bound `√(m · 2^e)` from a Newton guess that the definition itself checks
+  (`r * r ≤ n`, `n ≤ r * r`). Everything is `Nat`/`Int` arithmetic, which the kernel runs
+  with GMP, and the same definitions are compiled for the search and `native_decide`.
+* **Intervals** `DI = ⟨lo hi : Option Dy⟩` (`none` = unbounded). `evalQ`: `+ - *` (corner
+  products), `/` and `⁻¹` (when the divisor's endpoints have one strict sign, else the whole
+  line), `√`, `|·|`, `^ n` (even powers from `|X|`), rational constants, `π` from
+  `[3.1415926535897932384626433832795028841971, …972]` (`RealFP.pi_gt_d40` / `pi_lt_d40` in
+  `RealFPMathlib/PiBounds.lean`: Mathlib's `pi_lower_bound` / `pi_upper_bound` with 70 square
+  roots, witnesses from `scripts/pigen.py 40 70`, standard axioms). **Everything else** (`exp`,
+  `log`, `sin`, `cos`, `atan`, `atan2`, hyperbolic, `logb`, `tan`, `arcsin`, `arccos`,
+  registered functions) goes through `lift1` / `lift2`: `KI.ofRatInterval` of the endpoints,
+  the Interval64 kernel evaluator `evalK`, and the exact rational value of the result bits
+  (`decLo` / `decHi`). Those results are only as tight as Interval64; the failure message
+  lists them.
 * **Goal predicates** `gLe c` / `gLt c` / `gGe c` / `gGt c` compare the exact rational value of
-  the double-double endpoint (`ddRat?`) with the rational bound `c`.
-* **Certificates** `Interval128.Refl.Cert` are bisection trees with **rational** split points
-  (`leftAt X q` has upper endpoint `ddOfRatUp q`, `rightAt X q` lower endpoint
-  `ddOfRatDown q`), so boxes can be narrower than a binary64 ulp. `checkD` walks them; the
-  search (`Interval128.Refl.search`, compiled, untrusted) splits the widest variable at its
-  exact midpoint. There are no derivative or centred-form certificates at 128 yet.
-* **Soundness** (`RealFPMathlib/I128Sound.lean`, no `sorry`, standard axioms):
-  `RealFP.I128.evalD_sound` (from the existing Interval128 enclosure theorems `mem_add`,
-  `mem_sub`, `mem_mul`, `mem_div`, `mem_sqrt`, `mem_neg`, `mem_ofRat` and, for lifted
-  functions, `RealFP.eval_sound` plus `evalK_toI`), `checkD_sound`, `prove_le` / `prove_lt` /
-  `prove_ge` / `prove_gt`.
-* **Checking.** `trust := kernel` closes `checkD … = true` with `decide +kernel` (the kernel runs
-  the Interval128 specification, `Float` operations through their logical model);
-  `trust := native` uses `native_decide` (C kernels). Proofs are chunked like the 64-bit path
-  (`chunk` boxes per kernel call). Kernel cost: roughly 0.1–0.3 s per double-double operation
-  with constants re-rounded on every box, so a constant bound takes well under a second and a
-  one-variable bound with about 120 boxes about 30 s
-  (`RealFPMathlib/Examples/Precision128.lean`).
+  an endpoint (`toRat`) with `c`.
+* **Certificates** `Interval128.Dy.Cert`: bisection trees whose split points are dyadics (the
+  rounded midpoint, strictly inside the box). The tactic emits a split point as
+  `Interval128.Dy.ofLimbs neg limbs e` with base-`2^62` limbs: the kernel is much slower on
+  terms that contain `Nat` literals of `2^63` or more (60 boxes: about 40 s with plain
+  literals, under 1 s with limbs). `checkQ` walks the tree; `search` (compiled, untrusted)
+  splits the widest variable. No derivative or centred-form certificates at 128 yet.
+* **Soundness** (`RealFPMathlib/I128Dyadic.lean`, namespace `RealFP.I128Q`, no `sorry`,
+  standard axioms): `val d = m · 2^e`, `val_rdn` / `val_rup` / `val_ofRatDn` / `val_ofRatUp` /
+  `val_invDnPos` / `val_sqrtDn` …, `mem_add` / `mem_mul` / `mem_inv` / `mem_sqrt` /
+  `mem_abs` / `mem_pow` / `mem_pi` / `mem_lift1` / `mem_lift2`, `evalQ_sound`,
+  `checkQ_sound`, `checkQ_split_of`, `prove_le` / `prove_lt` / `prove_ge` / `prove_gt`.
+* **Checking.** `trust := kernel` closes `checkQ … = true` with `decide +kernel`, `chunk`
+  boxes per call; `trust := native` uses `native_decide`. Kernel cost is about 10–30 ms per
+  box (`RealFPMathlib/Examples/Precision128.lean` has the timings; before this path, with the
+  double-double `Float` specification, a box cost 0.1–0.3 s per operation).
+* The double-double path (`Interval128.Refl.checkD`, `RealFPMathlib/I128Sound.lean`) is still
+  in the library and proved, but the tactic no longer uses it.
 * Not yet at 128: `≠` goals, `root_exists` / `root_unique`, optimisation (`#realfp_min`,
   `sInf`, witnesses), `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is
   an error; `(precision := 64)` is accepted everywhere.
@@ -1355,7 +1363,7 @@ For larger instances, the same checks can run compiled through `native_decide`. 
 ## Interval128: double-double intervals (`Interval128/`, `RealFPMathlib/I128*.lean`)
 
 The tactics use it through `(precision := 128)`; see
-[Precision 128 in `interval`](#precision-128-in-interval-interval128reflectlean-realfpmathlibi128soundlean).
+[Precision 128 in `interval`](#precision-128-in-interval-interval128dyadiclean-realfpmathlibi128dyadiclean).
 
 `Interval128` has endpoints that are double-doubles: `[lh + ll, uh + ul]`,
 about 106 bits (relative width ≈ 2^-104 on point inputs). It uses the same
