@@ -206,6 +206,40 @@ theorem log_box_30 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1 / 2) :
   fail_if_success interval
   interval (precision := 128)
 
+/-! ### `≠` and roots at 128
+
+`≠` goals use bisection until every box excludes `0`; `root_exists` / `root_unique` in one
+variable use a sign change at the endpoints (intermediate value theorem) and, for `∃!`, a strict
+derivative sign (`RealFPMathlib/I128Roots.lean`). Boxes narrower than binary64 resolution. -/
+
+/-- `√2 - 1.4142135623730950488016887242097 ≈ -1.9e-33`. -/
+theorem sqrt2_ne : Real.sqrt 2 ≠ 1.4142135623730950488016887242097 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-- `π` is about `5e-30` below the box, so `sin x ≈ -5e-30 ≠ 0` on it. -/
+theorem sin_ne (x : ℝ) (h0 : 3.1415926535897932384626433833 ≤ x)
+    (h1 : x ≤ 3.1415926535897932384626433834) : Real.sin x ≠ 0 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+/-- `√2 = 1.41421356237309504880168…` in a box of width `10⁻¹⁹`. -/
+theorem sqrt2_unique :
+    ∃! x : ℝ, x ∈ Set.Icc (1.4142135623730950488 : ℝ) 1.4142135623730950489 ∧ x ^ 2 = 2 := by
+  fail_if_success root_unique
+  root_unique (precision := 128)
+
+/-- `log 3 = 1.098612288668109691395245…` in a box of width `10⁻²³`. -/
+theorem log3_exists :
+    ∃ x : ℝ, x ∈ Set.Icc (1.09861228866810969139524 : ℝ) 1.09861228866810969139525 ∧
+      Real.exp x = 3 := by
+  realfp (precision := 128)
+
+/-- The Dottie number `0.73908513321516064165…`, width `10⁻¹⁹`. -/
+theorem dottie_unique :
+    ∃! x : ℝ, x ∈ Set.Icc (0.7390851332151606416 : ℝ) 0.7390851332151606417 ∧ Real.cos x = x := by
+  realfp (precision := 128)
+
 /-! ### Functions without a 128-bit implementation
 
 `arctan`, `atan2`, `tan`, `arcsin`, `arccos` and extension functions (and `log` on arguments

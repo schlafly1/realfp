@@ -385,8 +385,9 @@ example : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
 evaluated with Interval64 precision, and a failure message says so. The search uses
 bisection at dyadic midpoints, monotonicity and centred forms (as at precision 64, one variable
 at a time); the kernel check costs about 10–30 ms per box for arithmetic and 0.2–0.7 s per
-elementary-function evaluation. The same `trust` options apply. Other backends
-(roots, optimisation, integrals, `≠`) reject `(precision := 128)` for now. More
+elementary-function evaluation. The same `trust` options apply. `≠` goals and one-variable `root_exists` /
+`root_unique` also accept `(precision := 128)`; systems, optimisation and integrals reject it
+for now. More
 examples: `RealFPMathlib/Examples/Precision128.lean`.
 
 ### `integral_bound`: definite integrals

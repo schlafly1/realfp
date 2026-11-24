@@ -137,9 +137,12 @@ theorem p17 (x y : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) (h2 : 0 ≤ y) (h3 : y ≤
     x * y - x - y ≤ 1e-30 := by
   interval (precision := 128)
 
-/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b` over a box) so far, not for `root_exists`; drop it to use precision 64 -/
+theorem p18 : ∃ x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp (precision := 128)
+theorem p19 : Real.exp 1 ≠ 2.71828182845904523536028747135 := by interval (precision := 128)
+
+/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box) and one-variable `root_exists` / `root_unique` so far, not for `integral_bound`; drop it to use precision 64 -/
 #guard_msgs in
-example : ∃ x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp (precision := 128)
+example : (0.7 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp (precision := 128)
 
 /-- error: interval: (precision := _) must be 64 (default, Interval64) or 128 (128-bit dyadic endpoints) -/
 #guard_msgs in

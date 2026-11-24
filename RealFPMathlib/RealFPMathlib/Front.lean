@@ -88,11 +88,11 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
   let prec128 := rest.any fun o => o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 128
   if prec128 then
     match r with
-    | .conj | .infsup | .interval => pure ()
+    | .conj | .infsup | .interval | .unique | .exists => pure ()
     | _ => throwError "(precision := 128) is supported only for `interval` goals (bounds \
-        `f ≤ c`, `f < c`, `f ∈ Icc a b` over a box) so far, not for `{r.name}`; drop it to use \
-        precision 64"
-  let rest := if r matches .interval then rest else
+        `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box) and one-variable `root_exists` / \
+        `root_unique` so far, not for `{r.name}`; drop it to use precision 64"
+  let rest := if r matches .interval | .unique | .exists then rest else
     rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)
   try
     match r with

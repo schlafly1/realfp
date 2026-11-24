@@ -23,7 +23,7 @@ How it works:
 -/
 import RealFPMathlib.IntervalSound
 import RealFPMathlib.I128Sound
-import RealFPMathlib.I128Deriv
+import RealFPMathlib.I128Roots
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.Opt
 import RealFPMathlib.Roots
@@ -1144,9 +1144,6 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
 /-- Prove `lhs ≠ rhs` (exclusion of zeros of `lhs - rhs` on the box) by bisection until every
 box excludes `0`. -/
 def proveNe (cfg : Cfg) (lhs rhs : Expr) : TacticM Unit := do
-  if cfg.precision == 128 then
-    throwError "interval: `≠` goals are not supported at (precision := 128) yet; use the default \
-      precision 64"
   let goal ← getMainGoal
   let f ← goal.withContext do
     if let some q ← ratOf? rhs then
@@ -1159,6 +1156,35 @@ def proveNe (cfg : Cfg) (lhs rhs : Expr) : TacticM Unit := do
   let vars ← collectVars f
   let e ← reify vars f
   let bs ← vars.mapM (fun v => (findBounds v : MetaM (ℚ × ℚ)))
+  if cfg.precision == 128 then
+    let env := Interval128.Dy.boxes bs.toList
+    let (cert?, evals) := (Interval128.Dy.search e Interval128.Dy.nzQ cfg.depth
+      (2 * cfg.maxBoxes) env).run 0
+    let some cert := cert? |
+      throwError "interval (precision := 128): could not show {f} ≠ 0: no bisection certificate \
+        within depth {cfg.depth} / {cfg.maxBoxes} boxes ({evals} evaluations); enclosure on the \
+        whole box: {(Interval128.Dy.evalQ env e).toString}"
+    trace[interval] "≠ 0 at precision 128: {cert.leaves} boxes, {evals} native evaluations"
+    let eE := iexprToExpr e
+    let bsE := toExpr bs.toList
+    let xsE ← mkListLit (mkConst ``Real) vars.toList
+    let hM ← proveCheck128 cfg.chunk eE (mkConst ``Interval128.Dy.nzQ) cert
+      (mkApp (mkConst ``Interval128.Dy.boxes) bsE)
+    let saved ← getGoals
+    let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
+    setGoals [hxsM.mvarId!]
+    inBoxesTac
+    setGoals saved
+    let pf := mkAppN (← mkC ``RealFP.I128Q.prove_neQ) #[eE, bsE, certQToExpr cert, hM, xsE, hxsM]
+    let goal ← getMainGoal
+    let ha ← mkFreshExprMVar (← mkEq f (mkApp2 (← mkC ``IExpr.denote) xsE eE))
+    goal.assign (mkAppN (mkConst ``close_ne) #[f, mkApp2 (← mkC ``IExpr.denote) xsE eE, pf, ha])
+    setGoals [ha.mvarId!]
+    denoteSimp
+    unless (← getGoals).isEmpty do
+      throwError "interval: could not match the goal with its reified form"
+    setGoals saved.tail
+    return
   let env := boxes bs.toList
   let (cert?, evals) := (search e RealFP.Roots.gNe (2 * cfg.maxBoxes) cfg.depth env).run 0
   let some cert := cert? |

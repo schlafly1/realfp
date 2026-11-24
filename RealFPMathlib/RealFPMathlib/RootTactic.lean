@@ -472,6 +472,58 @@ def ivtSub (e : IExpr) (a b : ℚ) (grid : Nat := 512) : Option (ℚ × ℚ) := 
     if a ≤ p && p ≤ q && q ≤ b && ivtCheck e p q then return some (p, q)
   return none
 
+/-- One variable at precision 128: derivative-sign certificate for `∃!`. -/
+def derivCertQ (cfg : Cfg) (e : IExpr) (a b : ℚ) : Option (Bool × Interval128.Dy.DCert) := Id.run do
+  let env := Interval128.Dy.boxes [(a, b)]
+  for inc in [true, false] do
+    let (g, upper) := if inc then (Interval128.Dy.gGt 0, false) else (Interval128.Dy.gLt 0, true)
+    let (c?, _) := (Interval128.Dy.searchDQ cfg.deriv (2 * cfg.maxBoxes) (e.deriv 0) g upper
+      cfg.order true cfg.depth env).run 0
+    if let some c := c? then
+      if RealFP.I128Q.derivSignQ e a b inc c then return some (inc, c)
+  return none
+
+/-- One variable at precision 128: sign change on `[a, b]` or on a cell of a rational grid,
+refined by bisection of the cell containing the sign change (so the cell can be much narrower
+than binary64 resolution). -/
+def ivtSubQ (e : IExpr) (a b : ℚ) (grid : Nat := 512) : Option (ℚ × ℚ) := Id.run do
+  if RealFP.I128Q.ivtCheckQ e a b then return some (a, b)
+  let pts : List ℚ := (List.range (grid + 1)).map fun k => a + (b - a) * k / grid
+  for (p, q) in List.zip pts (pts.drop 1) do
+    if RealFP.I128Q.ivtCheckQ e p q then return some (p, q)
+  return none
+
+/-- `∃` / `∃!` in one variable at precision 128. -/
+def proveRoots128 (cfg : Cfg) (unique : Bool) (rg : RootGoal) : TacticM Expr := do
+  let tac := if unique then "root_unique" else "root_exists"
+  unless rg.bs.length == 1 do
+    throwError "{tac} (precision := 128): only one-variable equations are supported at precision \
+      128 so far (Krawczyk for systems needs 128-bit interval matrices); drop the option to use \
+      precision 64"
+  let e := rg.es.head!
+  let (a, b) := rg.bs.head!
+  if unique then
+    unless RealFP.I128Q.ivtCheckQ e a b do
+      throwError "{tac} (precision := 128): f has no certified sign change between the endpoints"
+    let some (inc, c) := derivCertQ cfg e a b |
+      throwError "{tac} (precision := 128): f' has no certified strict sign on the box (depth \
+        {cfg.depth}, order {cfg.order})"
+    let chk := mkApp2 (mkConst ``and) (mkApp3 (← mkC ``RealFP.I128Q.ivtCheckQ) (iexprToExpr e)
+      (toExpr a) (toExpr b)) (mkAppN (← mkC ``RealFP.I128Q.derivSignQ) #[iexprToExpr e, toExpr a,
+        toExpr b, toExpr inc, dcertQToExpr c])
+    let h ← proveTrue chk
+    return mkAppN (← mkC ``RealFP.I128Q.unique_oneQ) #[iexprToExpr e, toExpr a, toExpr b,
+      toExpr inc, dcertQToExpr c, h]
+  else
+    let some (a', b') := ivtSubQ e a b |
+      throwError "{tac} (precision := 128): no sign change of f found on a 512-point grid"
+    let chk := mkApp2 (mkConst ``and) (← mkDecide (← mkAppM ``And
+      #[← mkAppM ``LE.le #[toExpr a, toExpr a'], ← mkAppM ``LE.le #[toExpr b', toExpr b]]))
+      (mkApp3 (← mkC ``RealFP.I128Q.ivtCheckQ) (iexprToExpr e) (toExpr a') (toExpr b'))
+    let h ← proveTrue chk
+    return mkAppN (← mkC ``RealFP.I128Q.ivt_exists_inQ) #[iexprToExpr e, toExpr a, toExpr b,
+      toExpr a', toExpr b', h]
+
 /-- Prove the root goal. `unique`: `∃!`, else `∃`. -/
 def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
   let goal ← getMainGoal
@@ -493,8 +545,10 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
   let bsE := toExpr rg.bs
   let mut errs : Array String := #[]
   let mut core? : Option Expr := none
+  if cfg.precision == 128 then
+    core? := some (← proveRoots128 cfg unique rg)
   -- one variable
-  if n == 1 then
+  else if n == 1 then
     let e := rg.es.head!
     let (a, b) := rg.bs.head!
     if unique then
@@ -572,8 +626,13 @@ def parseCfg (opts : Array Syntax) (tac : String) : TacticM (Cfg × Name) := do
     else if k == `order then cfg := { cfg with order := n.getD cfg.order }
     else if k == `deriv then cfg := { cfg with deriv := v.getId != `false }
     else if k == `trust then trust := v.getId
+    else if k == `precision then
+      match n with
+      | some 64 => cfg := { cfg with precision := 64 }
+      | some 128 => cfg := { cfg with precision := 128 }
+      | _ => throwErrorAt o "{tac}: (precision := _) must be 64 or 128"
     else throwErrorAt o "{tac}: unknown option {k} (expected depth, maxBoxes, chunk, deriv, \
-      order, trust)"
+      order, trust, precision)"
   return (cfg, trust)
 
 /-- `root_exists`: prove `∃ p, box ∧ equations` (sign change in one variable, Krawczyk in

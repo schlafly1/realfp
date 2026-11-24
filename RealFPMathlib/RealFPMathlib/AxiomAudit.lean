@@ -51,6 +51,7 @@ import RealFPMathlib.I128DyBase
 import RealFPMathlib.I128DyTransc
 import RealFPMathlib.I128Dyadic
 import RealFPMathlib.I128Deriv
+import RealFPMathlib.I128Roots
 import RealFPMathlib.PiBounds
 import RealFPMathlib.IntegralTactic
 import RealFPMathlib.IntervalDeriv

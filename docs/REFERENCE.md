@@ -966,9 +966,16 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   double-double `Float` specification, a box cost 0.1–0.3 s per operation).
 * The double-double path (`Interval128.Refl.checkD`, `RealFPMathlib/I128Sound.lean`) is still
   in the library and proved, but the tactic no longer uses it.
-* Not yet at 128: `≠` goals, `root_exists` / `root_unique`, optimisation (`#realfp_min`,
-  `sInf`, witnesses), `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is
-  an error; `(precision := 64)` is accepted everywhere.
+* **`≠` and roots at 128** (`RealFPMathlib/I128Roots.lean`): `f ≠ c` by bisection until every
+  box excludes `0` (`Interval128.Dy.nzQ`, `prove_neQ`); one-variable `root_exists` by a sign
+  change at the endpoints of `[a, b]` or of a cell of a 512-point rational grid (`ivtCheckQ`,
+  `ivt_existsQ` / `ivt_exists_inQ`, continuity from `domOKQ`), `root_unique` by a sign change
+  plus a strict sign of `f'` proved by a `DCert` (`derivSignQ`, `unique_oneQ`). Example:
+  `∃! x ∈ [1.4142135623730950488, 1.4142135623730950489], x² = 2` (fails at 64).
+* Not yet at 128: systems (`root_exists` / `root_unique` with Krawczyk, which needs 128-bit
+  interval matrices), optimisation (`#realfp_min`, `sInf`, witnesses), `integral_bound`,
+  `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
+  accepted everywhere.
 * When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests
   `(precision := 128)`.
 
