@@ -1,12 +1,12 @@
 # realfp tutorial
 
 A hands-on guide to proving real-number facts in Lean 4 + Mathlib with realfp (Interval64).
-The [README](README.md) is the reference: every operation, theorem name, kernel and
+The [reference](REFERENCE.md) is the reference: every operation, theorem name, kernel and
 benchmark. This file is the path through it, from adding the dependency to proving minima,
 roots and integrals, and on to writing your own certificates.
 
 **Every Lean snippet below is compiled.** They all live, in order, in
-[`RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean`](RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean),
+[`RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean`](../RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean),
 which is part of the default `lake build`. Printed output (`#eval`, `#realfp_min`, error
 messages) is pinned there with `#guard_msgs`, so what you read here is what Lean prints. The
 whole file checks in about 40 s on an 8-core x86-64 box (one `lean` process, imports included).
@@ -105,10 +105,10 @@ A first sanity check (`Tutorial.lean` §1):
 
 ## 2. Computing with intervals
 
-File: `Tutorial.lean` §2. Reference: README sections
-[Conversions and literals](README.md#conversions-and-literals-interval64convlean),
-[More interval operations](README.md#more-interval-operations-interval64opslean),
-[Transcendentals](README.md#transcendentals-exp-log-sin-cos).
+File: `Tutorial.lean` §2. Reference: [reference](REFERENCE.md) sections
+[Conversions and literals](REFERENCE.md#conversions-and-literals-interval64convlean),
+[More interval operations](REFERENCE.md#more-interval-operations-interval64opslean),
+[Transcendentals](REFERENCE.md#transcendentals-exp-log-sin-cos).
 
 An `Interval64` is a pair of doubles `lo ≤ hi`. Every operation rounds the lower end down and
 the upper end up, so the result contains the exact real result. Literals are **exact
@@ -183,8 +183,7 @@ there too.
 
 ## 3. First proofs with `realfp`
 
-File: `Tutorial.lean` §3. Reference: README
-[`realfp`](README.md#realfp-one-tactic-for-kernel-checked-real-numerics-mathlib-layer).
+File: `Tutorial.lean` §3. Reference: [`realfp`](REFERENCE.md#realfp-one-tactic-for-kernel-checked-real-numerics-mathlib-layer).
 
 `import RealFPMathlib` gives one tactic, `realfp`, which looks at the goal and picks a
 backend. (`import RealFPMathlib.Front` gives just the tactics.)
@@ -268,8 +267,7 @@ realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def 
 
 ## 4. Trust: what a proof depends on
 
-File: `Tutorial.lean` §4. Reference: README
-[Proofs and trust](README.md#proofs-and-trust).
+File: `Tutorial.lean` §4. Reference: [Proofs and trust](REFERENCE.md#proofs-and-trust).
 
 By default (`trust := kernel`) every certificate check is closed by `decide +kernel`: the Lean
 kernel evaluates the checker itself. The result depends only on Lean's three standard axioms:
@@ -474,10 +472,9 @@ bound plus a witness, so an exact `sInf = v` needs `v` to be attained at a ratio
 
 ## 6. Lower level: certificates by hand
 
-File: `Tutorial.lean` §6. Reference: README
-[Mathlib layer](README.md#mathlib-layer-optional-theorems-over-ℝ),
-[Computer-assisted-proof toolkit](README.md#computer-assisted-proof-toolkit-pd-matrices-polynomials-quadrature),
-[Kernel fast path](README.md#kernel-fast-path-interval64kernel-interval64proofskernellean).
+File: `Tutorial.lean` §6. Reference: [Mathlib layer](REFERENCE.md#mathlib-layer-optional-theorems-over-ℝ),
+[Computer-assisted-proof toolkit](REFERENCE.md#computer-assisted-proof-toolkit-pd-matrices-polynomials-quadrature),
+[Kernel fast path](REFERENCE.md#kernel-fast-path-interval64kernel-interval64proofskernellean).
 
 The tactics cover most goals. When they don't (a custom algorithm, a huge certificate, a
 statement that isn't a box inequality), you build the proof yourself from three ingredients:
@@ -561,7 +558,7 @@ theorem gauss_bounds :
   exact h
 ```
 
-Other building blocks (README toolkit section): `IPoly` polynomial arithmetic and sign
+Other building blocks ([reference](REFERENCE.md) toolkit section): `IPoly` polynomial arithmetic and sign
 checks, Bernstein range enclosures (`Examples/Bernstein.lean`), 2D quadrature over rectangles
 with Fubini (`Examples/Quad2.lean`, `Examples/Taylor2.lean`), eigenvalue lower bounds and
 Loewner order (`Examples/MatrixPD.lean`), extended division `divSplit`
@@ -731,6 +728,6 @@ example : (∫ x in (1 : ℝ)..2, sinc x) ∈ Set.Icc (0.655 : ℝ) 0.663 := by 
 - `RealFPMathlib/RealFPMathlib/Examples/`: worked examples for every feature (Roots,
   Optimization, IntegralTactic, MatrixPD, Cubic, Jacobian, Transc, Trig, …).
 - `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`: dozens of small `interval` goals.
-- [README.md](README.md): the reference, including all theorem names and benchmarks.
+- [REFERENCE.md](REFERENCE.md): the reference, including all theorem names and benchmarks.
 - [COMPARISONS.md](COMPARISONS.md): measured comparisons with FloatLib, LeanCert and the
   research showcases.

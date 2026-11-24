@@ -1,5 +1,5 @@
 /-
-Companion file for `TUTORIAL.md` (repository root). Every Lean snippet in the tutorial is here,
+Companion file for `docs/TUTORIAL.md`. Every Lean snippet in the tutorial is here,
 in the same order, and is checked by the default `lake build` (from `RealFPMathlib/`).
 Outputs of `#eval`, `#realfp_min` and error messages are pinned with `#guard_msgs`, so the text
 in the tutorial cannot drift from what the library really prints.
