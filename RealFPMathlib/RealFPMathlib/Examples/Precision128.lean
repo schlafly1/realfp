@@ -1,15 +1,17 @@
 /-
-`(precision := 128)`: Interval128 (double-double, about 106-bit) endpoints in `interval` and
-`realfp`. Every bound below is out of reach at the default precision 64 (pinned by
-`fail_if_success`) and is proved with `decide +kernel` at precision 128 (standard axioms only),
-except `sqrt2_native`, which uses `trust := native`.
+`(precision := 128)`: intervals with 128-bit dyadic endpoints (`Interval128/Dyadic.lean`, about
+38 significant digits) in `interval` and `realfp`. Every bound below is out of reach at the
+default precision 64 (pinned by `fail_if_success`) and is proved with `decide +kernel` at
+precision 128 (standard axioms only), except `sqrt2_native`, which uses `trust := native`.
+`π` comes from the 40-digit bounds `RealFP.pi_gt_d40` / `pi_lt_d40` (`RealFPMathlib/PiBounds.lean`).
 
-Kernel times on the dev box (8 cores, AVX-512 build), 64-bit attempt / 128-bit proof:
-* `sqrt2_gap_*`      fails / about 0.3 s each
-* `pi_upper`         fails / about 0.3 s
-* `poly7_*`          fails / about 4 s each (expanded `(x - 1)^7` at `x = 1.001`)
-* `sqrt_cancel_*`    fails / about 0.3 s each
-* `quad_box`         fails / about 20 s (one variable, about 120 boxes at depth 70)
+Elaboration times on the dev box (whole declaration, minus the file's import time), 64-bit attempt
+/ 128-bit proof; in brackets the time before the dyadic kernel path (double-double `Float` spec):
+* `sqrt2_gap_*`, `pi_upper`, `sqrt_cancel_*`   fails / under 0.5 s each  [under 1 s]
+* `poly7_*`          fails / about 0.6 s each  [about 4 s]
+* `quad_box`         fails / about 1 s (60 boxes at depth 70)  [about 31 s]
+* `quad_box_30`      fails / about 1.5 s (100 boxes at depth 110)  [not feasible]
+* `pi_*_30`, `pi_sq_*` fails / under 0.5 s each  [`π` known to 20 digits only]
 -/
 import RealFPMathlib.Front
 
@@ -33,17 +35,34 @@ theorem sqrt2_gap_lower : 1.6e-21 < Real.sqrt 2 - 1.4142135623730950488 := by
 theorem sqrt2_native : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by
   realfp (precision := 128) (trust := native)
 
-/-- `π` is enclosed by Mathlib's 20-digit bounds `pi_gt_d20` / `pi_lt_d20` at precision 128
-(Interval64 gives `π < 3.14159265358979356`). -/
+/-- Interval64 gives `π < 3.14159265358979356`. -/
 theorem pi_upper : Real.pi < 3.1415926535897932385 := by
   fail_if_success interval
+  interval (precision := 128)
+
+/-! ### `π` to 32 digits
+
+`π = 3.14159265358979323846264338327950288…`: the bounds below have margins of about `10⁻³²`,
+and `π²` must be known to about `10⁻³²` as well. -/
+
+theorem pi_upper_30 : Real.pi < 3.14159265358979323846264338327951 := by
+  fail_if_success interval
+  interval (precision := 128)
+
+theorem pi_lower_30 : 3.14159265358979323846264338327950 < Real.pi := by
+  interval (precision := 128)
+
+theorem pi_sq_upper : Real.pi ^ 2 < 9.869604401089358618834490999876152 := by
+  interval (precision := 128)
+
+theorem pi_sq_lower : 9.869604401089358618834490999876150 < Real.pi ^ 2 := by
   interval (precision := 128)
 
 /-! ### Cancellation
 
 The expanded form of `(x - 1)^7` at `x = √1.000002 ≈ 1 + 10⁻⁶` is about `10⁻⁴²`, while its
-terms are about `35`: binary64 rounding errors alone are about `10⁻¹⁴`, double-double ones
-about `10⁻³⁰`. (With a rational `x` both precisions succeed, since closed rational expressions
+terms are about `35`: binary64 rounding errors alone are about `10⁻¹⁴`, 128-bit ones
+about `10⁻³⁶`. (With a rational `x` both precisions succeed, since closed rational expressions
 are evaluated exactly by `norm_num` first.) -/
 
 theorem poly7_upper : Real.sqrt 1.000002 ^ 7 - 7 * Real.sqrt 1.000002 ^ 6 +
@@ -75,7 +94,11 @@ theorem quad_box (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 
   fail_if_success interval
   interval (precision := 128) (depth := 70)
 
-/-! ### Functions without a double-double implementation
+/-- The same with a margin of `10⁻³⁰` (the last box is about `10⁻³⁰` wide). -/
+theorem quad_box_30 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
+  interval (precision := 128) (depth := 110)
+
+/-! ### Functions without a 128-bit implementation
 
 `exp`, `log`, `sin`, `cos`, … are still accepted at precision 128, but evaluated with
 Interval64 precision; the failure message says so. -/

@@ -104,7 +104,7 @@ theorem a05 : 1.0471 < Real.arccos 0.5 ∧ Real.arccos 0.5 < 1.0472 := by interv
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
   interval (depth := 30) (maxBoxes := 100000)
 
--- (precision := 128): Interval128 endpoints (every node kind; small, kernel-checked)
+-- (precision := 128): 128-bit dyadic endpoints (every node kind; small, kernel-checked)
 theorem p01 : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by interval (precision := 128)
 theorem p02 : 4.99e-11 < Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 := by interval (precision := 128)
 theorem p03 : Real.pi < 3.1415926535897932385 := by interval (precision := 128)
@@ -119,12 +119,13 @@ theorem p07 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : Real.sqrt x ≤ 1.01 := b
   realfp (precision := 128)
 theorem p08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-3 := by
   interval (precision := 128)
+theorem p09 : 3.1415926535897932384626433832795 < Real.pi := by interval (precision := 128)
 
 /-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b` over a box) so far, not for `root_exists`; drop it to use precision 64 -/
 #guard_msgs in
 example : ∃ x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp (precision := 128)
 
-/-- error: interval: (precision := _) must be 64 (default, Interval64) or 128 (Interval128 double-double) -/
+/-- error: interval: (precision := _) must be 64 (default, Interval64) or 128 (128-bit dyadic endpoints) -/
 #guard_msgs in
 example : (1 : ℝ) ≤ 2 := by interval (precision := 32)
 

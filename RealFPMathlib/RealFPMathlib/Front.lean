@@ -21,7 +21,7 @@ See `RealFPMathlib/OptTactic.lean` for the optimisation forms and `#realfp_min`/
 Options (any order): `(trust := kernel|native)` (default `kernel`: `decide +kernel`, only the
 standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom), and for
 `interval`/root/optimisation goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`,
-`(deriv := false)`, `(chunk := n)`, `(precision := 64|128)` (128: Interval128 double-double
+`(deriv := false)`, `(chunk := n)`, `(precision := 64|128)` (128: 128-bit dyadic
 endpoints; `interval` goals only so far). Integrals take `order` (Taylor order 2/4/6/8) and
 `maxBoxes` (cells); `pos_def` takes only `trust`. An option a backend cannot use is an error.
 -/

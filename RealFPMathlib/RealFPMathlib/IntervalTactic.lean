@@ -23,6 +23,7 @@ How it works:
 -/
 import RealFPMathlib.IntervalSound
 import RealFPMathlib.I128Sound
+import RealFPMathlib.I128Dyadic
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.Opt
 import RealFPMathlib.Roots
@@ -726,7 +727,7 @@ structure Cfg where
   deriv : Bool := true
   /-- Highest derivative order used to prove monotonicity. -/
   order : Nat := 3
-  /-- Endpoint precision: `64` (Interval64, default) or `128` (Interval128 double-double). -/
+  /-- Endpoint precision: `64` (Interval64, default) or `128` (128-bit dyadic endpoints, `Interval128/Dyadic.lean`). -/
   precision : Nat := 64
 
 def denoteSimp : TacticM Unit := do
@@ -868,7 +869,7 @@ def findCertDM (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (nvars :
     return (none, n1 + n2 + n3)
   return (none, n1 + n2)
 
-/-! ### `(precision := 128)`: Interval128 (double-double) checks -/
+/-! ### `(precision := 128)`: 128-bit dyadic interval checks -/
 
 theorem checkD128_split_of {e : IExpr} {g : Interval128.Refl.I → Bool} {i : Nat} {q : ℚ}
     {l r : Interval128.Refl.Cert} {env : List Interval128.Refl.I}
@@ -884,14 +885,24 @@ partial def cert128ToExpr : Interval128.Refl.Cert → Expr
   | .split i q l r => mkApp4 (mkConst ``Interval128.Refl.Cert.split) (toExpr i) (toExpr q)
       (cert128ToExpr l) (cert128ToExpr r)
 
-/-- Proof of `checkD e g cert env = true`, `chunk` boxes per kernel check. -/
-partial def proveCheck128 (chunk : Nat) (eE gE : Expr) (cert : Interval128.Refl.Cert)
+/-- A dyadic split point as `Interval128.Dy.ofLimbs` (small `Nat` literals only). -/
+def dyToExpr (d : Interval128.Dy.Dy) : Expr :=
+  mkApp3 (mkConst ``Interval128.Dy.ofLimbs) (toExpr (decide (d.m < 0)))
+    (toExpr (Interval128.Dy.limbs d.m.natAbs)) (toExpr d.e)
+
+partial def certQToExpr : Interval128.Dy.Cert → Expr
+  | .leaf => mkConst ``Interval128.Dy.Cert.leaf
+  | .split i d l r => mkApp4 (mkConst ``Interval128.Dy.Cert.split) (toExpr i) (dyToExpr d)
+      (certQToExpr l) (certQToExpr r)
+
+/-- Proof of `Interval128.Dy.checkQ e g cert env = true` (dyadic endpoints), `chunk` boxes per kernel check. -/
+partial def proveCheck128 (chunk : Nat) (eE gE : Expr) (cert : Interval128.Dy.Cert)
     (envE : Expr) : TacticM Expr := do
   match cert with
   | .split i q l r =>
     if cert.leaves > chunk then
-      let lem := mkAppN (← mkC ``checkD128_split_of)
-        #[eE, gE, toExpr i, toExpr q, cert128ToExpr l, cert128ToExpr r, envE]
+      let lem := mkAppN (← mkC ``RealFP.I128Q.checkQ_split_of)
+        #[eE, gE, toExpr i, dyToExpr q, certQToExpr l, certQToExpr r, envE]
       let ty ← inferType lem
       let .forallE _ hlT b1 _ := ty | throwError "interval: internal (split lemma)"
       let .forallE _ hrT _ _ := b1 | throwError "interval: internal (split lemma)"
@@ -905,7 +916,7 @@ partial def proveCheck128 (chunk : Nat) (eE gE : Expr) (cert : Interval128.Refl.
   | .leaf => leafChunk
 where
   leafChunk : TacticM Expr := do
-    let chk := mkApp4 (← mkC ``Interval128.Refl.checkD) eE gE (cert128ToExpr cert) envE
+    let chk := mkApp4 (← mkC ``Interval128.Dy.checkQ) eE gE (certQToExpr cert) envE
     let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
     let saved ← getGoals
     setGoals [hM.mvarId!]
@@ -934,27 +945,27 @@ def closeWith (strict : Bool) (pf : Expr) : TacticM Unit := do
       throwError "interval: could not match the goal with its reified form"
   setGoals saved.tail
 
-/-- `f ≤ c` etc. with Interval128 endpoints: plain bisection at rational midpoints, checked by
-`RealFP.I128.prove_le` / `_lt` / `_ge` / `_gt`. -/
+/-- `f ≤ c` etc. with 128-bit dyadic endpoints (`Interval128/Dyadic.lean`): plain bisection at
+short dyadic midpoints, checked by `RealFP.I128Q.prove_le` / `_lt` / `_ge` / `_gt`. -/
 def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) (e : IExpr)
     (bs : Array (ℚ × ℚ)) : TacticM Unit := do
-  let env := Interval128.Refl.boxes bs.toList
+  let env := Interval128.Dy.boxes bs.toList
   let (g, gName, pName) :=
     match strict, upper with
-    | false, true => (Interval128.Refl.gLe c, ``Interval128.Refl.gLe, ``RealFP.I128.prove_le)
-    | true, true => (Interval128.Refl.gLt c, ``Interval128.Refl.gLt, ``RealFP.I128.prove_lt)
-    | false, false => (Interval128.Refl.gGe c, ``Interval128.Refl.gGe, ``RealFP.I128.prove_ge)
-    | true, false => (Interval128.Refl.gGt c, ``Interval128.Refl.gGt, ``RealFP.I128.prove_gt)
-  let (cert?, evals) := (Interval128.Refl.search e g cfg.depth cfg.maxBoxes env).run 0
+    | false, true => (Interval128.Dy.gLe c, ``Interval128.Dy.gLe, ``RealFP.I128Q.prove_le)
+    | true, true => (Interval128.Dy.gLt c, ``Interval128.Dy.gLt, ``RealFP.I128Q.prove_lt)
+    | false, false => (Interval128.Dy.gGe c, ``Interval128.Dy.gGe, ``RealFP.I128Q.prove_ge)
+    | true, false => (Interval128.Dy.gGt c, ``Interval128.Dy.gGt, ``RealFP.I128Q.prove_gt)
+  let (cert?, evals) := (Interval128.Dy.search e g cfg.depth cfg.maxBoxes env).run 0
   let lifted := (Interval128.Refl.lifted e).eraseDups
   let note : MessageData := if lifted.isEmpty then m!"" else
     m!"; note: {", ".intercalate lifted} {if lifted.length == 1 then "is" else "are"} evaluated \
       with Interval64 precision (about 1e-16 relative) even at precision 128"
   let some cert := cert? | do
-    let F := Interval128.Refl.evalD env e
+    let F := Interval128.Dy.evalQ env e
     throwError "interval (precision := 128): no certificate within depth {cfg.depth} / \
       {cfg.maxBoxes} boxes ({evals} evaluations); enclosure on the whole box: \
-      {repr F}, bound {fmtRat c}{note}"
+      {F.toString}, bound {fmtRat c}{note}"
   withCurrHeartbeats do
     trace[interval] "precision 128: {vars.size} variable(s), {cert.leaves} boxes, {evals} native \
       evaluations{note}"
@@ -963,12 +974,12 @@ def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) 
     let cE := toExpr c
     let xsE ← mkListLit (mkConst ``Real) vars.toList
     let gE := mkApp (mkConst gName) cE
-    let envE := mkApp (mkConst ``Interval128.Refl.boxes) bsE
+    let envE := mkApp (mkConst ``Interval128.Dy.boxes) bsE
     let saved ← getGoals
     let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
     let hM ← proveCheck128 cfg.chunk eE gE cert envE
     setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
-    let pf := mkAppN (← mkC pName) #[eE, bsE, cE, cert128ToExpr cert, hM, xsE, hxsM]
+    let pf := mkAppN (← mkC pName) #[eE, bsE, cE, certQToExpr cert, hM, xsE, hxsM]
     closeWith strict pf
 
 /-- Prove `lhs ≤ rhs` (`strict = false`) or `lhs < rhs` on the main goal. -/
@@ -1020,7 +1031,7 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
     let hint : MessageData :=
       if !false? && margin.abs ≤ 1e-12 * max 1 cF.abs then
         m!"; the margin is at the resolution of binary64, so `(precision := 128)` \
-          (double-double endpoints) may prove it"
+          (128-bit endpoints) may prove it"
       else m!""
     throwError "interval: no certificate within depth {cfg.depth} / {cfg.maxBoxes} boxes \
       ({evals} evaluations): {expl}{hint}"
@@ -1184,7 +1195,7 @@ syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
       | some 64 => cfg := { cfg with precision := 64 }
       | some 128 => cfg := { cfg with precision := 128 }
       | _ => throwErrorAt o "interval: (precision := _) must be 64 (default, Interval64) or 128 \
-          (Interval128 double-double)"
+          (128-bit dyadic endpoints)"
     else throwErrorAt o "interval: unknown option {k} (expected depth, maxBoxes, chunk, deriv, \
       order, trust, precision)"
   RealFP.requireNative
