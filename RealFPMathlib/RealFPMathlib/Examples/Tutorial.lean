@@ -8,10 +8,7 @@ Everything uses only `propext`, `Classical.choice`, `Quot.sound`, except `RealFP
 and `native_demo'`, which show `trust := native` (the axiom audit allows `native_decide` in
 `RealFP.Examples.*` only).
 -/
-import RealFPMathlib.Front
-import RealFPMathlib.KMatrix
-import RealFPMathlib.KQuad
-import Interval64.Kernel.QuadCert
+import RealFPMathlib
 import Interval128
 
 open Interval64
@@ -20,7 +17,9 @@ namespace RealFP.Examples.Tutorial
 
 /-! ## §1 Setup: is the C backend loaded and usable on this CPU? -/
 
-/-- info: true -/
+/--
+info: true
+-/
 #guard_msgs in
 #eval Interval64.Directed.backendOk ()
 
@@ -30,88 +29,97 @@ namespace RealFP.Examples.Tutorial
 
 /-! ## §2 Computing with `Interval64` -/
 
--- Literals are *exact* decimals enclosed outward: `0.1` is two adjacent doubles.
+-- `#eval` shows `[lo, hi]`, 17 significant digits per endpoint (enough to read back exactly).
+-- Literals are *exact* decimals enclosed outward: `0.1` is the two doubles around 1/10.
 /--
-info: { lo := 0.100000, hi := 0.100000 }
+info: [0.099999999999999992, 0.10000000000000001]
 -/
 #guard_msgs in
 #eval (0.1 : Interval64)
 /--
-info: some (7205759403792793 / 72057594037927936)
+info: (some (7205759403792793 / 72057594037927936), some (3602879701896397 / 36028797018963968))
 -/
 #guard_msgs in
-#eval Interval64.Spec.bitsToRat? (0.1 : Interval64).lo.toBits
-/--
-info: some (3602879701896397 / 36028797018963968)
--/
-#guard_msgs in
-#eval Interval64.Spec.bitsToRat? (0.1 : Interval64).hi.toBits
+#eval (0.1 : Interval64).exact
 
 -- Arithmetic and elementary functions.
 /--
-info: { lo := 0.300000, hi := 0.300000 }
+info: [0.29999999999999993, 0.30000000000000004]
 -/
 #guard_msgs in
 #eval (0.1 : Interval64) + 0.2
 /--
-info: { lo := 1.414214, hi := 1.414214 }
+info: [1.4142135623730949, 1.4142135623730951]
 -/
 #guard_msgs in
 #eval Interval64.sqrt 2
 /--
-info: { lo := 2.718282, hi := 2.718282 }
+info: [2.7182818284590451, 2.7182818284590455]
 -/
 #guard_msgs in
 #eval Interval64.exp 1
 /--
-info: { lo := 3.141593, hi := 3.141593 }
+info: [3.1415926535897931, 3.1415926535897936]
 -/
 #guard_msgs in
 #eval Interval64.pi
 /--
-info: { lo := 0.841471, hi := 1.000000 }
+info: [0.8414709848078965, 1]
 -/
 #guard_msgs in
 #eval Interval64.sin (ofRatInterval 1 2)
 
+-- Dot notation works on `Interval64` values.
+def X : Interval64 := ofRatInterval 1 2
+/--
+info: [1, 1.4142135623730951]
+-/
+#guard_msgs in
+#eval X.sqrt
+/--
+info: some (1865452045155277 / 4503599627370496)
+-/
+#guard_msgs in
+#eval X.sqrt.widthRat
+
 -- Dependency: `X * X - X` on `[0, 1]` is `[-1, 1]`, not the true range `[-1/4, 0]`.
 /--
-info: { lo := -1.000000, hi := 1.000000 }
+info: [-1, 1]
 -/
 #guard_msgs in
 #eval ofRatInterval 0 1 * ofRatInterval 0 1 - ofRatInterval 0 1
 
 -- Edge cases: empty (NaN) and whole-line results.
 /--
-info: { lo := NaN, hi := NaN }
+info: [NaN, NaN]
 -/
 #guard_msgs in
 #eval Interval64.sqrt (-1)
 /--
-info: { lo := -inf, hi := inf }
+info: [-inf, inf]
 -/
 #guard_msgs in
 #eval (1 : Interval64) / ofRatInterval (-1) 1
 
--- Interval128: double-double endpoints, ~106 bits.
+-- Interval128: double-double endpoints, ~106 bits (34 digits shown).
 /--
-info: { lo := 1.414214, hi := 1.414214 }
+info: [1.414213562373095048801688724209682, 1.414213562373095048801688724209706]
 -/
 #guard_msgs in
 open Interval128 in
-#eval (Interval128.sqrt 2).toInterval64
+#eval Interval128.sqrt 2
 -- Widths of `√2`: one ulp (2⁻⁵²) for Interval64, about 2⁻¹⁰⁵ for Interval128.
 /--
 info: some (1 / 4503599627370496)
 -/
 #guard_msgs in
-#eval Interval64.Spec.bitsToRat? (Interval64.width (Interval64.sqrt 2)).toBits
+#eval (Interval64.sqrt 2).widthRat
 /--
 info: some (1 / 40564819207303340847894502572032)
 -/
 #guard_msgs in
 open Interval128 in
-#eval Interval64.Spec.bitsToRat? (Interval128.sqrt 2).width.toBits
+#eval (Interval128.sqrt 2).widthRat
 
 /-! ## §3 First proofs with `realfp` -/
 
@@ -126,7 +134,7 @@ example : ∀ x ∈ Set.Icc (-1 : ℝ) 1, 1 + x ≤ Real.exp x := by realfp
 
 -- Failure messages
 /--
-error: realfp (trust := kernel): routed to `interval`: interval: no certificate within depth 24 / 50000 boxes (1589 evaluations): the bound is false: the maximum is ≈ 0.367879441171 at x✝ ≈ 1 (rigorous value at that point), beyond 0.3678
+error: realfp (trust := kernel): via `interval`: no certificate within depth 24 / 50000 boxes (1589 evaluations): the bound is false: the maximum is ≈ 0.367879441171 at x ≈ 1 (rigorous value at that point), beyond 0.3678
 -/
 #guard_msgs in
 example : ∀ x ∈ Set.Icc (0 : ℝ) 4, x * Real.exp (-x) ≤ 0.3678 := by realfp
@@ -169,6 +177,8 @@ example (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 :
 -- integrals
 example : (0.7468 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp
 example : (∫ x in (1 : ℝ)..2, 1 / x) ∈ Set.Icc (0.6931 : ℝ) 0.6932 := by integral_bound
+example : (∫ x in (1 : ℝ)..2, 1 / x) ∈ Set.Icc (0.6931 : ℝ) 0.6932 := by
+  integral_bound (order := 6) (maxBoxes := 64)
 
 -- roots
 example : ∃! x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp
@@ -182,7 +192,7 @@ example : ∃ p : ℝ × ℝ, p.1 ∈ Set.Icc (0 : ℝ) 3 ∧ p.2 ∈ Set.Icc (0
 
 -- wide box, unique: fails
 /--
-error: realfp (trust := kernel): routed to `root_unique`: root_unique: no certificate for the system on [0, 3] × [0, 3]:
+error: realfp (trust := kernel): via `root_unique`: no certificate for the system on [0, 3] × [0, 3]:
 • Krawczyk on the whole box [0, 3] × [0, 3]: centre = midpoint: contraction factor ‖I - Y·J(X)‖∞ ≈ 1.000000 ≥ 1 (box too wide or Jacobian too ill-conditioned); centre = Newton point: contraction factor ‖I - Y·J(X)‖∞ ≈ 1.121320 ≥ 1 (box too wide or Jacobian too ill-conditioned)
  An approximate root is (1.414214, 1.414214); a smaller box around it usually works for `∃!`.
 -/
@@ -193,6 +203,13 @@ example : ∃! p : ℝ × ℝ, p.1 ∈ Set.Icc (0 : ℝ) 3 ∧ p.2 ∈ Set.Icc (
 -- PD
 example : (!![2, 1; 1, 2] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by realfp
 example : (!![4, 1, 0; 1, 3, 1; 0, 1, 2] : Matrix (Fin 3) (Fin 3) ℝ).PosDef := by pos_def
+
+-- An option a backend cannot use is an error, not silently ignored.
+/--
+error: realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def takes only `trust`)
+-/
+#guard_msgs in
+example : (!![2, 1; 1, 2] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by realfp (depth := 30)
 
 -- optimisation
 /--
@@ -220,39 +237,35 @@ example : ∀ x ∈ Set.Icc (-5 : ℝ) 5, ∀ y ∈ Set.Icc (-5 : ℝ) 5,
 
 /-! ## §6 Lower level -/
 
-section Manual
-open Interval64.Spec
-
 /-- `[1/10, 3/10]`, rounded outward. -/
 def I : Interval64 := ofRatInterval (1/10) (3/10)
 /-- One interval evaluation of `x * x + x`. -/
 def J : Interval64 := I * I + I
 
-theorem J_hi_le : J.hi ≤ 0.40625 := by decide +kernel
+theorem J_hiLe : J.hiLe (13/32) = true := by decide +kernel
 
 theorem sq_add_le (x : ℝ) (hx : x ∈ Set.Icc (1/10 : ℝ) (3/10)) : x * x + x ≤ 13/32 := by
   have hxI : x ∈ I :=
     mem_toSet_ofRatInterval (by push_cast; linarith [hx.1]) (by push_cast; linarith [hx.2])
   have hJ : x * x + x ∈ J := Iv.add_mem (Iv.mem_mul hxI hxI) hxI
-  have h := le_of_mem_toSet_of_hi_le (q := 13/32) hJ J_hi_le (by decide +kernel)
+  have h := le_of_mem_hiLe hJ J_hiLe
   push_cast at h
-  linarith
+  exact h
 
-end Manual
+section Kernel
+open RealFP
 
 -- Kernel-path certificates without a tactic: a 4×4 Hilbert matrix is positive definite.
 def hq (i j : ℕ) : ℚ := 1 / ((i : ℚ) + j + 1)
-def H4 : Array Interval64.KF.KI := ki_lit% (Interval64.KF.KM.ofRatFn 4 hq)
+def H4 : Array KI := ki_lit% (ofRatFn 4 hq)
 
 theorem hilbert4_posDef : (Matrix.of fun i j : Fin 4 => ((hq i j : ℚ) : ℝ)).PosDef :=
-  RealFP.KM.posDef_of_ratMat (A := H4) (c := pd_certs% 4 H4) (by decide +kernel)
+  posDef_of_ratMat (A := H4) (c := pd_certs% 4 H4) (by decide +kernel)
     (by decide +kernel) (fun i j _ _ => by simp [hq, add_comm])
 
 -- Taylor quadrature by hand: the integrand as a reflected expression `IExpr`.
-open Interval64.KF in
 def g : IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
 
-open Interval64.KF Interval64.KF.KQ RealFP.KQ in
 theorem gauss_bounds :
     (7468 / 10000 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) ∧
       (∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2)) ≤ 7469 / 10000 := by
@@ -263,6 +276,8 @@ theorem gauss_bounds :
   simp only [e] at h
   push_cast at h
   exact h
+
+end Kernel
 
 -- Splitting a check across declarations
 theorem piece₁ : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.exp x - 2 * x ≥ 0.6 := by realfp
