@@ -103,7 +103,10 @@ def toQ (x : Float) : Except String ℚ :=
 
 def qToF (q : ℚ) : Float := Float.ofInt q.num / Float.ofNat q.den
 
-def fmtQ (q : ℚ) : String := toString (qToF q)
+def fmtQ (q : ℚ) : String :=
+  if q.den == 1 then toString q.num
+  else if q.den ≤ 1000000 then s!"{q.num}/{q.den}"
+  else toString (qToF q)
 
 def fmtBox (bs : List (ℚ × ℚ)) : String :=
   " × ".intercalate (bs.map fun b => s!"[{fmtQ b.1}, {fmtQ b.2}]")
@@ -186,9 +189,8 @@ def krawWhole (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Except String KCert :
 
 /-- Krawczyk on a sub-box around a Newton approximation (existence only). -/
 def krawSub (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Except String (List (ℚ × ℚ) × KCert) := do
-  let some x := newton Fs bs.length (midQ bs) |
-    throw "Newton's method from the midpoint broke down"
-  unless inBoxQ bs x do throw "Newton's method from the midpoint leaves the box"
+  let some x := newton Fs bs.length (midQ bs) | throw "no Newton point for a sub-box"
+  unless inBoxQ bs x do throw "no Newton point inside the box for a sub-box"
   let mut last := ""
   for r in [1e-12, 1e-9, 1e-6, 1e-3] do
     if let some bs' := boxAround bs x r then
@@ -326,7 +328,8 @@ partial def canon (coords : Array Expr) (xsE : Expr) (a : Expr) :
       let hb ← proveNumEq u (← ratCastR qu)
       let hc ← mkEqRefl x
       let q := mkAnd (← mkAppM ``LE.le #[← ratCastR ql, c]) (← mkAppM ``LE.le #[c, ← ratCastR qu])
-      return (q, ← mkAppM ``RealFP.RootTactic.icc_iff #[hc, ha, hb])
+      return (q, mkAppN (mkConst ``RealFP.RootTactic.icc_iff)
+        #[x, c, l, u, toExpr ql, toExpr qu, hc, ha, hb])
     | _ => throwError "realfp: only closed boxes `Set.Icc a b` are supported, got {s}"
   | (``GE.ge, #[_, _, l, r]) => canon coords xsE (← mkAppM ``LE.le #[r, l])
   | (``LE.le, #[ty, _, l, r]) =>
@@ -336,13 +339,15 @@ partial def canon (coords : Array Expr) (xsE : Expr) (a : Expr) :
         setBound true i ql
         let c := coords[i]!
         let ha ← proveNumEq l (← ratCastR ql)
-        return (← mkAppM ``LE.le #[← ratCastR ql, c], ← mkAppM ``RealFP.RootTactic.lo_iff #[← mkEqRefl r, ha])
+        return (← mkAppM ``LE.le #[← ratCastR ql, c], mkAppN (mkConst ``RealFP.RootTactic.lo_iff)
+          #[r, c, l, toExpr ql, ← mkEqRefl r, ha])
     if let some i ← coordIdx coords l then
       if let some qu ← ratOf? r then
         setBound false i qu
         let c := coords[i]!
         let hb ← proveNumEq r (← ratCastR qu)
-        return (← mkAppM ``LE.le #[c, ← ratCastR qu], ← mkAppM ``RealFP.RootTactic.hi_iff #[← mkEqRefl l, hb])
+        return (← mkAppM ``LE.le #[c, ← ratCastR qu], mkAppN (mkConst ``RealFP.RootTactic.hi_iff)
+          #[l, c, r, toExpr qu, ← mkEqRefl l, hb])
     throwError "realfp: unsupported constraint {a}; expected a numeral bound on one coordinate"
   | (``Eq, #[ty, l, r]) =>
     unless (← whnfR ty).isConstOf ``Real do throwError "realfp: equation {a} is not over ℝ"
