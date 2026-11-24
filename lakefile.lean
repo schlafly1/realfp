@@ -14,13 +14,19 @@ def isX86_64 : Bool := System.Platform.target.startsWith "x86_64"
 
 /-- Backend selection. Default: AVX-512 on x86_64, RN + exact error term elsewhere
     (aarch64). `lake build -Kbackend=rnerr` forces the portable backend on x86_64
-    (for testing it against the Lean spec). -/
+    (for testing it against the Lean spec, and for CI on machines without AVX-512). -/
 def forceRnErr : Bool := (get_config? backend) == some "rnerr"
 
 def cArchArgs : Array String :=
   if isX86_64 then
-    -- AVX-512 kernels are compiled on x86 even with -Kbackend=rnerr (used by tests).
-    #["-mavx512f", "-mavx512vl"] ++ (if forceRnErr then #["-DIV64_FORCE_RNERR"] else #[])
+    if forceRnErr then
+      -- No -mavx512f: the object file must not contain AVX-512 instructions,
+      -- so the binary runs on any x86_64 (GitHub-hosted runners included).
+      -- AVX-512 kernels are therefore not compiled in this configuration;
+      -- the default `lake build` on an AVX-512 machine is unchanged.
+      #["-DIV64_FORCE_RNERR"]
+    else
+      #["-mavx512f", "-mavx512vl"]
   else #[]
 
 /-- C kernels: AVX-512 embedded rounding (x86_64) or RN + exact error term

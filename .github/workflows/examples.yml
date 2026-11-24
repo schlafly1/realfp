@@ -1,0 +1,64 @@
+# Slow Examples and the full axiom audit (every RealFP.* theorem, including
+# RealFP.Examples.*). Weekly plus manual: a full example build is expected to
+# take more than 40 minutes on a 2-core GitHub runner (several example files
+# already take 0.5–2 minutes each on a faster machine), which would be tight
+# against the 2,000-minute monthly cap for a private repository if run nightly.
+# Same portable RN+err C backend as ci.yml (GitHub runners may lack AVX-512).
+name: Examples
+
+on:
+  schedule:
+    # Sunday 00:00 America/Los_Angeles (08:00 UTC).
+    - cron: '0 8 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: examples
+  cancel-in-progress: true
+
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache elan
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain') }}
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache core Lake build
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-
+
+      - name: Cache RealFPMathlib build artifacts
+        uses: actions/cache@v4
+        with:
+          path: RealFPMathlib/.lake/build
+          key: lake-rfp-examples-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-rfp-examples-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-
+            lake-rfp-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-
+
+      - name: Build core library
+        run: lake -R -Kbackend=rnerr build Interval64 Interval128
+
+      - name: Get Mathlib cache
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr exe cache get
+
+      - name: Build Examples and full axiom audit
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr build RealFPMathlib.AxiomAudit

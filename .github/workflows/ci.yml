@@ -1,0 +1,74 @@
+# Core CI: type-check the libraries, run the axiom audit without Examples,
+# and run the test executables. GitHub-hosted x86 runners are not guaranteed
+# to have AVX-512, so this workflow always builds the portable RN+err C
+# backend (`lake -Kbackend=rnerr`), which is compiled without -mavx512f.
+# The default local build on an AVX-512 machine is unchanged.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache elan
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain') }}
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache core Lake build
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-
+
+      - name: Cache RealFPMathlib build artifacts
+        uses: actions/cache@v4
+        with:
+          path: RealFPMathlib/.lake/build
+          key: lake-rfp-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-rfp-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-
+
+      - name: Build core library and proofs
+        run: lake -R -Kbackend=rnerr build Interval64 Interval128 Interval64Proofs Interval64CSpec
+
+      - name: Build and run tests
+        run: |
+          lake -R -Kbackend=rnerr build interval64_tests interval128_tests
+          lake -R -Kbackend=rnerr exe interval64_tests
+          lake -R -Kbackend=rnerr exe interval128_tests
+
+      - name: Check core axioms
+        run: LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh
+
+      - name: Get Mathlib cache
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr exe cache get
+
+      - name: Build RealFPMathlib core and axiom audit
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr build RealFPMathlib.AxiomAuditCore
+
+      - name: Check tutorial snippets
+        run: python3 scripts/check_tutorial_snippets.py

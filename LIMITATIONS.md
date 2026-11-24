@@ -33,6 +33,8 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   tactics give a clear error, but `#eval` gives Lean's own error.
 - The `Interval128` type name is unchanged, and `Interval128` is not yet used inside the tactics.
 - `X.width` is still a `Float`.
-- No CI yet.
+- CI on GitHub Actions builds the portable RN+err C backend (runners may lack AVX-512);
+  the default local x86_64 build is still AVX-512. The slow Examples and the full axiom
+  audit run weekly (or manually), not on every push.
 - The showcase repos (em8-realfp, four-body-realfp) have not been rebuilt against the new API;
   the old type-name alias is kept for them.

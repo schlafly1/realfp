@@ -1,5 +1,8 @@
 # Interval64
 
+[![CI](https://github.com/schlafly1/realfp/actions/workflows/ci.yml/badge.svg)](https://github.com/schlafly1/realfp/actions/workflows/ci.yml)
+Pushes and pull requests to `main` are built on GitHub Actions (portable RN+err C backend); the slow Examples and the full axiom audit run weekly, or manually.
+
 A small Lean 4 (v4.36.0) library for **binary64 interval arithmetic** with
 **hardware directed rounding**, including correctly rounded directed `exp`
 and `log` ([transcendentals](#transcendentals-exp-log)). The core has **no
@@ -72,6 +75,14 @@ crashes), so the flags cannot be applied automatically.
 A tiny downstream project lives at `/workspace/interval64_consumer`
 (`require interval64 from "../interval64_avx512"`).
 
+**CI.** `.github/workflows/ci.yml` runs on every push and pull request to `main`:
+it installs Lean from `lean-toolchain`, fetches the Mathlib olean cache, builds
+the core libraries and proofs with `-Kbackend=rnerr`, runs `interval64_tests`
+and `interval128_tests`, checks `Interval64Axioms.lean`, builds
+`RealFPMathlib.AxiomAuditCore` (library + Demo + Tests, not Examples), and
+checks the tutorial snippets. `.github/workflows/examples.yml` builds the slow
+Examples and the full `AxiomAudit` weekly and on demand (`workflow_dispatch`).
+
 ## arm64 (aarch64) backend
 
 ARM has no per-instruction rounding mode, so on aarch64 the kernels in
@@ -121,9 +132,11 @@ near-overflow, small integers, near-exact quotients and squares, specials):
 - `--bench`: micro-benchmark, on normal-range operands and on the mixed test-generator
   operands (which hit the slow and overflow paths often), reported separately.
 
-`lake -R -Kbackend=rnerr build interval64_tests` builds the arm64 backend on
-x86_64, so the Lean-side tests (`.lake/build/bin/interval64_tests`, C runtime vs
-Lean spec) can run against it; `lake -R build interval64_tests` switches back.
+`lake -R -Kbackend=rnerr build interval64_tests` builds the portable RN+err
+backend on x86_64 (no AVX-512 instructions, so the binary also runs on CPUs
+without AVX-512F; this is what CI uses), so the Lean-side tests
+(`.lake/build/bin/interval64_tests`, C runtime vs Lean spec) can run against
+it; `lake -R build interval64_tests` switches back to AVX-512.
 (Name the exe target: a plain `lake build` does not relink the test exe.)
 `scripts/test_arm64_qemu.sh` also cross-compiles CORE-MATH exp/log/sin/cos and
 `c/iv64_transc.c` for aarch64 and checks RD/RU (FPCR) against the mpmath oracle
@@ -685,7 +698,8 @@ box (`ContractingWith.fixedPoint`) gives existence and uniqueness; no Brouwer th
 every `RealFP.*` theorem (1418 at the time of writing, all examples included) and fails the
 build if any uses an axiom beyond the standard three (`native_decide` axioms are allowed only in
 `RealFP.Demo.*` / `RealFP.Examples.*`; `sorryAx` never). `RealFPMathlib/scripts/audit_axioms.sh`
-prints the report.
+prints the report. `lake build RealFPMathlib.AxiomAuditCore` is the same check without
+Examples (used in the push CI).
 
 Examples: `RealFPMathlib/RealFPMathlib/Examples/Roots.lean` (roots, exclusion, 2×2/3×3 and
 transcendental systems, PD). Limitations: `∃!` for systems needs Krawczyk to contract on the
@@ -889,7 +903,9 @@ tag together, then `lake update` in `RealFPMathlib/`.
 ```bash
 cd RealFPMathlib
 lake exe cache get        # prebuilt Mathlib oleans (~5 GB, a few minutes); never build Mathlib
-lake build                # core (C kernels too) + the Mathlib layer
+lake build                # core (C kernels too) + the Mathlib layer, including Examples and the full axiom audit
+lake build RealFPMathlib.AxiomAuditCore
+                          # library + Demo + Tests and the axiom audit, without Examples
 lake lean Examples.lean   # runnable examples (#eval uses the C kernels)
 scripts/check_axioms.sh   # axiom report for every theorem of the layer
 ```

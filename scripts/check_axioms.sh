@@ -9,12 +9,13 @@
 #   scripts/check_axioms.sh DIR FILE             # another package dir / axioms file
 #   NATIVE_ONLY_IN='RealFP\.Demo\.' scripts/check_axioms.sh ...
 #       # native_decide axioms are BAD in theorems whose name does not match
+#   LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cd "${1:-.}"
 AXFILE="${2:-Interval64Axioms.lean}"
 expected=$(grep -c '^#print axioms' "$AXFILE" || true)
-out=$(lake lean "$AXFILE" 2>&1)
+out=$({ ${LAKE:-lake} lean "$AXFILE"; } 2>&1)
 printf '%s\n' "$out" | awk -v expected="$expected" -v native_re="${NATIVE_ONLY_IN:-}" '
   function check(entry,   name, list, n, i, a, ax) {
     name = entry; sub(/ depends on axioms:.*/, "", name); sub(/^.*'"'"'(.*)'"'"'$/, "&", name)
