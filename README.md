@@ -33,7 +33,7 @@ tactics and hand-written certificates (every snippet is compiled, in
 
 Comparisons with [FloatLib](https://github.com/lean-dojo/FloatLib),
 [LeanCert](https://docs.leancert.io/), and two research showcases are in
-[COMPARISONS.md](COMPARISONS.md).
+[COMPARISONS.md](COMPARISONS.md). Known gaps are listed in [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Kernels
 
