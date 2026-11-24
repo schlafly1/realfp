@@ -163,6 +163,25 @@ def midQ (bs : List (ℚ × ℚ)) : List ℚ := bs.map fun b => (b.1 + b.2) / 2
 def inBoxQ (bs : List (ℚ × ℚ)) (x : List ℚ) : Bool :=
   x.length == bs.length && (List.zip x bs).all fun (v, b) => decide (b.1 ≤ v ∧ v ≤ b.2)
 
+/-- Starting points for Newton: the midpoint, then a `g^n` grid of cell centres (g = 2, 4). -/
+def starts (bs : List (ℚ × ℚ)) : List (List ℚ) := Id.run do
+  let mut out := [midQ bs]
+  for g in [2, 4] do
+    let pts : List (List ℚ) := bs.foldr (fun b acc =>
+      (List.range g).flatMap fun i =>
+        acc.map fun rest => (b.1 + (b.2 - b.1) * ((2 * i + 1 : ℚ) / (2 * g))) :: rest) [[]]
+    out := out ++ pts
+  return out
+
+/-- A Newton approximation to a root inside `bs` (residual below `1e-9`), from several starts. -/
+def newtonIn (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Option (List ℚ) := Id.run do
+  let n := bs.length
+  for x0 in starts bs do
+    if let some x := newton Fs n x0 then
+      let res := (List.range n).foldl (fun a k => max a (evalAt (fget Fs k) x).abs) 0
+      if inBoxQ bs x && res < 1e-9 then return some x
+  return none
+
 /-- A small box around `x` inside `bs` (relative radius `r`), with float endpoints. -/
 def boxAround (bs : List (ℚ × ℚ)) (x : List ℚ) (r : Float) : Option (List (ℚ × ℚ)) :=
   (List.zip x bs).mapM fun (v, b) => do
@@ -178,19 +197,16 @@ def krawWhole (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Except String KCert :
   match tryKraw Fs bs m with
   | .ok c => return c
   | .error e1 =>
-    match newton Fs bs.length m with
+    match newtonIn Fs bs with
     | some x =>
-      if inBoxQ bs x then
-        match tryKraw Fs bs x with
-        | .ok c => return c
-        | .error e2 => throw s!"centre = midpoint: {e1}; centre = Newton point: {e2}"
-      else throw s!"{e1}; Newton's method from the midpoint leaves the box"
-    | none => throw s!"{e1}; Newton's method from the midpoint broke down"
+      match tryKraw Fs bs x with
+      | .ok c => return c
+      | .error e2 => throw s!"centre = midpoint: {e1}; centre = Newton point: {e2}"
+    | none => throw s!"{e1}; Newton's method found no root inside the box"
 
 /-- Krawczyk on a sub-box around a Newton approximation (existence only). -/
 def krawSub (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Except String (List (ℚ × ℚ) × KCert) := do
-  let some x := newton Fs bs.length (midQ bs) | throw "no Newton point for a sub-box"
-  unless inBoxQ bs x do throw "no Newton point inside the box for a sub-box"
+  let some x := newtonIn Fs bs | throw "no approximate root inside the box for a sub-box"
   let mut last := ""
   for r in [1e-12, 1e-9, 1e-6, 1e-3] do
     if let some bs' := boxAround bs x r then
