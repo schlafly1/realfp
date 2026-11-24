@@ -91,7 +91,7 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
     | .conj | .infsup | .interval | .unique | .exists | .witness | .discover => pure ()
     | _ => throwError "(precision := 128) is supported only for `interval` goals (bounds \
         `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` \
-        bounds and one-variable `root_exists` / `root_unique` so far, not for `{r.name}`; drop it \
+        bounds and `root_exists` / `root_unique` so far, not for `{r.name}`; drop it \
         to use precision 64"
   let rest := if r matches .interval | .unique | .exists then rest else
     rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)

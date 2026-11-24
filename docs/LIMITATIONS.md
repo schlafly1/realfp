@@ -23,12 +23,14 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 - Example files for the new functions take 37–104 s each to build.
 
 ## Precision 128 (`(precision := 128)`)
-- Supported at 128: `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`, `f ≠ c`) and
-  one-variable `root_exists` / `root_unique` (sign change; for `∃!` a strict derivative sign),
+- Supported at 128: `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`, `f ≠ c`),
+  `root_exists` / `root_unique` (one variable: sign change, for `∃!` a strict derivative sign;
+  systems and fallback: Krawczyk with 128-bit interval arithmetic; the preconditioner `Y` is a
+  binary64 inverse, so very ill-conditioned Jacobians, condition number near `10¹⁶`, fail),
   `sInf` / `sSup` bounds and witnesses `∃ x ∈ S, f x ≤ c` (128-bit checks; in one variable the
-  witness is refined at 128 bits by bisection on the sign of `f'`). Systems of equations
-  (Krawczyk), argmin/argmax localisation, `#realfp_min` / `#realfp_max` (still binary64
-  estimates), `integral_bound` and `pos_def` reject it or ignore it.
+  witness is refined at 128 bits by bisection on the sign of `f'`). Argmin/argmax
+  localisation, `#realfp_min` / `#realfp_max` (still binary64 estimates), `integral_bound` and
+  `pos_def` reject it or ignore it.
 - `≠` at 128 is plain bisection (no derivative certificates for exclusion).
 - 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
   enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,

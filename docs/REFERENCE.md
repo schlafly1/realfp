@@ -978,8 +978,17 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   closed with `interval (precision := 128)`; in one variable `refineQ` bisects on the sign of
   `f'` at dyadic points (110 steps) to put the witness within about `10⁻³⁰` of a stationary
   point. Example: `sInf ((x ↦ x⁴ - x) '' [0, 1]) ∈ [-0.4724703937105774368, -…4367]`.
-* Not yet at 128: systems (`root_exists` / `root_unique` with Krawczyk, which needs 128-bit
-  interval matrices), argmin/argmax localisation, `#realfp_min` / `#realfp_max` (binary64
+* **Systems at 128** (`RealFPMathlib/I128Kraw.lean`): `root_exists` / `root_unique
+  (precision := 128)` with `n` equations use the Krawczyk test of `Krawczyk.lean` (same
+  expressions `kE` / `tE` / `nE`, layout and algebra) evaluated with `evalQ`:
+  `krawCheckQ Fs bs ⟨m, Y, Z, q⟩` recomputes `F(m)` and the interval Jacobian at 128 bits
+  (`bEnvQ`, `jEnvQ`) and checks inclusion, `‖I - Y J(X)‖∞ ≤ q < 1` and `‖I - Z Y‖∞ ≤ q`;
+  `kraw_existsUniqueQ`, `kraw_exists_inQ` (sub-box around the Newton point for `∃`). The search
+  takes `Y ≈ F'(m)⁻¹` from binary64 Gaussian elimination and refines the centre `m` by
+  simplified Newton `m ← m - Y F(m)` with 128-bit evaluations (rounded to multiples of
+  `2⁻¹⁶⁰`). In one variable Krawczyk is the fallback when the derivative-sign certificate
+  fails. Example: `x² + y² = 4, x y = 1` on a box of width `10⁻²⁸` (about 1.2 s).
+* Not yet at 128: argmin/argmax localisation, `#realfp_min` / `#realfp_max` (binary64
   estimates), `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
   accepted everywhere.
 * When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests

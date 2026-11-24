@@ -240,6 +240,29 @@ theorem dottie_unique :
     ∃! x : ℝ, x ∈ Set.Icc (0.7390851332151606416 : ℝ) 0.7390851332151606417 ∧ Real.cos x = x := by
   realfp (precision := 128)
 
+/-! ### Systems at 128 (Krawczyk)
+
+`n` equations: the Krawczyk test with 128-bit interval arithmetic (`RealFPMathlib/I128Kraw.lean`):
+centre from binary64 Newton refined by 128-bit simplified Newton, `Y ≈ F'(m)⁻¹` in binary64,
+`F(m)` and the interval Jacobian recomputed at 128 bits by the kernel. -/
+
+/-- `x² + y² = 4`, `x y = 1` at `(1.93185165257813657349948639945…, 0.51763809020504152469779…)`,
+boxes of width `10⁻²⁸` (about 1.2 s). -/
+theorem circle_hyperbola_unique : ∃! p : ℝ × ℝ,
+    p.1 ∈ Set.Icc (1.9318516525781365734994863994 : ℝ) 1.9318516525781365734994863995 ∧
+    p.2 ∈ Set.Icc (0.5176380902050415246977976752 : ℝ) 0.5176380902050415246977976753 ∧
+    p.1 ^ 2 + p.2 ^ 2 = 4 ∧ p.1 * p.2 = 1 := by
+  fail_if_success root_unique
+  root_unique (precision := 128)
+
+/-- A transcendental system, width `10⁻²⁸` (about 3.4 s). -/
+theorem sin_system_exists : ∃ p : ℝ × ℝ,
+    p.1 ∈ Set.Icc (0.9431295240059907810280290933 : ℝ) 0.9431295240059907810280290934 ∧
+    p.2 ∈ Set.Icc (1.0280420594479630622638270879 : ℝ) 1.0280420594479630622638270880 ∧
+    p.1 ^ 2 + p.2 - 2 + Real.sin (p.1 * p.2) / 10 = 0 ∧ p.1 + p.2 ^ 2 = 2 := by
+  fail_if_success root_exists
+  root_exists (precision := 128)
+
 /-! ### `sInf` / `sSup` and witnesses at 128
 
 `min_{[0,1]} (x⁴ - x) = -(3/4)·4^(-1/3) = -0.47247039371057743678770…` at `x = 4^(-1/3)`. The lower

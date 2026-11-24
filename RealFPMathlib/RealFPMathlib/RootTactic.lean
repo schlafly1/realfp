@@ -24,6 +24,7 @@ with `(trust := native)`):
 -/
 import RealFPMathlib.IntervalTactic
 import RealFPMathlib.Krawczyk
+import RealFPMathlib.I128Kraw
 
 open Lean Meta Elab Tactic
 open Interval64.KF RealFP RealFP.Roots RealFP.IntervalTactic
@@ -217,6 +218,111 @@ def krawSub (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Except String (List (�
   for r in [1e-12, 1e-9, 1e-6, 1e-3] do
     if let some bs' := boxAround bs x r then
       match tryKraw Fs bs' x with
+      | .ok c => return (bs', c)
+      | .error e => last := e
+  throw s!"no Krawczyk certificate near the Newton point: {last}"
+
+/-! ### Krawczyk at precision 128 (untrusted search) -/
+
+def dyMidQ (X : Interval128.Dy.DI) : Option ℚ :=
+  match X.lo, X.hi with
+  | some a, some b => some ((Interval128.Dy.toRat a + Interval128.Dy.toRat b) / 2)
+  | _, _ => none
+
+def magQ (X : Interval128.Dy.DI) : Option ℚ :=
+  match X.lo, X.hi with
+  | some a, some b => some (max |Interval128.Dy.toRat a| |Interval128.Dy.toRat b|)
+  | _, _ => none
+
+/-- Round to a multiple of `2^-k`. -/
+def roundQ (q : ℚ) (k : Nat := 160) : ℚ := ((q * 2 ^ k).floor : ℚ) / 2 ^ k
+
+def evalAtQ (e : IExpr) (xs : List ℚ) : Option ℚ :=
+  dyMidQ (Interval128.Dy.evalQ (Interval128.Dy.boxes (ptBoxes xs)) e)
+
+/-- Simplified Newton `x ← x - Y F(x)` with a fixed rational `Y`, in 128-bit arithmetic. -/
+def newtonQ (Fs : List IExpr) (n : Nat) (Y : List (List ℚ)) (x0 : List ℚ) (iters : Nat := 10) :
+    Option (List ℚ) := Id.run do
+  let mut x := x0
+  for _ in [0:iters] do
+    let some F := (List.range n).mapM fun k => evalAtQ (fget Fs k) x | return none
+    let x' := (List.range n).map fun i =>
+      roundQ (x.getD i 0 - ((List.range n).map fun k => qget Y i k * F.getD k 0).sum)
+    if x' == x then return some x
+    x := x'
+  return some x
+
+/-- `Y ≈ F'(x)⁻¹` and `Z ≈ F'(x)` from binary64. -/
+def yzAt (Fs : List IExpr) (n : Nat) (x : List ℚ) : Except String (List (List ℚ) × List (List ℚ)) := do
+  let Jm := jacAt Fs n x
+  let some Yf := gauss Jm (identF n) |
+    throw "the Jacobian at the centre is singular (or not finite)"
+  let Y ← Yf.toList.mapM fun row => row.toList.mapM toQ
+  let Z ← Jm.toList.mapM fun row => row.toList.mapM toQ
+  return (Y, Z)
+
+/-- Try a 128-bit Krawczyk certificate on `bs` around the centre `m`. -/
+def tryKrawQ (Fs : List IExpr) (bs : List (ℚ × ℚ)) (m : List ℚ) :
+    Except String RealFP.I128Q.KCertQ := do
+  let n := bs.length
+  let (Y, Z) ← yzAt Fs n m
+  let B := RealFP.I128Q.bEnvQ n Fs m
+  let J := RealFP.I128Q.jEnvQ n Fs bs
+  let envT := Interval128.Dy.boxes (unitBoxes n) ++ Interval128.Dy.boxes (ptBoxes m) ++ B ++ J
+  let mut qm : ℚ := 0
+  for i in [0:n] do
+    for F in [Interval128.Dy.evalQ envT (tE n Y i), Interval128.Dy.evalQ envT (nE n Y Z i)] do
+      let some v := magQ F | throw s!"the interval Jacobian is not finite on the box (row {i})"
+      qm := max qm v
+  if qm ≥ 1 then
+    throw s!"contraction factor ‖I - Y·J(X)‖∞ ≈ {qToF qm} ≥ 1 (box too wide or Jacobian too \
+      ill-conditioned)"
+  let q : ℚ := ((((qm + (1 - qm) / 4) * 2 ^ 64).ceil : ℤ) : ℚ) / 2 ^ 64
+  let env := Interval128.Dy.boxes bs ++ Interval128.Dy.boxes (ptBoxes m) ++ B ++ J
+  for i in [0:n] do
+    let K := Interval128.Dy.evalQ env (kE n Y i)
+    let b := bs.getD i (0, 0)
+    unless RealFP.I128Q.inLHQ b.1 b.2 K do
+      throw s!"Krawczyk image of coordinate {i} is {K.toString}, not inside [{fmtQ b.1}, {fmtQ b.2}]"
+  let c : RealFP.I128Q.KCertQ := { m, Y, Z, q }
+  unless RealFP.I128Q.krawCheckQ Fs bs c do
+    throw "internal: the certificate was rejected by `krawCheckQ`"
+  return c
+
+/-- Centres to try at 128: Newton points (binary64 Newton, then 128-bit refinement) from the
+midpoint and the start grid, then the midpoint. -/
+def centresQ (Fs : List IExpr) (bs : List (ℚ × ℚ)) : List (List ℚ) := Id.run do
+  let n := bs.length
+  let mut out : Array (List ℚ) := #[]
+  for x0 in starts bs do
+    let x1 := (newton Fs n x0).getD x0
+    for x in [x1, x0] do
+      if let .ok (Y, _) := yzAt Fs n x then
+        if let some x' := newtonQ Fs n Y (x.map roundQ) then
+          if inBoxQ bs x' && !out.contains x' then out := out.push x'
+    if out.size ≥ 2 then break
+  return out.toList ++ [midQ bs]
+
+def krawWholeQ (Fs : List IExpr) (bs : List (ℚ × ℚ)) : Except String RealFP.I128Q.KCertQ := do
+  let mut errs : Array String := #[]
+  for m in centresQ Fs bs do
+    match tryKrawQ Fs bs m with
+    | .ok c => return c
+    | .error e => errs := errs.push e
+  throw ("; ".intercalate errs.toList)
+
+def krawSubQ (Fs : List IExpr) (bs : List (ℚ × ℚ)) :
+    Except String (List (ℚ × ℚ) × RealFP.I128Q.KCertQ) := do
+  let cs := (centresQ Fs bs).dropLast
+  if cs.isEmpty then throw "no approximate root inside the box for a sub-box"
+  let mut last := ""
+  for x in cs do
+    for k in [30, 26, 22, 18, 14, 10, 6] do
+      let r : ℚ := 1 / 10 ^ k
+      let bs' := (List.zip x bs).map fun (v, b) =>
+        let w := r * max 1 |v|
+        (max b.1 (v - w), min b.2 (v + w))
+      match tryKrawQ Fs bs' x with
       | .ok c => return (bs', c)
       | .error e => last := e
   throw s!"no Krawczyk certificate near the Newton point: {last}"
@@ -493,36 +599,72 @@ def ivtSubQ (e : IExpr) (a b : ℚ) (grid : Nat := 512) : Option (ℚ × ℚ) :=
     if RealFP.I128Q.ivtCheckQ e p q then return some (p, q)
   return none
 
-/-- `∃` / `∃!` in one variable at precision 128. -/
-def proveRoots128 (cfg : Cfg) (unique : Bool) (rg : RootGoal) : TacticM Expr := do
+def kcertQE (c : RealFP.I128Q.KCertQ) : Expr :=
+  mkAppN (mkConst ``RealFP.I128Q.KCertQ.mk) #[toExpr c.m, toExpr c.Y, toExpr c.Z, toExpr c.q]
+
+/-- Krawczyk at precision 128 (`n` variables, or one variable as a fallback). -/
+def krawRoots128 (unique : Bool) (rg : RootGoal) (ofL hto hinj : Expr) :
+    TacticM (Except String Expr) := do
+  let esE ← esList rg.es
+  let bsE := toExpr rg.bs
+  if unique then
+    match krawWholeQ rg.es rg.bs with
+    | .ok c =>
+      let h ← proveTrue (mkApp3 (← mkC ``RealFP.I128Q.krawCheckQ) esE bsE (kcertQE c))
+      return .ok (mkAppN (← mkC ``RealFP.I128Q.kraw_existsUniqueQ)
+        #[rg.T, esE, bsE, kcertQE c, rg.toL, ofL, hto, hinj, h])
+    | .error s => return .error s!"Krawczyk (128-bit) on the whole box {fmtBox rg.bs}: {s}"
+  else
+    let attempt : Except String (List (ℚ × ℚ) × RealFP.I128Q.KCertQ) :=
+      match krawWholeQ rg.es rg.bs with
+      | .ok c => .ok (rg.bs, c)
+      | .error s1 => match krawSubQ rg.es rg.bs with
+        | .ok r => .ok r
+        | .error s2 => .error s!"{s1}; {s2}"
+    match attempt with
+    | .ok (bs', c) =>
+      let chk := mkApp2 (mkConst ``and) (mkApp2 (← mkC ``RealFP.Roots.subBoxes) (toExpr bs') bsE)
+        (mkApp3 (← mkC ``RealFP.I128Q.krawCheckQ) esE (toExpr bs') (kcertQE c))
+      let h ← proveTrue chk
+      return .ok (mkAppN (← mkC ``RealFP.I128Q.kraw_exists_inQ)
+        #[rg.T, esE, bsE, toExpr bs', kcertQE c, rg.toL, ofL, hto, h])
+    | .error s => return .error s!"Krawczyk (128-bit): {s}"
+
+/-- `∃` / `∃!` at precision 128. -/
+def proveRoots128 (cfg : Cfg) (unique : Bool) (rg : RootGoal) (ofL hto hinj : Expr) :
+    TacticM Expr := do
   let tac := if unique then "root_unique" else "root_exists"
   unless rg.bs.length == 1 do
-    throwError "{tac} (precision := 128): only one-variable equations are supported at precision \
-      128 so far (Krawczyk for systems needs 128-bit interval matrices); drop the option to use \
-      precision 64"
+    match ← krawRoots128 unique rg ofL hto hinj with
+    | .ok pf => return pf
+    | .error s => throwError "{tac} (precision := 128): no certificate for the system on \
+        {fmtBox rg.bs}:\n• {s}"
   let e := rg.es.head!
   let (a, b) := rg.bs.head!
+  let mut err := ""
   if unique then
-    unless RealFP.I128Q.ivtCheckQ e a b do
-      throwError "{tac} (precision := 128): f has no certified sign change between the endpoints"
-    let some (inc, c) := derivCertQ cfg e a b |
-      throwError "{tac} (precision := 128): f' has no certified strict sign on the box (depth \
-        {cfg.depth}, order {cfg.order})"
-    let chk := mkApp2 (mkConst ``and) (mkApp3 (← mkC ``RealFP.I128Q.ivtCheckQ) (iexprToExpr e)
-      (toExpr a) (toExpr b)) (mkAppN (← mkC ``RealFP.I128Q.derivSignQ) #[iexprToExpr e, toExpr a,
-        toExpr b, toExpr inc, dcertQToExpr c])
-    let h ← proveTrue chk
-    return mkAppN (← mkC ``RealFP.I128Q.unique_oneQ) #[iexprToExpr e, toExpr a, toExpr b,
-      toExpr inc, dcertQToExpr c, h]
+    if RealFP.I128Q.ivtCheckQ e a b then
+      if let some (inc, c) := derivCertQ cfg e a b then
+        let chk := mkApp2 (mkConst ``and) (mkApp3 (← mkC ``RealFP.I128Q.ivtCheckQ) (iexprToExpr e)
+          (toExpr a) (toExpr b)) (mkAppN (← mkC ``RealFP.I128Q.derivSignQ) #[iexprToExpr e, toExpr a,
+            toExpr b, toExpr inc, dcertQToExpr c])
+        let h ← proveTrue chk
+        return mkAppN (← mkC ``RealFP.I128Q.unique_oneQ) #[iexprToExpr e, toExpr a, toExpr b,
+          toExpr inc, dcertQToExpr c, h]
+      err := s!"f' has no certified strict sign on the box (depth {cfg.depth}, order {cfg.order})"
+    else err := "f has no certified sign change between the endpoints"
   else
-    let some (a', b') := ivtSubQ e a b |
-      throwError "{tac} (precision := 128): no sign change of f found on a 512-point grid"
-    let chk := mkApp2 (mkConst ``and) (← mkDecide (← mkAppM ``And
-      #[← mkAppM ``LE.le #[toExpr a, toExpr a'], ← mkAppM ``LE.le #[toExpr b', toExpr b]]))
-      (mkApp3 (← mkC ``RealFP.I128Q.ivtCheckQ) (iexprToExpr e) (toExpr a') (toExpr b'))
-    let h ← proveTrue chk
-    return mkAppN (← mkC ``RealFP.I128Q.ivt_exists_inQ) #[iexprToExpr e, toExpr a, toExpr b,
-      toExpr a', toExpr b', h]
+    if let some (a', b') := ivtSubQ e a b then
+      let chk := mkApp2 (mkConst ``and) (← mkDecide (← mkAppM ``And
+        #[← mkAppM ``LE.le #[toExpr a, toExpr a'], ← mkAppM ``LE.le #[toExpr b', toExpr b]]))
+        (mkApp3 (← mkC ``RealFP.I128Q.ivtCheckQ) (iexprToExpr e) (toExpr a') (toExpr b'))
+      let h ← proveTrue chk
+      return mkAppN (← mkC ``RealFP.I128Q.ivt_exists_inQ) #[iexprToExpr e, toExpr a, toExpr b,
+        toExpr a', toExpr b', h]
+    err := "no sign change of f found on a 512-point grid"
+  match ← krawRoots128 unique rg ofL hto hinj with
+  | .ok pf => return pf
+  | .error s => throwError "{tac} (precision := 128): {err}; {s}"
 
 /-- Prove the root goal. `unique`: `∃!`, else `∃`. -/
 def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
@@ -546,7 +688,7 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
   let mut errs : Array String := #[]
   let mut core? : Option Expr := none
   if cfg.precision == 128 then
-    core? := some (← proveRoots128 cfg unique rg)
+    core? := some (← proveRoots128 cfg unique rg ofL hto hinj)
   -- one variable
   else if n == 1 then
     let e := rg.es.head!
