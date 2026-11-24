@@ -104,6 +104,9 @@ theorem exists_isMax_in_Icc (f : ℝ → ℝ) {a b a' b' q M : ℝ} (hf : Contin
 
 /-! ### Numbers -/
 
+set_option linter.concreteInstances false
+variable [ExtTbl]
+
 /-- A short decimal `≤ x` (`down`) or `≥ x`, within `slack` of `x`. -/
 def niceRat (x : Float) (slack : Float) (down : Bool) : Option ℚ := do
   let q ← floatRat? x
@@ -297,7 +300,7 @@ partial def peel {α} (todo : List Expr) (vars : Array Expr) (atoms : Array Expr
     | _ => peel rest vars (atoms.push t) k
 
 /-- Prove `∃ x ∈ S, P x` (inequalities `P`) by a witness. -/
-def proveWitness : TacticM Unit := do
+def proveWitnessCore : TacticM Unit := do
   evalTactic (← `(tactic| try simp only [Prod.exists, Set.mem_prod, and_assoc, exists_prop]))
   let goal ← getMainGoal
   let qs ← goal.withContext do
@@ -360,6 +363,10 @@ structure BoundGoal where
   lower : Bool
   strict : Bool
 
+
+/-- `proveWitnessCore` with the registered functions of the goal. -/
+def proveWitness : TacticM Unit := withRegistered (proveWitnessCore)
+
 /-- Analyse `∀ x, x ∈ S → … → R m (f x)` with the bound variable `m`. -/
 def analyseBound (m : Expr) (body : Expr) : MetaM BoundGoal := do
   forallTelescopeReducing body fun xs atom => do
@@ -396,7 +403,7 @@ def analyseBound (m : Expr) (body : Expr) : MetaM BoundGoal := do
     throwError "realfp: the bound variable must be one side of {atom}"
 
 /-- Prove `∃ m, ∀ x ∈ S, m ≤ f x` (or `f x ≤ m`) by branch and bound + `interval`. -/
-def proveDiscover (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
+def proveDiscoverCore (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
   let goal ← getMainGoal
   let (bg, isRat) ← goal.withContext do
     let t ← instantiateMVars (← goal.getType)
@@ -424,6 +431,10 @@ def proveDiscover (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
   throwError "realfp: could not certify a bound near {fmtFloat ext}: {lastErr}"
 
 /-! ### `sInf` / `sSup` goals -/
+
+
+/-- `proveDiscoverCore` with the registered functions of the goal. -/
+def proveDiscover (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := withRegistered (proveDiscoverCore opts)
 
 def isInfSup (e : Expr) : Option (Bool × Expr × Expr) :=  -- (isInf, f, S)
   match e.getAppFnArgs with
@@ -510,7 +521,7 @@ def argGoal? (t : Expr) : MetaM (Option (Bool × Expr × Expr × Expr)) := do
       unless ← isDefEq (f.beta #[x]) fx do return none
       return some (isMin, f, S, S')
 
-def proveArg (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
+def proveArgCore (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
   let goal ← getMainGoal
   let some (isMin, f, S, S') ← goal.withContext do argGoal? (← instantiateMVars (← goal.getType))
     | throwError "realfp: expected `∃ x ∈ S, ∀ y ∈ S, f x ≤ f y` (or `f y ≤ f x`)"
@@ -596,6 +607,10 @@ def proveArg (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
 
 /-! ### `#realfp_min` / `#realfp_max` -/
 
+
+/-- `proveArgCore` with the registered functions of the goal. -/
+def proveArg (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := withRegistered (proveArgCore opts)
+
 declare_syntax_cat realfpBinder
 syntax "(" ident " ∈ " term ")" : realfpBinder
 
@@ -619,7 +634,8 @@ partial def reportGo (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (bod
     Term.synthesizeSyntheticMVarsNoPostponing
     let e ← instantiateMVars e
     let ie ← reify vars e
-    let r := bnbMin ie maximize (boxes box.toList) 50000 1e-9
+    let tbl ← runtimeTbl (← entriesIn e)
+    let r := @bnbMin tbl ie maximize (boxes box.toList) 50000 1e-9
     let word := if maximize then "maximum" else "minimum"
     let lo := if maximize then -r.upper else r.lower
     let hi := if maximize then -r.lower else r.upper

@@ -25,6 +25,7 @@ import RealFPMathlib.IntervalSound
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.Opt
 import RealFPMathlib.Roots
+import RealFPMathlib.Registry
 import RealFPMathlib.Trust
 import Mathlib.Tactic.NormNum
 import Mathlib.Tactic.Linarith
@@ -45,6 +46,19 @@ theorem inBoxes_cons {x : ℝ} {xs : List ℝ} {b : ℚ × ℚ} {bs : List (ℚ 
     InBoxes (x :: xs) (b :: bs) ↔ ((b.1 : ℝ) ≤ x ∧ x ≤ (b.2 : ℝ)) ∧ InBoxes xs bs :=
   List.forall₂_cons
 
+theorem close_le {a b A B : ℝ} (h : A ≤ B) (ha : a = A) (hb : b = B) : a ≤ b := ha ▸ hb ▸ h
+theorem close_lt {a b A B : ℝ} (h : A < B) (ha : a = A) (hb : b = B) : a < b := ha ▸ hb ▸ h
+theorem le_of_sub {a b : ℝ} (h : a - b ≤ 0) : a ≤ b := sub_nonpos.mp h
+theorem lt_of_sub {a b : ℝ} (h : a - b < 0) : a < b := sub_neg.mp h
+theorem close_ne {a A : ℝ} (h : A ≠ 0) (ha : a = A) : a ≠ 0 := ha ▸ h
+theorem ne_of_sub_ne {a b : ℝ} (h : a - b ≠ 0) : a ≠ b := fun e => h (by rw [e, sub_self])
+
+/-! Everything below is generic in the extension table (`RealFP.Registry`): the native
+searches run with the runtime table of the registered functions in the goal. -/
+
+set_option linter.concreteInstances false
+variable [ExtTbl]
+
 theorem checkK_split_of {e : IExpr} {g : KI → Bool} {i m : Nat} {l r : Cert} {env : List KI}
     (hm : (!isNaN m && Nat.blt m (2 ^ 64)) = true)
     (hl : checkK e g l (env.set i ⟨(env.getD i zeroK).lo, m⟩) = true)
@@ -52,10 +66,6 @@ theorem checkK_split_of {e : IExpr} {g : KI → Bool} {i m : Nat} {l r : Cert} {
     checkK e g (.split i m l r) env = true := by
   simp only [checkK, hl, hr, Bool.and_true]; exact hm
 
-theorem close_le {a b A B : ℝ} (h : A ≤ B) (ha : a = A) (hb : b = B) : a ≤ b := ha ▸ hb ▸ h
-theorem close_lt {a b A B : ℝ} (h : A < B) (ha : a = A) (hb : b = B) : a < b := ha ▸ hb ▸ h
-theorem le_of_sub {a b : ℝ} (h : a - b ≤ 0) : a ≤ b := sub_nonpos.mp h
-theorem lt_of_sub {a b : ℝ} (h : a - b < 0) : a < b := sub_neg.mp h
 
 /-! ### Certificate search (runs the kernel's own evaluator `evalK` natively) -/
 
@@ -561,6 +571,7 @@ partial def iexprToExpr : IExpr → Expr
   | .tan a => mkApp (mkConst ``IExpr.tan) (iexprToExpr a)
   | .asin a => mkApp (mkConst ``IExpr.asin) (iexprToExpr a)
   | .acos a => mkApp (mkConst ``IExpr.acos) (iexprToExpr a)
+  | .ext k d a => mkApp3 (mkConst ``IExpr.ext) (toExpr k) (iexprToExpr d) (iexprToExpr a)
 
 partial def dcertToExpr : DCert → Expr
   | .leaf => mkConst ``DCert.leaf
@@ -656,7 +667,14 @@ partial def reify (vars : Array Expr) (e : Expr) : MetaM IExpr := do
       throwError "interval: only natural-number powers are supported: {e}"
     let some k ← natOf? n | throwError "interval: exponent is not a numeral: {n}"
     return .pow (← r a) k
-  | _ => throwError "interval: cannot interpret {e} (variables need numeral bounds in context)"
+  | _ =>
+    -- registered functions (`@[realfp_fn]`, see `RealFPMathlib.Registry`)
+    if let .const c _ := e.getAppFn then
+      if e.getAppNumArgs == 1 then
+        if let some en ← findEntry? c then
+          let F ← evalExtFn en.ext
+          return .ext en.key F.deriv (← r e.appArg!)
+    throwError "interval: cannot interpret {e} (variables need numeral bounds in context)"
 
 partial def gatherFVars (e : Expr) (acc : Array FVarId) : Array FVarId :=
   match e with
@@ -709,10 +727,12 @@ structure Cfg where
   order : Nat := 3
 
 def denoteSimp : TacticM Unit := do
+  let ids ← (← extSimpLemmas).mapM fun n => `(Lean.Parser.Tactic.simpLemma| $(mkIdent n):ident)
+  let ext ← if ids.isEmpty then `(tactic| skip) else `(tactic| try simp only [$ids,*])
   evalTactic (← `(tactic|
     first
     | rfl
-    | ((try simp only [Interval64.KF.IExpr.denote, List.getD_cons_zero, List.getD_cons_succ])
+    | ((try simp only [Interval64.KF.IExpr.denote, List.getD_cons_zero, List.getD_cons_succ]); $ext:tactic
        first
        | rfl
        | (push_cast; done)
@@ -732,7 +752,7 @@ partial def proveCheck (chunk : Nat) (eE gE : Expr) (cert : Cert) (envE : Expr) 
   match cert with
   | .split i m l r =>
     if certLeaves cert > chunk then
-      let lem := mkAppN (mkConst ``checkK_split_of)
+      let lem := mkAppN (← mkC ``checkK_split_of)
         #[eE, gE, toExpr i, toExpr m, certToExpr l, certToExpr r, envE]
       let ty ← inferType lem
       let .forallE _ _ b1 _ := ty | throwError "interval: internal (split lemma)"
@@ -749,7 +769,7 @@ partial def proveCheck (chunk : Nat) (eE gE : Expr) (cert : Cert) (envE : Expr) 
   | .leaf => leafChunk
 where
   leafChunk : TacticM Expr := do
-    let chk := mkApp4 (mkConst ``checkK) eE gE (certToExpr cert) envE
+    let chk := mkApp4 (← mkC ``checkK) eE gE (certToExpr cert) envE
     let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
     let saved ← getGoals
     setGoals [hM.mvarId!]
@@ -762,7 +782,7 @@ partial def proveCheckD (chunk : Nat) (eE gE upperE : Expr) (cert : DCert) (envE
   match cert with
   | .split i m l r =>
     if dLeaves cert > chunk then
-      let lem := mkAppN (mkConst ``RealFP.checkD_split_of)
+      let lem := mkAppN (← mkC ``RealFP.checkD_split_of)
         #[eE, gE, upperE, toExpr i, toExpr m, dcertToExpr l, dcertToExpr r, envE]
       let ty ← inferType lem
       let .forallE _ _ b1 _ := ty | throwError "interval: internal (split lemma)"
@@ -779,7 +799,7 @@ partial def proveCheckD (chunk : Nat) (eE gE upperE : Expr) (cert : DCert) (envE
   | _ => leafChunk
 where
   leafChunk : TacticM Expr := do
-    let chk := mkApp5 (mkConst ``checkD) eE gE upperE (dcertToExpr cert) envE
+    let chk := mkApp5 (← mkC ``checkD) eE gE upperE (dcertToExpr cert) envE
     let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
     let saved ← getGoals
     setGoals [hM.mvarId!]
@@ -792,7 +812,7 @@ partial def proveCheckM (chunk : Nat) (eE gE upperE : Expr) (cert : MCert) (envE
   match cert with
   | .split i m l r =>
     if mLeaves cert > chunk then
-      let lem := mkAppN (mkConst ``RealFP.checkM_split_of)
+      let lem := mkAppN (← mkC ``RealFP.checkM_split_of)
         #[eE, gE, upperE, toExpr i, toExpr m, mcertToExpr l, mcertToExpr r, envE]
       let ty ← inferType lem
       let .forallE _ _ b1 _ := ty | throwError "interval: internal (split lemma)"
@@ -809,7 +829,7 @@ partial def proveCheckM (chunk : Nat) (eE gE upperE : Expr) (cert : MCert) (envE
   | _ => leafChunk
 where
   leafChunk : TacticM Expr := do
-    let chk := mkApp5 (mkConst ``checkM) eE gE upperE (mcertToExpr cert) envE
+    let chk := mkApp5 (← mkC ``checkM) eE gE upperE (mcertToExpr cert) envE
     let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
     let saved ← getGoals
     setGoals [hM.mvarId!]
@@ -918,14 +938,14 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
       | .inl dc => do
         let hM ← proveCheckD cfg.chunk eE gE (toExpr upper) dc envE
         setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
-        pure (mkAppN (mkConst pName) #[eE, bsE, cE, dcertToExpr dc, hM, xsE, hxsM])
+        pure (mkAppN (← mkC pName) #[eE, bsE, cE, dcertToExpr dc, hM, xsE, hxsM])
       | .inr mc => do
         let hM ← proveCheckM cfg.chunk eE gE (toExpr upper) mc envE
         setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
         let pM := match strict, upper with
           | false, true => ``proveM_le | true, true => ``proveM_lt
           | false, false => ``proveM_ge | true, false => ``proveM_gt
-        pure (mkAppN (mkConst pM) #[eE, bsE, cE, mcertToExpr mc, hM, xsE, hxsM])
+        pure (mkAppN (← mkC pM) #[eE, bsE, cE, mcertToExpr mc, hM, xsE, hxsM])
     let pfTy ← inferType pf
     -- close `lhs ≤ rhs` from `A ≤ B` via two equalities
     let goal ← getMainGoal
@@ -944,8 +964,6 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
         throwError "interval: could not match the goal with its reified form"
     setGoals saved.tail
 
-theorem close_ne {a A : ℝ} (h : A ≠ 0) (ha : a = A) : a ≠ 0 := ha ▸ h
-theorem ne_of_sub_ne {a b : ℝ} (h : a - b ≠ 0) : a ≠ b := fun e => h (by rw [e, sub_self])
 
 /-- Prove `lhs ≠ rhs` (exclusion of zeros of `lhs - rhs` on the box) by bisection until every
 box excludes `0`. -/
@@ -980,10 +998,10 @@ def proveNe (cfg : Cfg) (lhs rhs : Expr) : TacticM Unit := do
   setGoals [hxsM.mvarId!]
   inBoxesTac
   setGoals saved
-  let pf := mkAppN (mkConst ``RealFP.Roots.prove_ne) #[eE, bsE, certE, hM, xsE, hxsM]
+  let pf := mkAppN (← mkC ``RealFP.Roots.prove_ne) #[eE, bsE, certE, hM, xsE, hxsM]
   let goal ← getMainGoal
-  let ha ← mkFreshExprMVar (← mkEq f (mkApp2 (mkConst ``IExpr.denote) xsE eE))
-  goal.assign (mkAppN (mkConst ``close_ne) #[f, mkApp2 (mkConst ``IExpr.denote) xsE eE, pf, ha])
+  let ha ← mkFreshExprMVar (← mkEq f (mkApp2 (← mkC ``IExpr.denote) xsE eE))
+  goal.assign (mkAppN (mkConst ``close_ne) #[f, mkApp2 (← mkC ``IExpr.denote) xsE eE, pf, ha])
   setGoals [ha.mvarId!]
   denoteSimp
   unless (← getGoals).isEmpty do
@@ -1056,6 +1074,6 @@ syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
   evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
     ge_iff_le, gt_iff_lt] at *))
   evalTactic (← `(tactic| try casesm* _ ∧ _))
-  intervalCore cfg
+  withRegistered (intervalCore cfg)
 
 end RealFP.IntervalTactic

@@ -27,6 +27,78 @@ noncomputable section
 
 namespace RealFP
 
+/-- Real value of an expression with built-in functions only (extension nodes are `0`); used
+for the derivative templates of extension functions. -/
+def _root_.Interval64.KF.IExpr.denoteB (xs : List ℝ) : IExpr → ℝ
+  | .var i => xs.getD i 0
+  | .rat q => (q : ℝ)
+  | .add a b => a.denoteB xs + b.denoteB xs
+  | .sub a b => a.denoteB xs - b.denoteB xs
+  | .mul a b => a.denoteB xs * b.denoteB xs
+  | .div a b => a.denoteB xs / b.denoteB xs
+  | .neg a => -a.denoteB xs
+  | .inv a => (a.denoteB xs)⁻¹
+  | .sqrt a => Real.sqrt (a.denoteB xs)
+  | .abs a => |a.denoteB xs|
+  | .pow a n => a.denoteB xs ^ n
+  | .exp a => Real.exp (a.denoteB xs)
+  | .log a => Real.log (a.denoteB xs)
+  | .sin a => Real.sin (a.denoteB xs)
+  | .cos a => Real.cos (a.denoteB xs)
+  | .pi => Real.pi
+  | .atan a => Real.arctan (a.denoteB xs)
+  | .atan2 a b => Complex.arg (((b.denoteB xs : ℝ) : ℂ) + ((a.denoteB xs : ℝ) : ℂ) * Complex.I)
+  | .sinh a => Real.sinh (a.denoteB xs)
+  | .cosh a => Real.cosh (a.denoteB xs)
+  | .tanh a => Real.tanh (a.denoteB xs)
+  | .log2 a => Real.logb 2 (a.denoteB xs)
+  | .log10 a => Real.logb 10 (a.denoteB xs)
+  | .tan a => Real.tan (a.denoteB xs)
+  | .asin a => Real.arcsin (a.denoteB xs)
+  | .acos a => Real.arccos (a.denoteB xs)
+  | .ext _ _ _ => 0
+
+/-! ### Extension functions: the real side
+
+An extension function (`Interval64.KF.ExtFn`, the `ext` node of `IExpr`) is sound for a real
+function `f` with domain of differentiability `D` when its kernel enclosure contains `f`, its
+domain test implies `D`, and its derivative template is `f'` on `D` (`ExtSound`). `ExtSem` gives,
+for the current extension table `ExtTbl`, the real function of every key with the proof. The
+default table is empty (`ExtSem.empty`); the tactics build both from the registered functions
+(`RealFPMathlib/Registry.lean`). Every theorem below is stated for any table and any `ExtSem`,
+so the proofs go through the user's soundness theorems only. -/
+
+/-- `F` is a sound kernel implementation of `f`, differentiable on `D`. -/
+structure ExtSound (f : ℝ → ℝ) (D : ℝ → Prop) (F : ExtFn) : Prop where
+  /-- Enclosure on non-NaN boxes (when the result is well formed). -/
+  enc : ∀ X : KI, WF X → isNaN X.lo = false → isNaN X.hi = false → WF (F.evK X) →
+    ∀ x : ℝ, x ∈ (toI X).toSet → f x ∈ (toI (F.evK X)).toSet
+  /-- The domain test implies the domain. -/
+  dom : ∀ X : KI, WF X → isNaN X.lo = false → isNaN X.hi = false → F.domK X = true →
+    ∀ x : ℝ, x ∈ (toI X).toSet → D x
+  /-- The derivative template uses built-in functions only. -/
+  deriv_extFree : F.deriv.extFree = true
+  /-- The derivative template is the derivative on `D`. -/
+  deriv : ∀ x, D x → HasDerivAt f (F.deriv.denoteB [x]) x
+
+/-- The real semantics of the extension table. -/
+class ExtSem [T : ExtTbl] where
+  fn : Nat → ℝ → ℝ
+  dom : Nat → ℝ → Prop
+  sound : ∀ k, ExtSound (fn k) (dom k) (T.get k)
+
+theorem extSound_none : ExtSound (fun _ => 0) (fun _ => False) ExtFn.none where
+  enc _ _ _ _ _ x _ := by show _ ∈ (toI KI.whole).toSet; rw [toI_whole]; exact mem_toSet_whole _
+  dom _ _ _ _ h := by simp [ExtFn.none] at h
+  deriv_extFree := rfl
+  deriv _ h := h.elim
+
+instance (priority := low) ExtSem.empty : @ExtSem ExtTbl.empty :=
+  @ExtSem.mk ExtTbl.empty (fun _ _ => 0) (fun _ _ => False) (fun _ => extSound_none)
+
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
+
 /-- Real value of an expression; `xs` gives the variables (missing ones are `0`). -/
 def _root_.Interval64.KF.IExpr.denote (xs : List ℝ) : IExpr → ℝ
   | .var i => xs.getD i 0
@@ -55,7 +127,9 @@ def _root_.Interval64.KF.IExpr.denote (xs : List ℝ) : IExpr → ℝ
   | .tan a => Real.tan (a.denote xs)
   | .asin a => Real.arcsin (a.denote xs)
   | .acos a => Real.arccos (a.denote xs)
+  | .ext k _ a => ExtSem.fn k (a.denote xs)
 
+omit [ExtTbl] [ExtSem] in
 theorem zero_mem_zeroI : (0 : ℝ) ∈ zeroI.toSet := by
   have h := mem_toSet_ofRat 0
   have e1 : KI.ofRat 0 = zeroK := by
@@ -65,6 +139,7 @@ theorem zero_mem_zeroI : (0 : ℝ) ∈ zeroI.toSet := by
   have e : ofRat 0 = zeroI := by rw [← (ofRat_toI 0).1, e1, toI_zeroK]
   rw [e] at h; simpa using h
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_mem {xs : List ℝ} {env : List Interval64}
     (h : List.Forall₂ (fun x X => x ∈ X.toSet) xs env) (i : Nat) :
     xs.getD i 0 ∈ (env.getD i zeroI).toSet := by
@@ -75,6 +150,7 @@ theorem getD_mem {xs : List ℝ} {env : List Interval64}
     | zero => simpa using hxX
     | succ n => simpa using ih n
 
+omit [ExtTbl] [ExtSem] in
 theorem sqrtI_mem {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) : Real.sqrt x ∈ (sqrtI X).toSet := by
   unfold sqrtI
   by_cases h0 : 0 ≤ x
@@ -96,6 +172,7 @@ theorem sqrtI_mem {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) : Real.sqrt x 
       have := le_trans this hl'
       exact absurd (EReal.coe_le_coe_iff.1 this) (not_le.2 h0)
 
+omit [ExtTbl] [ExtSem] in
 theorem logI_mem {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) : Real.log x ∈ (logI X).toSet := by
   unfold logI
   split_ifs with hlt
@@ -109,6 +186,7 @@ theorem logI_mem {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) : Real.log x �
     exact log_mem_toSet hx (EReal.coe_lt_coe_iff.1 this)
   · exact mem_toSet_whole _
 
+omit [ExtTbl] [ExtSem] in
 theorem logBI_mem (ten : Bool) {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
     Real.logb (RealFP.Hyp.baseR ten) x ∈ (logBI ten X).toSet := by
   unfold logBI
@@ -119,6 +197,7 @@ theorem logBI_mem (ten : Bool) {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
     exact RealFP.Hyp.logB_mem_toSet ten hx (EReal.coe_pos.1 (lt_of_lt_of_le h1 hl'))
   · exact mem_toSet_whole _
 
+omit [ExtTbl] [ExtSem] in
 theorem atan2I_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
     Complex.arg ((x : ℂ) + (y : ℂ) * Complex.I) ∈ (atan2I Y X).toSet := by
   obtain ⟨⟨hXl, hXl'⟩, ⟨hXh, hXh'⟩⟩ := mem_toSet_iff_toE.1 hx
@@ -148,6 +227,25 @@ theorem atan2I_mem {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y �
         exact sub_mem_toSet negHalfPi_mem_toSet (atan_mem_toSet (mem_toSet_mul hx (mem_inv hy)))
       · simp only [h3, decide_false, Bool.false_eq_true, ↓reduceIte]
         exact arg_mem_argHull _
+
+theorem extI_mem (k : Nat) {X : Interval64} {x : ℝ} (hx : x ∈ X.toSet) :
+    ExtSem.fn k x ∈ (extI k X).toSet := by
+  unfold extI
+  split_ifs with h
+  · exact mem_toSet_whole _
+  · simp only [Bool.or_eq_true, not_or, Bool.not_eq_true] at h
+    have hY := ofI_wf X
+    have hl : isNaN (ofI X).lo = false := by simp only [ofI, isNaN_toBits]; exact h.1
+    have hh : isNaN (ofI X).hi = false := by simp only [ofI, isNaN_toBits]; exact h.2
+    have hset : (toI (ofI X)).toSet = X.toSet := by
+      simp only [Interval64.toSet, toI, ofI, toBits_toF_toBits h.1, toBits_toF_toBits h.2]
+    unfold sanitizeK
+    cases h1 : Nat.blt ((ExtTbl.get k).evK (ofI X)).lo (2 ^ 64) <;>
+      cases h2 : Nat.blt ((ExtTbl.get k).evK (ofI X)).hi (2 ^ 64) <;>
+      simp only [Bool.and_true, Bool.and_false, Bool.cond_true, Bool.cond_false, toIv_eq, toI_whole]
+    all_goals first
+      | exact mem_toSet_whole _
+      | exact (ExtSem.sound k).enc _ hY hl hh ⟨Nat.blt_eq ▸ h1, Nat.blt_eq ▸ h2⟩ x (hset ▸ hx)
 
 theorem eval_sound {xs : List ℝ} {env : List Interval64}
     (h : List.Forall₂ (fun x X => x ∈ X.toSet) xs env) :
@@ -186,9 +284,11 @@ theorem eval_sound {xs : List ℝ} {env : List Interval64}
   | tan a iha => exact RealFP.Tan.tan_mem_toSet iha
   | asin a iha => exact RealFP.Asin.asin_mem_toSet iha
   | acos a iha => exact RealFP.Asin.acos_mem_toSet iha
+  | ext k _ a _ iha => exact extI_mem k iha
 
 /-! ### Bisection -/
 
+omit [ExtTbl] [ExtSem] in
 theorem split_mem {lo hi m : Nat} {y : ℝ} (hm : m < 2 ^ 64) (hn : isNaN m = false)
     (hy : y ∈ (toI ⟨lo, hi⟩).toSet) :
     y ∈ (toI ⟨lo, m⟩).toSet ∨ y ∈ (toI ⟨m, hi⟩).toSet := by
@@ -198,6 +298,7 @@ theorem split_mem {lo hi m : Nat} {y : ℝ} (hm : m < 2 ^ 64) (hn : isNaN m = fa
   · exact Or.inl (mem_toSet_of_toE hl hmn hl' h)
   · exact Or.inr (mem_toSet_of_toE hmn hh h hh')
 
+omit [ExtTbl] [ExtSem] in
 theorem forall2_set {xs : List ℝ} {env : List KI}
     (h : List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs env) (i : Nat) {Y : KI}
     (hY : xs.getD i 0 ∈ (toI Y).toSet) :
@@ -209,6 +310,7 @@ theorem forall2_set {xs : List ℝ} {env : List KI}
     | zero => exact List.Forall₂.cons (by simpa using hY) (by assumption)
     | succ n => exact List.Forall₂.cons hxX (ih n (by simpa using hY))
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_mem_toI {xs : List ℝ} {env : List KI}
     (h : List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs env) (i : Nat) :
     xs.getD i 0 ∈ (toI (env.getD i zeroK)).toSet := by
@@ -219,6 +321,7 @@ theorem getD_mem_toI {xs : List ℝ} {env : List KI}
     | zero => simpa using hxX
     | succ n => simpa using ih n
 
+omit [ExtTbl] [ExtSem] in
 theorem forall2_map {xs : List ℝ} {env : List KI}
     (h : List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs env) :
     List.Forall₂ (fun x X => x ∈ X.toSet) xs (env.map toI) := by
@@ -254,6 +357,7 @@ theorem checkK_sound (e : IExpr) (g : KI → Bool) (P : ℝ → Prop)
 
 /-! ### Goal predicates -/
 
+omit [ExtTbl] [ExtSem] in
 theorem toE_ofRatDown_le (c : ℚ) : (toF (KI.ofRat c).lo).toE ≤ ((c : ℝ) : EReal) ∧
     (toF (KI.ofRat c).lo).isNaN = false := by
   have h := loR_ofBits (ofRatDown_loR (c := c) (y := (c : ℝ)) le_rfl)
@@ -261,6 +365,7 @@ theorem toE_ofRatDown_le (c : ℚ) : (toF (KI.ofRat c).lo).toE ≤ ((c : ℝ) : 
   show (toF (ofRatDown c).toNat).toE ≤ _ ∧ (toF (ofRatDown c).toNat).isNaN = false
   rw [toF_toNat]; exact ⟨h.2, h.1⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem le_toE_ofRatUp (c : ℚ) : ((c : ℝ) : EReal) ≤ (toF (KI.ofRat c).hi).toE ∧
     (toF (KI.ofRat c).hi).isNaN = false := by
   have h := hiR_ofBits (ofRatUp_hiR (c := c) (y := (c : ℝ)) le_rfl)
@@ -268,6 +373,7 @@ theorem le_toE_ofRatUp (c : ℚ) : ((c : ℝ) : EReal) ≤ (toF (KI.ofRat c).hi)
   show _ ≤ (toF (ofRatUp c).toNat).toE ∧ (toF (ofRatUp c).toNat).isNaN = false
   rw [toF_toNat]; exact ⟨h.2, h.1⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem gLe_sound (c : ℚ) : ∀ F, WF F → gLe (KI.ofRat c).lo F = true →
     ∀ y ∈ (toI F).toSet, y ≤ (c : ℝ) := by
   intro F hF hg y hy
@@ -282,6 +388,7 @@ theorem gLe_sound (c : ℚ) : ∀ F, WF F → gLe (KI.ofRat c).lo F = true →
   rw [float_le_iff_toE hhn hc.2] at h1
   exact EReal.coe_le_coe_iff.1 (le_trans hy2 (le_trans h1 hc.1))
 
+omit [ExtTbl] [ExtSem] in
 theorem gLt_sound (c : ℚ) : ∀ F, WF F → gLt (KI.ofRat c).lo F = true →
     ∀ y ∈ (toI F).toSet, y < (c : ℝ) := by
   intro F hF hg y hy
@@ -296,6 +403,7 @@ theorem gLt_sound (c : ℚ) : ∀ F, WF F → gLt (KI.ofRat c).lo F = true →
   rw [float_lt_iff_toE hhn hc.2] at h1
   exact EReal.coe_lt_coe_iff.1 (lt_of_le_of_lt hy2 (lt_of_lt_of_le h1 hc.1))
 
+omit [ExtTbl] [ExtSem] in
 theorem gGe_sound (c : ℚ) : ∀ F, WF F → gGe (KI.ofRat c).hi F = true →
     ∀ y ∈ (toI F).toSet, (c : ℝ) ≤ y := by
   intro F hF hg y hy
@@ -310,6 +418,7 @@ theorem gGe_sound (c : ℚ) : ∀ F, WF F → gGe (KI.ofRat c).hi F = true →
   rw [float_le_iff_toE hc.2 hln] at h1
   exact EReal.coe_le_coe_iff.1 (le_trans hc.1 (le_trans h1 hy1))
 
+omit [ExtTbl] [ExtSem] in
 theorem gGt_sound (c : ℚ) : ∀ F, WF F → gGt (KI.ofRat c).hi F = true →
     ∀ y ∈ (toI F).toSet, (c : ℝ) < y := by
   intro F hF hg y hy
@@ -330,6 +439,7 @@ theorem gGt_sound (c : ℚ) : ∀ F, WF F → gGt (KI.ofRat c).hi F = true →
 def InBoxes : List ℝ → List (ℚ × ℚ) → Prop :=
   List.Forall₂ (fun x b => (b.1 : ℝ) ≤ x ∧ x ≤ (b.2 : ℝ))
 
+omit [ExtTbl] [ExtSem] in
 theorem boxes_mem {xs : List ℝ} {bs : List (ℚ × ℚ)} (h : InBoxes xs bs) :
     List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs (boxes bs) := by
   induction h with

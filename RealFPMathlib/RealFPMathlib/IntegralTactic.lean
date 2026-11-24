@@ -23,6 +23,9 @@ open Interval64 Interval64.KF Interval64.KF.KQ RealFP.IntervalTactic
 
 namespace RealFP.IntegralTactic
 
+set_option linter.concreteInstances false
+variable [ExtTbl]
+
 /-- Exact bit pattern of a rational, if it is a float. -/
 def exactBits (q : ℚ) : Option Nat :=
   let k := KI.ofRat q
@@ -56,10 +59,13 @@ def meets (l h : Float) (lower upper : Option (ℚ × Bool)) : Bool :=
     cells) until the Float enclosure meets the bounds; at most `maxCells` cells. -/
 def adaptCells (e : IExpr) (K : Nat) (a b : Nat) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
     Option (List (Nat × Nat × Nat)) := Id.run do
-  let some t := derivTape e K | return none
+  -- C tape when available; registered functions (`IExpr.ext`) have no tape: Lean evaluator
+  let cell : Float × Float × Float → Interval64 := match derivTape e K with
+    | some t => cellTape t
+    | none => let ds := derivs e K; fun c => sumF ds K (ds.getLastD e) [c]
   let mut cs : List (Nat × Nat × Nat) := [(a, midBits a b, b)]
   for _ in List.range 64 do
-    let ivs := cs.map fun c => cellTape t (flCell c)
+    let ivs := cs.map fun c => cell (flCell c)
     let tot := ivs.foldr (· + ·) zeroI
     if meets tot.lo tot.hi lower upper then return some cs
     if cs.length ≥ maxCells then return none
@@ -96,6 +102,7 @@ def domOKF (env : List Interval64) : IExpr → Bool
   | .tan a => domOKF env a && nzF (evalI env (.cos a))
   | .asin a => domOKF env a && posF (evalI env (.sub (.rat 1) (.pow a 2)))
   | .acos a => domOKF env a && posF (evalI env (.sub (.rat 1) (.pow a 2)))
+  | .ext k d a => domOKF env a && extDomK k (ofI (evalI env a)) && decide (d = (ExtTbl.get k).deriv)
 where
   posF (X : Interval64) : Bool := !X.lo.isNaN && !X.hi.isNaN && 0 < X.lo
   nzF (X : Interval64) : Bool := !X.lo.isNaN && !X.hi.isNaN && (0 < X.lo || X.hi < 0)
@@ -113,6 +120,9 @@ def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ �
     (orders : List Nat := [2, 4, 6, 8]) :
     Option (Nat × List (Nat × Nat × Nat) × ℚ × ℚ) := Id.run do
   let mut best : Option (Nat × Nat × List (Nat × Nat × Nat)) := none
+  -- registered functions are evaluated by Lean code (no C tape): keep the orders low
+  let orders := if e.extFree then orders else
+    match orders.filter (· ≤ 4) with | [] => orders | os => os
   for K in orders do
     let ds := derivs e K
     let cost1 := (shareDerivs e K).1.foldl (fun s d => s + letCost d) 1
@@ -164,26 +174,26 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {}) 
   -- the witnesses, one small kernel check each (checked in parallel by `addDecl`)
   let boolTrue := fun (b : Expr) => mkApp3 (mkConst ``Eq [Level.one]) (mkConst ``Bool) b (mkConst ``Bool.true)
   let rfl := mkApp2 (mkConst ``Eq.refl [Level.one]) (mkConst ``Bool) (mkConst ``Bool.true)
-  let mut hw := mkApp (mkConst ``RealFP.KQS.cellsW_nil) L
+  let mut hw := mkApp ((← mkC ``RealFP.KQS.cellsW_nil)) L
   let n := cs.length
   for i in (List.range n).reverse do
     let c := cs[i]!; let w := wl[i]!
     let envM ← mkListLit (mkConst ``KI) [mkApp (mkConst ``pt) (toExpr c.2.1)]
     let envB ← mkListLit (mkConst ``KI) [kiE ⟨c.1, c.2.2⟩]
-    let h1 ← mkAuxTheorem (boolTrue (mkAppN (mkConst ``letsW) #[envM, L, ← kis w.1])) rfl
-    let h2 ← mkAuxTheorem (boolTrue (mkAppN (mkConst ``letsW) #[envB, L, ← kis w.2])) rfl
-    hw := mkAppN (mkConst ``RealFP.KQS.cellsW_cons) #[L, toExpr c.1, toExpr c.2.1, toExpr c.2.2,
+    let h1 ← mkAuxTheorem (boolTrue (mkAppN ((← mkC ``letsW)) #[envM, L, ← kis w.1])) rfl
+    let h2 ← mkAuxTheorem (boolTrue (mkAppN ((← mkC ``letsW)) #[envB, L, ← kis w.2])) rfl
+    hw := mkAppN ((← mkC ``RealFP.KQS.cellsW_cons)) #[L, toExpr c.1, toExpr c.2.1, toExpr c.2.2,
       ← kis w.1, ← kis w.2, toExpr (cs.drop (i + 1)), ← mkListLit wTy (ws.drop (i + 1)), h1, h2, hw]
   let args := #[iexprToExpr e, toExpr K, toExpr a, toExpr b, toExpr cs, L, ← lst roots, wsE,
     toExpr qa, toExpr qb, toExpr ql, toExpr qh]
   let ty := mkApp2 (mkConst ``Eq [Level.one]) (mkConst ``Bool)
-    (mkAppN (mkConst ``quadBoundW) args) |>.app (mkConst ``Bool.true)
+    (mkAppN ((← mkC ``quadBoundW)) args) |>.app (mkConst ``Bool.true)
   let pm ← mkFreshExprMVar ty
   let saved ← getGoals
   setGoals [pm.mvarId!]
   RealFP.closeCheck
   setGoals saved
-  let pf := mkAppN (mkConst ``RealFP.KQS.integral_bounds_of_quadBoundW) ((args.push hw).push pm)
+  let pf := mkAppN ((← mkC ``RealFP.KQS.integral_bounds_of_quadBoundW)) ((args.push hw).push pm)
   let goal ← getMainGoal
   let g ← goal.assert `hI (← inferType pf) pf
   let (_, g) ← g.intro1P
@@ -193,8 +203,11 @@ def closeTac : TacticM Unit := do
   let h := mkIdent `hI
   let h1 := mkIdent `hI1
   let h2 := mkIdent `hI2
+  let ids ← (← extSimpLemmas).mapM fun n => `(Lean.Parser.Tactic.simpLemma| $(mkIdent n):ident)
+  let ext ← if ids.isEmpty then `(tactic| skip) else `(tactic| try simp only [$ids,*] at $h:ident)
   evalTactic (← `(tactic|
     (simp only [Interval64.KF.IExpr.denote, List.getD_cons_zero, List.getD_cons_succ] at $h:ident
+     $ext:tactic
      push_cast at $h:ident
      obtain ⟨$h1:ident, $h2:ident⟩ := $h:ident
      first
@@ -245,6 +258,6 @@ default: try all and keep the cheapest), `(maxBoxes := n)` (at most `n` cells, d
   RealFP.requireNative
   RealFP.withTrust trust do
   evalTactic (← `(tactic| try simp only [Set.mem_Icc] ))
-  core cfg
+  withRegistered (core cfg)
 
 end RealFP.IntegralTactic

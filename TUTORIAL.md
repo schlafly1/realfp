@@ -605,6 +605,52 @@ four-body central-configuration proof; see [COMPARISONS.md](COMPARISONS.md)):
 - `simp`/`of_decide_eq_true` on a Boolean check can trigger evaluation during elaboration;
   state the check as a `Prop` and prove it with `decide +kernel`.
 
+### Adding a function
+
+A new real function can be plugged into every tactic (`realfp`, `interval` with its derivative
+modes, `root_exists`/`root_unique`, `integral_bound`, the optimisation forms, `#realfp_min`)
+without touching the library: register it with `@[realfp_fn]` (`RealFPMathlib/Registry.lean`).
+The complete example is `RealFPMathlib/Extensions/Erf.lean` (Mathlib has no `erf`, so it is
+defined there by its integral and everything is proved from that definition).
+
+You supply three things:
+
+1. the function, a constant `f : ℝ → ℝ`;
+2. an `ExtFn` (core, Mathlib-free): the kernel enclosure `evK : KI → KI`, a domain test `domK`
+   (where `f` is differentiable) and the derivative as an `IExpr` template in `var 0` using
+   built-in functions only. `ExtFn.ofMono` builds the enclosure of a monotone function from
+   rational point bounds `fl q ≤ f q ≤ fu q` and global bounds; a C fast path for the native
+   search can be attached to `evK` with `@[implemented_by]`;
+3. a proof `ExtSound f D F` (enclosure, domain and derivative), tagged `@[realfp_fn]`.
+
+```lean
+noncomputable def erf (x : ℝ) : ℝ := 2 / √π * ∫ t in (0 : ℝ)..x, exp (-t ^ 2)
+def erfDeriv : IExpr := .mul (.div (.rat 2) (.sqrt .pi)) (.exp (.neg (.pow (.var 0) 2)))
+def erfExt : ExtFn :=
+  ExtFn.ofMono "erf" erfLo erfHi (-1) 1 (fun _ => true) erfDeriv
+@[realfp_fn] theorem erf_sound : ExtSound erf (fun _ => True) erfExt :=
+  ExtSound.ofMono erf_monotone erfLo_le le_erfHi
+```
+
+Here `erfLo`/`erfHi` are rational bounds from the alternating Taylor series of `e^{-t²}`
+integrated term by term (`Erf.P_le_Φ`, `Erf.Φ_le_P`). After that:
+
+```lean
+example : (0.5204 : ℝ) < erf (1/2) ∧ erf (1/2) < 0.5205 := by realfp
+example : ∃! x ∈ Set.Icc (0 : ℝ) 1, erf x = 1/2 := by realfp
+example : (∫ x in (0 : ℝ)..1, erf x) ∈ Set.Icc (0.4860 : ℝ) 0.4861 := by integral_bound
+example : ∀ x ∈ Set.Icc (0 : ℝ) 3, erf x - x / 2 ≤ 0.346912 := by realfp
+```
+
+The proofs still depend only on `propext`, `Classical.choice`, `Quot.sound`: the tactics state
+every certificate for a table built from the registered `ExtFn`s, and its soundness comes from
+your `ExtSound` theorems. For the optimisation forms that need continuity, also tag a
+continuity lemma `@[fun_prop]` (`continuous_erf`). Limitations: the function must be unary and
+applied as `f a`; its derivative template must use built-in functions only (no `f` itself);
+registered functions are evaluated in Lean, not by the C tape, so searches over them are
+slower; `integral_bound` uses Taylor orders ≤ 4 for them; 2D quadrature and the adaptive
+`Interval64.Quad` rules do not support them.
+
 ## 7. Troubleshooting, performance, limitations
 
 **Common problems**

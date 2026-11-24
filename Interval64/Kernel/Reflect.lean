@@ -46,7 +46,109 @@ inductive IExpr where
   | asin (a : IExpr)
   /-- Mathlib's `Real.arccos`. -/
   | acos (a : IExpr)
+  /-- A registered extension function (see `RealFPMathlib/Registry.lean`): key `k` in the
+  extension table (`ExtTbl`), applied to `a`. `d` is the function's derivative as an expression
+  in `var 0` (built-in functions only); `domOK` checks it is the registered one. -/
+  | ext (k : Nat) (d : IExpr) (a : IExpr)
   deriving Repr, Inhabited
+
+deriving instance DecidableEq for IExpr
+
+/-- Substitute `σ i` for `var i`. -/
+def IExpr.subst (σ : Nat → IExpr) : IExpr → IExpr
+  | .var i => σ i
+  | .rat q => .rat q
+  | .add a b => .add (a.subst σ) (b.subst σ)
+  | .sub a b => .sub (a.subst σ) (b.subst σ)
+  | .mul a b => .mul (a.subst σ) (b.subst σ)
+  | .div a b => .div (a.subst σ) (b.subst σ)
+  | .neg a => .neg (a.subst σ)
+  | .inv a => .inv (a.subst σ)
+  | .sqrt a => .sqrt (a.subst σ)
+  | .abs a => .abs (a.subst σ)
+  | .pow a n => .pow (a.subst σ) n
+  | .exp a => .exp (a.subst σ)
+  | .log a => .log (a.subst σ)
+  | .sin a => .sin (a.subst σ)
+  | .cos a => .cos (a.subst σ)
+  | .pi => .pi
+  | .atan a => .atan (a.subst σ)
+  | .atan2 a b => .atan2 (a.subst σ) (b.subst σ)
+  | .sinh a => .sinh (a.subst σ)
+  | .cosh a => .cosh (a.subst σ)
+  | .tanh a => .tanh (a.subst σ)
+  | .log2 a => .log2 (a.subst σ)
+  | .log10 a => .log10 (a.subst σ)
+  | .tan a => .tan (a.subst σ)
+  | .asin a => .asin (a.subst σ)
+  | .acos a => .acos (a.subst σ)
+  | .ext k d a => .ext k d (a.subst σ)
+
+/-- `e` uses no extension function. -/
+def IExpr.extFree : IExpr → Bool
+  | .var _ | .rat _ | .pi => true
+  | .add a b | .sub a b | .mul a b | .div a b | .atan2 a b => a.extFree && b.extFree
+  | .neg a | .inv a | .sqrt a | .abs a | .pow a _ | .exp a | .log a | .sin a | .cos a | .atan a
+  | .sinh a | .cosh a | .tanh a | .log2 a | .log10 a | .tan a | .asin a | .acos a => a.extFree
+  | .ext .. => false
+
+/-- Substitution for `var 0` (other variables become `0`): the argument of a derivative
+template. -/
+def IExpr.subst0 (a : IExpr) : Nat → IExpr := fun i => bif Nat.beq i 0 then a else .rat 0
+
+/-! ### Extension functions
+
+An extension function is plugged in by giving its kernel enclosure `evK` (on bit-pattern
+intervals `KI`; used by the kernel checks, and natively by the search), a domain test `domK`
+(where it is differentiable with derivative `deriv`), and the derivative as an `IExpr` in
+`var 0`. The real function and the soundness proofs live in the Mathlib layer
+(`RealFP.ExtSem`, `RealFPMathlib/Registry.lean`). A C fast path can be attached to `evK` with
+`@[implemented_by]` (trusted only by `native_decide`). -/
+
+structure ExtFn where
+  /-- Name shown in messages. -/
+  name : String := "ext"
+  /-- Enclosure: for a non-NaN box `X`, `evK X` contains `f x` for every `x ∈ X`. -/
+  evK : KI → KI
+  /-- `domK X = true` ⇒ every `x ∈ X` is in the function's domain of differentiability. -/
+  domK : KI → Bool := fun _ => false
+  /-- Derivative template in `var 0` (built-in functions only). -/
+  deriv : IExpr := .rat 0
+
+instance : Inhabited ExtFn := ⟨{ evK := fun _ => KI.whole }⟩
+
+/-- No function: enclosure `whole`, never differentiable. -/
+def ExtFn.none : ExtFn := { evK := fun _ => KI.whole }
+
+/-- The extension table: key ↦ function. The default instance is empty; the tactics supply
+the registered functions (`RealFPMathlib/Registry.lean`). -/
+class ExtTbl where
+  get : Nat → ExtFn
+
+instance (priority := low) ExtTbl.empty : ExtTbl := ⟨fun _ => ExtFn.none⟩
+
+/-- Out-of-range bit patterns are replaced by `whole` (so the result is always well formed). -/
+def sanitizeK (Y : KI) : KI :=
+  bif Nat.blt Y.lo (2 ^ 64) && Nat.blt Y.hi (2 ^ 64) then Y else KI.whole
+
+/-- Kernel enclosure of extension `k` on `X` (`whole` on NaN input). -/
+def extK [ExtTbl] (k : Nat) (X : KI) : KI :=
+  bif isNaN X.lo || isNaN X.hi then KI.whole else sanitizeK ((ExtTbl.get k).evK X)
+
+/-- `Interval64` → bit patterns. -/
+def ofI (X : Interval64) : KI := ⟨X.lo.toBits.toNat, X.hi.toBits.toNat⟩
+/-- Bit patterns → `Interval64`. -/
+def toIv (X : KI) : Interval64 := ⟨Float.ofBits (UInt64.ofNat X.lo), Float.ofBits (UInt64.ofNat X.hi)⟩
+
+/-- `Interval64` enclosure of extension `k` (through the kernel enclosure). -/
+def extI [ExtTbl] (k : Nat) (X : Interval64) : Interval64 :=
+  if X.lo.isNaN || X.hi.isNaN then whole else toIv (sanitizeK ((ExtTbl.get k).evK (ofI X)))
+
+/-- Domain test of extension `k` on `X` (false on NaN input). -/
+def extDomK [ExtTbl] (k : Nat) (X : KI) : Bool :=
+  !isNaN X.lo && !isNaN X.hi && (ExtTbl.get k).domK X
+
+variable [ExtTbl]
 
 /-! ### `Interval64` semantics -/
 
@@ -99,6 +201,7 @@ def evalI (env : List Interval64) : IExpr → Interval64
   | .tan a => Interval64.tan (evalI env a)
   | .asin a => Interval64.asin (evalI env a)
   | .acos a => Interval64.acos (evalI env a)
+  | .ext k _ a => extI k (evalI env a)
 
 /-! ### Kernel semantics -/
 
@@ -144,6 +247,7 @@ def evalK (env : List KI) : IExpr → KI
   | .tan a => KI.tan (evalK env a)
   | .asin a => KI.asin (evalK env a)
   | .acos a => KI.acos (evalK env a)
+  | .ext k _ a => extK k (evalK env a)
 
 /-! ### Goal predicates on the enclosure `F` of the expression -/
 

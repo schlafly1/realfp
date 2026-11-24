@@ -18,6 +18,9 @@ noncomputable section
 
 namespace RealFP.Roots
 
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
+
 /-- All expressions vanish at `xs`. -/
 def AllZero (es : List IExpr) (xs : List ℝ) : Prop := ∀ e ∈ es, e.denote xs = 0
 
@@ -26,6 +29,7 @@ def AllZero (es : List IExpr) (xs : List ℝ) : Prop := ∀ e ∈ es, e.denote x
 /-- The enclosure excludes `0`: `F < 0` or `F > 0`. -/
 def gNe (F : KI) : Bool := gLt (KI.ofRat 0).lo F || gGt (KI.ofRat 0).hi F
 
+omit [ExtTbl] [ExtSem] in
 theorem gNe_sound : ∀ F, WF F → gNe F = true → ∀ y ∈ (toI F).toSet, y ≠ 0 := by
   intro F hF h y hy
   simp only [gNe, Bool.or_eq_true] at h
@@ -41,6 +45,7 @@ theorem prove_ne (e : IExpr) (bs : List (ℚ × ℚ)) (cert : Cert)
 
 /-! ### One variable -/
 
+omit [ExtTbl] [ExtSem] in
 theorem inBoxes_one {x : ℝ} {a b : ℚ} : InBoxes [x] [(a, b)] ↔ (a : ℝ) ≤ x ∧ x ≤ b := by
   simp [InBoxes]
 

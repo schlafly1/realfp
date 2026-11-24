@@ -16,8 +16,12 @@ noncomputable section
 
 namespace RealFP
 
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
+
 /-! ### Lists -/
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_set_eq {xs : List ℝ} {i : Nat} (hi : i < xs.length) (t : ℝ) (j : Nat) :
     (xs.set i t).getD j 0 = if j = i then t else xs.getD j 0 := by
   simp only [List.getD_eq_getElem?_getD, List.getElem?_set]
@@ -25,6 +29,7 @@ theorem getD_set_eq {xs : List ℝ} {i : Nat} (hi : i < xs.length) (t : ℝ) (j 
   · subst h; simp [hi]
   · simp [Ne.symm h, h]
 
+omit [ExtTbl] [ExtSem] in
 theorem set_getD_self {xs : List ℝ} {i : Nat} (hi : i < xs.length) : xs.set i (xs.getD i 0) = xs := by
   apply List.ext_getElem (by simp)
   intro n h1 h2
@@ -63,6 +68,27 @@ def Dom (xs : List ℝ) : IExpr → Prop
   | .tan a => Dom xs a ∧ Real.cos (a.denote xs) ≠ 0
   | .asin a => Dom xs a ∧ 0 < 1 - a.denote xs ^ 2
   | .acos a => Dom xs a ∧ 0 < 1 - a.denote xs ^ 2
+  | .ext k d a => Dom xs a ∧ ExtSem.dom k (a.denote xs) ∧ d = (ExtTbl.get k).deriv
+
+/-- Substitution: `e[σ]` at `xs` is `e` at `ys` when `σ i` denotes `ys[i]`. -/
+theorem denote_subst {xs ys : List ℝ} (σ : Nat → IExpr)
+    (hσ : ∀ i, (σ i).denote xs = ys.getD i 0) :
+    ∀ e : IExpr, (e.subst σ).denote xs = e.denote ys := by
+  intro e
+  induction e <;> simp only [IExpr.subst, IExpr.denote, *]
+
+theorem denote_of_extFree {xs : List ℝ} : ∀ e : IExpr, e.extFree = true → e.denote xs = e.denoteB xs := by
+  intro e
+  induction e <;> simp_all [IExpr.extFree, IExpr.denote, IExpr.denoteB]
+
+theorem subst0_denote {xs : List ℝ} (a : IExpr) :
+    ∀ i, (a.subst0 i).denote xs = [a.denote xs].getD i 0 := by
+  intro i; cases i <;> simp [IExpr.subst0, IExpr.denote]
+
+/-- The derivative template of a registered function, at `a`. -/
+theorem denote_template {xs : List ℝ} (k : Nat) (a : IExpr) :
+    ((ExtTbl.get k).deriv.subst a.subst0).denote xs = (ExtTbl.get k).deriv.denoteB [a.denote xs] := by
+  rw [denote_subst _ (subst0_denote a), denote_of_extFree _ (ExtSem.sound k).deriv_extFree]
 
 theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     ∀ e : IExpr, Dom xs e →
@@ -234,6 +260,18 @@ theorem hasDerivAt_denote {xs : List ℝ} {i : Nat} (hi : i < xs.length) :
     have h4 := h3.congr_deriv (g' :=
       -((a.diff i).denote xs / √(((1 : ℚ) : ℝ) - a.denote xs ^ 2))) (by push_cast; ring)
     exact h4
+  | ext k d a _ iha =>
+    intro h
+    obtain ⟨ha, hD, hd⟩ := h
+    subst hd
+    have hc : HasDerivAt (ExtSem.fn k) ((ExtTbl.get k).deriv.denoteB [a.denote xs])
+        ((fun t => a.denote (xs.set i t)) (xs.getD i 0)) := by
+      simp only [hs]; exact (ExtSem.sound k).deriv _ hD
+    have h3 := HasDerivAt.comp (h₂ := ExtSem.fn k) (h := fun t => a.denote (xs.set i t))
+      (xs.getD i 0) hc (iha ha)
+    refine h3.congr_deriv ?_
+    show _ = ((ExtTbl.get k).deriv.subst a.subst0).denote xs * (a.diff i).denote xs
+    rw [denote_template]
 
 
 /-! ### Simplification preserves the denotation -/
@@ -301,10 +339,13 @@ theorem memK {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
   have h := evalK_toI hw e
   exact ⟨by rw [h.1]; exact eval_sound (forall2_map hxs) e, h.2⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem toE_toF_zero : (toF 0).toE = ((0 : ℝ) : EReal) := by rw [toF_zero]; simp
 
+omit [ExtTbl] [ExtSem] in
 theorem isNaN_toF_zero : (toF 0).isNaN = false := by rw [toF_zero]; decide +kernel
 
+omit [ExtTbl] [ExtSem] in
 theorem pos_of_posK {X : KI} (hX : WF X) (h : posK X = true) {x : ℝ}
     (hx : x ∈ (toI X).toSet) : 0 < x := by
   simp only [posK, Bool.and_eq_true, Bool.not_eq_true'] at h
@@ -316,6 +357,7 @@ theorem pos_of_posK {X : KI} (hX : WF X) (h : posK X = true) {x : ℝ}
   rw [float_lt_iff_toE isNaN_toF_zero hln, toE_toF_zero] at h1
   exact EReal.coe_lt_coe_iff.1 (lt_of_lt_of_le h1 hx1)
 
+omit [ExtTbl] [ExtSem] in
 theorem ne_of_nzK {X : KI} (hX : WF X) (h : nzK X = true) {x : ℝ}
     (hx : x ∈ (toI X).toSet) : x ≠ 0 := by
   simp only [nzK, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_true] at h
@@ -393,9 +435,16 @@ theorem domOK_sound {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X)
     have := pos_of_posK m.2 h.2 m.1
     refine ⟨iha h.1, ?_⟩
     simpa [IExpr.denote] using this
+  | ext k d a _ iha =>
+    intro h; simp only [domOK, Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨ha, hk⟩, hd⟩ := h
+    have m := memK hw hxs a
+    simp only [extDomK, Bool.and_eq_true, Bool.not_eq_true'] at hk
+    exact ⟨iha ha, (ExtSem.sound k).dom _ m.2 hk.1.1 hk.1.2 hk.2 _ m.1, hd⟩
 
 /-! ### Points, segments, intersection -/
 
+omit [ExtTbl] [ExtSem] in
 theorem finK_point {p : Nat} (h : finK p = true) :
     ∃ r : ℝ, (toF p).toE = r ∧ r ∈ (toI ⟨p, p⟩).toSet ∧ WF ⟨p, p⟩ := by
   simp only [finK, Bool.and_eq_true, Bool.not_eq_true'] at h
@@ -410,6 +459,7 @@ theorem finK_point {p : Nat} (h : finK p = true) :
   obtain ⟨q, -, hq⟩ := exists_rat_of_toE hfn hbot ht
   exact ⟨q, hq, mem_toSet_of_toE hfn hfn (le_of_eq hq) (ge_of_eq hq), hp, hp⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem seg_mem {I : Interval64} {x r t : ℝ} (hx : x ∈ I.toSet) (hr : r ∈ I.toSet)
     (ht : t ∈ Set.uIcc x r) : t ∈ I.toSet := by
   obtain ⟨⟨hl, hx1⟩, ⟨hh, hx2⟩⟩ := mem_toSet_iff_toE.1 hx
@@ -420,6 +470,7 @@ theorem seg_mem {I : Interval64} {x r t : ℝ} (hx : x ∈ I.toSet) (hr : r ∈ 
   · exact mem_toSet_of_toE hl hh (le_trans hr1 (EReal.coe_le_coe_iff.2 h1))
       (le_trans (EReal.coe_le_coe_iff.2 h2) hx2)
 
+omit [ExtTbl] [ExtSem] in
 theorem meet_mem {A B : KI} (hA : WF A) (hB : WF B) {y : ℝ} (hya : y ∈ (toI A).toSet)
     (hyb : y ∈ (toI B).toSet) : y ∈ (toI (KI.meet A B)).toSet ∧ WF (KI.meet A B) := by
   obtain ⟨⟨hal, ha1⟩, ⟨hah, ha2⟩⟩ := mem_toSet_iff_toE.1 hya
@@ -438,6 +489,7 @@ theorem meet_mem {A B : KI} (hA : WF A) (hB : WF B) {y : ℝ} (hya : y ∈ (toI 
 
 /-! ### Mean value theorem on a segment -/
 
+omit [ExtTbl] [ExtSem] in
 theorem mvt_lt {φ : ℝ → ℝ} {S : ℝ → Prop} {a b : ℝ} (hab : a < b)
     (h : ∀ t ∈ Set.uIcc a b, ∃ d, S d ∧ HasDerivAt φ d t) :
     ∃ d, S d ∧ φ b - φ a = d * (b - a) := by
@@ -453,6 +505,7 @@ theorem mvt_lt {φ : ℝ → ℝ} {S : ℝ → Prop} {a b : ℝ} (hab : a < b)
   rw [hdc.deriv] at hc2
   rw [hc2]; field_simp [sub_ne_zero.2 hab.ne']
 
+omit [ExtTbl] [ExtSem] in
 theorem mvt_uIcc {φ : ℝ → ℝ} {S : ℝ → Prop} {a b : ℝ}
     (h : ∀ t ∈ Set.uIcc a b, ∃ d, S d ∧ HasDerivAt φ d t) :
     ∃ d, S d ∧ φ b - φ a = d * (b - a) := by
@@ -465,6 +518,7 @@ theorem mvt_uIcc {φ : ℝ → ℝ} {S : ℝ → Prop} {a b : ℝ}
 
 /-! ### Lists of boxes -/
 
+omit [ExtTbl] [ExtSem] in
 theorem forall2_setx {xs : List ℝ} {env : List KI}
     (h : List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs env) (i : Nat) {t : ℝ}
     (ht : t ∈ (toI (env.getD i zeroK)).toSet) :
@@ -476,6 +530,7 @@ theorem forall2_setx {xs : List ℝ} {env : List KI}
     | zero => exact List.Forall₂.cons (by simpa using ht) hr
     | succ n => exact List.Forall₂.cons hxX (ih n (by simpa using ht))
 
+omit [ExtTbl] [ExtSem] in
 theorem forall2_set2 {xs : List ℝ} {env : List KI}
     (h : List.Forall₂ (fun x X => x ∈ (toI X).toSet) xs env) (i : Nat) {t : ℝ} {Y : KI}
     (ht : t ∈ (toI Y).toSet) :
@@ -487,6 +542,7 @@ theorem forall2_set2 {xs : List ℝ} {env : List KI}
     | zero => exact List.Forall₂.cons ht hr
     | succ n => exact List.Forall₂.cons hxX (ih n)
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_set_same {xs : List ℝ} {i : Nat} (hi : i < xs.length) (t : ℝ) :
     (xs.set i t).getD i 0 = t := by rw [getD_set_eq hi]; simp
 
@@ -501,6 +557,7 @@ theorem hasDerivAt_box {xs : List ℝ} {env : List KI} (hw : ∀ X ∈ env, WF X
   simp only [List.set_set, getD_set_same hi] at this
   rw [denote_deriv]; exact this
 
+omit [ExtTbl] [ExtSem] in
 theorem mono_step (upper inc : Bool) {φx φr d x r : ℝ} (hd : if inc then 0 ≤ d else d ≤ 0)
     (hmv : φr - φx = d * (r - x)) (hxr : if (inc == upper) then x ≤ r else r ≤ x) :
     if upper then φx ≤ φr else φr ≤ φx := by
@@ -662,6 +719,7 @@ theorem proveD_gt (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : DCert)
     (fun y z h hy => by simp only [Bool.false_eq_true, ↓reduceIte] at h; linarith) _ xs
     (boxes_wf bs) (boxes_mem hxs) h
 
+omit [ExtSem] in
 theorem checkD_split_of {e : IExpr} {g : KI → Bool} {upper : Bool} {i m : Nat} {l r : DCert}
     {env : List KI} (hm : (!isNaN m && Nat.blt m (2 ^ 64)) = true)
     (hl : checkD e g upper l (env.set i ⟨(env.getD i zeroK).lo, m⟩) = true)

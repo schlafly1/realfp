@@ -20,6 +20,8 @@ namespace Interval64.KF.KQ
 
 open Interval64.KF
 
+variable [ExtTbl]
+
 /-- `[e, e', …, e^{(K)}]` (derivatives in variable `0`). -/
 def derivs (e : IExpr) : Nat → List IExpr
   | 0 => [e]

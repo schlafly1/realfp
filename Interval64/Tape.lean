@@ -91,6 +91,8 @@ partial def comp : IExpr → M UInt32
   | .asin a => do emit 11 (← comp a) 11
   | .acos a => do emit 11 (← comp a) 12
   | .atan2 y x => do let a ← comp y; let b ← comp x; emit 12 a b
+  -- Extension functions are not on the tape: the caller falls back to `evalI`.
+  | .ext .. => do modify fun s => { s with ok := false }; return 0
 
 /-- A compiled tape with the registers of the given roots. -/
 structure Tape where

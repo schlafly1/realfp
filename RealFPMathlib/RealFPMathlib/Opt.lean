@@ -18,6 +18,8 @@ open Interval64Proofs.FloatBits
 
 namespace Interval64.KF
 
+variable [ExtTbl]
+
 /-- Nested centred form: `nat` is the natural enclosure; `cen i m k` centres variable `i` at
 the float with bits `m` and encloses `e` at `xᵢ = m` by `k`. -/
 inductive ECert where
@@ -69,6 +71,9 @@ end Interval64.KF
 noncomputable section
 
 namespace RealFP
+
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
 
 /-- The nested centred form encloses `e`. -/
 theorem encK_mem (e : IExpr) : ∀ (k : ECert) (env : List KI) (xs : List ℝ),
@@ -232,6 +237,7 @@ theorem proveM_gt (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : MCert)
     (fun y z h hy => by simp only [Bool.false_eq_true, ↓reduceIte] at h; linarith) _ xs
     (boxes_wf bs) (boxes_mem hxs) h
 
+omit [ExtSem] in
 theorem checkM_split_of {e : IExpr} {g : KI → Bool} {upper : Bool} {i m : Nat} {l r : MCert}
     {env : List KI} (hm : (!isNaN m && Nat.blt m (2 ^ 64)) = true)
     (hl : checkM e g upper l (env.set i ⟨(env.getD i zeroK).lo, m⟩) = true)

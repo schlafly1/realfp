@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Check that every line of every ```lean block in TUTORIAL.md (except the lakefile example)
-occurs in RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean, which the default build compiles.
+occurs in RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean (or, for the "Adding a function"
+section, Extensions/Erf.lean / Examples/Erf.lean), which the default build compiles.
 Trailing `-- comments` and comment-only lines are ignored. Run from the repository root."""
 import re, sys
 md = open('TUTORIAL.md').read()
-lean = open('RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean').read()
+lean = '\n'.join(open(p).read() for p in [
+    'RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean',
+    'RealFPMathlib/RealFPMathlib/Extensions/Erf.lean',    # "Adding a function"
+    'RealFPMathlib/RealFPMathlib/Examples/Erf.lean'])
 strip = lambda l: re.sub(r'\s+--.*$', '', l).strip()
 have = {strip(l) for l in lean.splitlines()}
 missing = [t for b in re.findall(r'```lean\n(.*?)```', md, re.S) if 'import Lake' not in b

@@ -19,25 +19,33 @@ namespace RealFP.KQ
 
 open RealFP RealFP.Taylor
 
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
+
 /-- The `j`-th derivative expression (in variable `0`). -/
 def dN (e : IExpr) (j : ℕ) : IExpr := (fun d => d.deriv 0)^[j] e
 
+omit [ExtTbl] [ExtSem] in
 theorem dN_succ (e : IExpr) (j : ℕ) : dN e (j + 1) = dN (e.deriv 0) j :=
   Function.iterate_succ_apply _ _ _
 
+omit [ExtTbl] [ExtSem] in
 theorem dN_succ' (e : IExpr) (j : ℕ) : dN e (j + 1) = (dN e j).deriv 0 :=
   Function.iterate_succ_apply' _ _ _
 
+omit [ExtTbl] [ExtSem] in
 theorem derivs_ne_nil (e : IExpr) : ∀ k, derivs e k ≠ []
   | 0 => by simp [derivs]
   | _ + 1 => by simp [derivs]
 
+omit [ExtTbl] [ExtSem] in
 theorem getLastD_derivs : ∀ (k : ℕ) (e d : IExpr), (derivs e k).getLastD d = dN e k
   | 0, _, _ => rfl
   | k + 1, e, d => by
     show (e :: derivs (e.deriv 0) k).getLastD d = _
     rw [List.getLastD_cons, getLastD_derivs k, dN_succ]
 
+omit [ExtTbl] [ExtSem] in
 theorem mem_dropLast_derivs : ∀ (k : ℕ) (e : IExpr) (j : ℕ), j < k → dN e j ∈ (derivs e k).dropLast
   | 0, _, _, h => absurd h (Nat.not_lt_zero _)
   | k + 1, e, j, h => by
@@ -48,21 +56,25 @@ theorem mem_dropLast_derivs : ∀ (k : ℕ) (e : IExpr) (j : ℕ), j < k → dN 
     | zero => exact List.mem_cons_self ..
     | succ j => rw [dN_succ]; exact List.mem_cons_of_mem _ (mem_dropLast_derivs k _ j (by omega))
 
+omit [ExtTbl] [ExtSem] in
 theorem fact_eq : ∀ n, fact n = n.factorial
   | 0 => rfl
   | n + 1 => by simp [fact, fact_eq n, Nat.factorial_succ]
 
 /-! ### Points -/
 
+omit [ExtTbl] [ExtSem] in
 theorem finK_spec {p : Nat} (h : finK p = true) : p < 2 ^ 64 ∧ (toF p).isNaN = false := by
   simp only [finK, Bool.and_eq_true, Bool.not_eq_true'] at h
   obtain ⟨⟨hn, -⟩, hb⟩ := h
   have hp : p < 2 ^ 64 := Nat.blt_eq ▸ hb
   exact ⟨hp, (isNaN_toF hp).trans hn⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem finK_real {p : Nat} (h : finK p = true) :
     ∃ r : ℝ, (toF p).toE = r ∧ r ∈ (toI ⟨p, p⟩).toSet ∧ WF ⟨p, p⟩ := finK_point h
 
+omit [ExtTbl] [ExtSem] in
 theorem le_real {p q : Nat} (hp : finK p = true) (hq : finK q = true) (h : le p q = true)
     {P Q : ℝ} (hP : (toF p).toE = P) (hQ : (toF q).toE = Q) : P ≤ Q := by
   obtain ⟨hp1, hp2⟩ := finK_spec hp
@@ -72,6 +84,7 @@ theorem le_real {p q : Nat} (hp : finK p = true) (hq : finK q = true) (h : le p 
   have := (float_le_iff_toE hp2 hq2).1 h1
   rw [hP, hQ] at this; exact EReal.coe_le_coe_iff.1 this
 
+omit [ExtTbl] [ExtSem] in
 theorem mem_seg {lo hi : Nat} (hl : finK lo = true) (hh : finK hi = true) {L H t : ℝ}
     (hL : (toF lo).toE = L) (hH : (toF hi).toE = H) (ht : t ∈ Icc L H) :
     t ∈ (toI ⟨lo, hi⟩).toSet ∧ WF ⟨lo, hi⟩ := by
@@ -83,6 +96,7 @@ theorem mem_seg {lo hi : Nat} (hl : finK lo = true) (hh : finK hi = true) {L H t
 
 /-! ### Moments and the Taylor part -/
 
+omit [ExtTbl] [ExtSem] in
 theorem mom_mem {lo m hi : Nat} {L M H : ℝ} (hL : L ∈ (toI (pt lo)).toSet) (wL : WF (pt lo))
     (hM : M ∈ (toI (pt m)).toSet) (wM : WF (pt m)) (hH : H ∈ (toI (pt hi)).toSet)
     (wH : WF (pt hi)) (j : ℕ) :
@@ -102,6 +116,7 @@ theorem mom_mem {lo m hi : Nat} {L M H : ℝ} (hL : L ∈ (toI (pt lo)).toSet) (
   rw [e] at hq
   exact Iv.mem_mul (Iv.sub_mem (mem_pown (Iv.sub_mem hH hM) _) (mem_pown (Iv.sub_mem hL hM) _)) hq
 
+omit [ExtSem] in
 theorem taylorK_cons {lo m hi j : Nat} {d : IExpr} {ds : List IExpr} (h : ds ≠ []) :
     taylorK lo m hi j (d :: ds) =
       KI.add (KI.mul (evalK [pt m] d) (momK lo m hi j)) (taylorK lo m hi (j + 1) ds) := by
@@ -137,6 +152,7 @@ theorem taylor_mem {lo m hi : Nat} {L M H : ℝ} (hL : L ∈ (toI (pt lo)).toSet
 
 /-! ### One cell -/
 
+omit [ExtSem] in
 theorem cellOK_fin {ds : List IExpr} {c : Nat × Nat × Nat} (h : cellOK ds c = true) :
     finK c.1 = true ∧ finK c.2.2 = true := by
   simp only [cellOK, Bool.and_eq_true] at h
@@ -235,6 +251,7 @@ theorem integral_mem_quadK {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × N
     exact (chain_mem hK hK0 hB cs a hA hch hall).2
   · exact absurd h (by simp)
 
+omit [ExtTbl] [ExtSem] in
 theorem ratOf_sound {p : Nat} {q : ℚ} (h : ratOf p = some q) :
     p < 2 ^ 64 ∧ (toF p).isNaN = false ∧ (toF p).toE = ((q : ℝ) : EReal) := by
   unfold ratOf at h

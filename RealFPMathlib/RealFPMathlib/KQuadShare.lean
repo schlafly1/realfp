@@ -17,6 +17,10 @@ namespace RealFP.KQS
 
 open RealFP RealFP.KQ
 
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
+
+omit [ExtSem] in
 theorem evalK_subst {env env' : List KI} {σ : Nat → IExpr} {n : Nat}
     (h : ∀ i < n, evalK env (σ i) = env'.getD i zeroK) :
     ∀ e : IExpr, e.varsLt n = true → evalK env (e.subst σ) = evalK env' e := by
@@ -24,14 +28,17 @@ theorem evalK_subst {env env' : List KI} {σ : Nat → IExpr} {n : Nat}
   induction e <;> intro hv <;>
     simp_all [IExpr.subst, IExpr.varsLt, evalK, Nat.blt_eq]
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_append_lt {α : Type} {l : List α} {x d : α} {i : Nat} (hi : i < l.length) :
     (l ++ [x]).getD i d = l.getD i d := by
   simp [List.getD_eq_getElem?_getD, List.getElem?_append_left hi]
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_append_eq {α : Type} {l : List α} {x d : α} :
     (l ++ [x]).getD l.length d = x := by
   simp [List.getD_eq_getElem?_getD]
 
+omit [ExtSem] in
 theorem lets_inv (env : List KI) :
     ∀ (lets : List IExpr) (accE : List IExpr) (accV : List KI), accE.length = accV.length →
       (∀ i < accE.length, accV.getD i zeroK = evalK env (accE.getD i (.var 0))) →
@@ -55,6 +62,7 @@ theorem lets_inv (env : List KI) :
       rw [getD_append_eq, hl, getD_append_eq]
       exact (evalK_subst (env' := accV) (fun i hi2 => (hi i hi2).symm) d hok.1).symm
 
+omit [ExtSem] in
 theorem evalLets_spec {X : KI} {lets : List IExpr} (hok : letsOK 1 lets = true) :
     (expLets lets).length = (evalLets [X] lets).length ∧
       ∀ i < (expLets lets).length,
@@ -64,6 +72,7 @@ theorem evalLets_spec {X : KI} {lets : List IExpr} (hok : letsOK 1 lets = true) 
       simp only [List.length_singleton, Nat.lt_one_iff] at hi
       subst hi; rfl) hok
 
+omit [ExtSem] in
 /-- A well-scoped root evaluates on the let environment like its expansion on `[X]`. -/
 theorem evalK_root {X : KI} {lets : List IExpr} (hok : letsOK 1 lets = true) {r : IExpr}
     (hr : r.varsLt (lets.length + 1) = true) :
@@ -80,6 +89,7 @@ theorem evalK_root {X : KI} {lets : List IExpr} (hok : letsOK 1 lets = true) {r 
   refine (evalK_subst (n := lets.length + 1) (fun i hi => ?_) r hr).symm
   exact (hs.2 i (hlen ▸ hi)).symm
 
+omit [ExtSem] in
 theorem taylorKS_eq {n lo m hi : Nat} {envM : List KI} {σ : Nat → IExpr}
     (hev : ∀ r : IExpr, r.varsLt n = true → evalK envM r = evalK [pt m] (r.subst σ)) :
     ∀ (roots : List IExpr) (j : Nat), roots.all (IExpr.varsLt n) = true →
@@ -94,6 +104,7 @@ theorem taylorKS_eq {n lo m hi : Nat} {envM : List KI} {σ : Nat → IExpr}
     simp only [List.map_cons] at this
     rw [this]
 
+omit [ExtTbl] [ExtSem] in
 theorem getLastD_map {α β : Type} (f : α → β) {l : List α} (hl : l ≠ []) (x : α) (y : β) :
     (l.map f).getLastD y = f (l.getLastD x) := by
   induction l with
@@ -103,6 +114,7 @@ theorem getLastD_map {α β : Type} (f : α → β) {l : List α} (hl : l ≠ []
     | nil => rfl
     | cons b l => simpa using ih (by simp)
 
+omit [ExtTbl] [ExtSem] in
 theorem getLastD_ne {α : Type} {l : List α} (hl : l ≠ []) (x y : α) : l.getLastD x = l.getLastD y := by
   induction l with
   | nil => exact absurd rfl hl
@@ -110,6 +122,7 @@ theorem getLastD_ne {α : Type} {l : List α} (hl : l ≠ []) (x y : α) : l.get
     | nil => rfl
     | cons b l => simpa using ih (by simp)
 
+omit [ExtTbl] [ExtSem] in
 theorem getLastD_mem {α : Type} {l : List α} (hl : l ≠ []) (x : α) : l.getLastD x ∈ l := by
   induction l with
   | nil => exact absurd rfl hl
@@ -120,6 +133,7 @@ theorem getLastD_mem {α : Type} {l : List α} (hl : l ≠ []) (x : α) : l.getL
       have e : (a :: b :: l).getLastD x = (b :: l).getLastD x := by simp [List.getLastD]
       rw [e]; exact List.mem_cons_of_mem _ this
 
+omit [ExtSem] in
 theorem quadKS_some {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)} {lets roots : List IExpr}
     {R : KI} (h : quadKS e K a b cs lets roots = some R) : quadK e K a b cs = some R := by
   unfold quadKS at h
@@ -187,10 +201,12 @@ theorem integral_bounds_of_quadBoundS {e : IExpr} {K a b : Nat} {cs : List (Nat 
 
 /-! ### Witnessed let values (`quadKW`) -/
 
+omit [ExtTbl] [ExtSem] in
 theorem keq_eq {a b : KI} (h : keq a b = true) : a = b := by
   simp only [keq, Bool.and_eq_true, Nat.beq_eq] at h
   cases a; cases b; simp_all
 
+omit [ExtSem] in
 theorem letsW_spec : ∀ (acc : List KI) (lets : List IExpr) (vs : List KI),
     letsW acc lets vs = true → evalLets acc lets = acc ++ vs
   | acc, [], [], _ => by simp [evalLets]
@@ -203,6 +219,7 @@ theorem letsW_spec : ∀ (acc : List KI) (lets : List IExpr) (vs : List KI),
   | _, [], _ :: _, h => by simp [letsW] at h
   | _, _ :: _, [], h => by simp [letsW] at h
 
+omit [ExtSem] in
 theorem sumCellsW_eq {roots lets : List IExpr} {K : Nat} {ds : List IExpr} :
     ∀ (cs : List (Nat × Nat × Nat)) (ws : List (List KI × List KI)), cellsW lets cs ws = true →
       sumCellsW roots K ds cs ws = sumCellsS lets roots K ds cs
@@ -215,14 +232,17 @@ theorem sumCellsW_eq {roots lets : List IExpr} {K : Nat} {ds : List IExpr} :
   | [], _ :: _, h => by simp [cellsW] at h
   | _ :: _, [], h => by simp [cellsW] at h
 
+omit [ExtSem] in
 theorem cellsW_nil (lets : List IExpr) : cellsW lets [] [] = true := rfl
 
+omit [ExtSem] in
 theorem cellsW_cons {lets : List IExpr} {lo m hi : Nat} {vm vb : List KI}
     {cs : List (Nat × Nat × Nat)} {ws : List (List KI × List KI)}
     (h1 : letsW [pt m] lets vm = true) (h2 : letsW [⟨lo, hi⟩] lets vb = true)
     (h3 : cellsW lets cs ws = true) : cellsW lets ((lo, m, hi) :: cs) ((vm, vb) :: ws) = true := by
   simp only [cellsW, h1, h2, h3, Bool.and_self]
 
+omit [ExtSem] in
 theorem quadKW_some {e : IExpr} {K a b : Nat} {cs : List (Nat × Nat × Nat)} {lets roots : List IExpr}
     {ws : List (List KI × List KI)} {R : KI} (hw : cellsW lets cs ws = true)
     (h : quadKW e K a b cs lets roots ws = some R) :

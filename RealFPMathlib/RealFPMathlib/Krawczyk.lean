@@ -23,23 +23,31 @@ noncomputable section
 
 namespace RealFP.Roots
 
+set_option linter.concreteInstances false
+variable [ExtTbl] [ExtSem]
+
 /-! ### Vectors as lists -/
 
 /-- `[x 0, …, x (n-1)]`. -/
 def vec (n : Nat) (x : Nat → ℝ) : List ℝ := (List.range n).map x
 
+omit [ExtTbl] [ExtSem] in
 @[simp] theorem vec_length {n : Nat} {x : Nat → ℝ} : (vec n x).length = n := by simp [vec]
 
+omit [ExtTbl] [ExtSem] in
 theorem vec_getD {n j : Nat} (x : Nat → ℝ) (h : j < n) : (vec n x).getD j 0 = x j := by
   simp [vec, List.getD_eq_getElem?_getD, h]
 
+omit [ExtTbl] [ExtSem] in
 theorem vec_congr {n : Nat} {x y : Nat → ℝ} (h : ∀ j < n, x j = y j) : vec n x = vec n y := by
   simp only [vec]; apply List.map_congr_left; intro j hj; exact h j (List.mem_range.1 hj)
 
+omit [ExtTbl] [ExtSem] in
 theorem eq_vec (xs : List ℝ) : xs = vec xs.length (fun j => xs.getD j 0) := by
   apply List.ext_getElem (by simp [vec]); intro j h1 h2
   simp [vec, List.getD_eq_getElem?_getD, h1]
 
+omit [ExtTbl] [ExtSem] in
 theorem forall2_vec {β : Type} {R : ℝ → β → Prop} {N : Nat} {f : Nat → ℝ} {g : Nat → β}
     (h : ∀ t < N, R (f t) (g t)) : List.Forall₂ R (vec N f) ((List.range N).map g) := by
   rw [List.forall₂_iff_get]
@@ -47,6 +55,7 @@ theorem forall2_vec {β : Type} {R : ℝ → β → Prop} {N : Nat} {f : Nat →
   simp only [vec, List.length_map, List.length_range] at h1
   simpa [vec] using h i h1
 
+omit [ExtTbl] [ExtSem] in
 theorem inBoxes_iff {xs : List ℝ} {bs : List (ℚ × ℚ)} :
     InBoxes xs bs ↔ xs.length = bs.length ∧ ∀ j < bs.length,
       ((bs.getD j (0, 0)).1 : ℝ) ≤ xs.getD j 0 ∧ xs.getD j 0 ≤ ((bs.getD j (0, 0)).2 : ℝ) := by
@@ -61,6 +70,7 @@ theorem inBoxes_iff {xs : List ℝ} {bs : List (ℚ × ℚ)} :
     have := h j h2
     simpa [List.getD_eq_getElem?_getD, h1, h2] using this
 
+omit [ExtTbl] [ExtSem] in
 theorem inBoxes_vec {n : Nat} {x : Nat → ℝ} {bs : List (ℚ × ℚ)} (hn : bs.length = n) :
     InBoxes (vec n x) bs ↔ ∀ j < n,
       ((bs.getD j (0, 0)).1 : ℝ) ≤ x j ∧ x j ≤ ((bs.getD j (0, 0)).2 : ℝ) := by
@@ -79,6 +89,7 @@ theorem denote_foldr (xs : List ℝ) :
   | [] => by simp [IExpr.denote]
   | e :: l => by simp [IExpr.denote, denote_foldr xs l]
 
+omit [ExtTbl] [ExtSem] in
 theorem lsum (n : Nat) (g : Nat → ℝ) : ((List.range n).map g).sum = ∑ i ∈ Finset.range n, g i := by
   induction n with
   | zero => simp
@@ -90,6 +101,7 @@ theorem denote_sumE (xs : List ℝ) (n : Nat) (f : Nat → IExpr) :
 
 /-! ### Mean value theorem across a box (one coordinate at a time) -/
 
+omit [ExtTbl] [ExtSem] in
 theorem set_vec {n r : Nat} (x : Nat → ℝ) (hr : r < n) (s : ℝ) :
     (vec n x).set r s = vec n (fun j => if j = r then s else x j) := by
   apply List.ext_getElem (by simp [vec]); intro j h1 h2
@@ -219,6 +231,7 @@ def krawCheck (Fs : List IExpr) (bs : List (ℚ × ℚ)) (c : KCert) : Bool :=
 
 /-! ### Soundness -/
 
+omit [ExtTbl] [ExtSem] in
 theorem inQ_sound {q : ℚ} {F : KI} (hF : WF F) (h : inQ q F = true) {y : ℝ}
     (hy : y ∈ (toI F).toSet) : |y| ≤ q := by
   simp only [inQ, Bool.and_eq_true] at h
@@ -227,11 +240,13 @@ theorem inQ_sound {q : ℚ} {F : KI} (hF : WF F) (h : inQ q F = true) {y : ℝ}
   push_cast at h2
   exact abs_le.2 ⟨h2, h1⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem inLH_sound {lo hi : ℚ} {F : KI} (hF : WF F) (h : inLH lo hi F = true) {y : ℝ}
     (hy : y ∈ (toI F).toSet) : (lo : ℝ) ≤ y ∧ y ≤ hi := by
   simp only [inLH, Bool.and_eq_true] at h
   exact ⟨gGe_sound lo F hF h.1 y hy, gLe_sound hi F hF h.2 y hy⟩
 
+omit [ExtTbl] [ExtSem] in
 theorem getD_app4 {n : Nat} (l1 l2 l3 l4 : List ℝ) (h1 : l1.length = n) (h2 : l2.length = n)
     (h3 : l3.length = n) :
     (∀ j < n, (l1 ++ l2 ++ l3 ++ l4).getD j 0 = l1.getD j 0) ∧
@@ -249,13 +264,16 @@ theorem getD_app4 {n : Nat} (l1 l2 l3 l4 : List ℝ) (h1 : l1.length = n) (h2 : 
   · rw [List.getD_append_right _ _ _ _ (by simp; omega)]
     congr 1; simp; omega
 
+omit [ExtTbl] [ExtSem] in
 theorem wf_app {l1 l2 : List KI} (h1 : ∀ X ∈ l1, WF X) (h2 : ∀ X ∈ l2, WF X) :
     ∀ X ∈ l1 ++ l2, WF X := fun X hX => (List.mem_append.1 hX).elim (h1 X) (h2 X)
 
+omit [ExtTbl] [ExtSem] in
 theorem wf_map {β : Type} (l : List β) (f : β → KI)
     (hf : ∀ b, WF (f b)) : ∀ X ∈ l.map f, WF X := by
   intro X hX; obtain ⟨b, -, rfl⟩ := List.mem_map.1 hX; exact hf b
 
+omit [ExtTbl] [ExtSem] in
 theorem lsumQ (n : Nat) (g : Nat → ℚ) :
     ((((List.range n).map g).sum : ℚ) : ℝ) = ∑ i ∈ Finset.range n, (g i : ℝ) := by
   induction n with
@@ -264,9 +282,11 @@ theorem lsumQ (n : Nat) (g : Nat → ℚ) :
     rw [List.range_succ, List.map_append, List.sum_append, Rat.cast_add, ih, Finset.sum_range_succ]
     simp
 
+omit [ExtTbl] [ExtSem] in
 theorem delta_cast (i j : Nat) : ((delta i j : ℚ) : ℝ) = if i = j then 1 else 0 := by
   unfold delta; split_ifs <;> simp
 
+omit [ExtTbl] [ExtSem] in
 theorem sum_delta {n i : Nat} (hi : i < n) (d : Nat → ℝ) :
     ∑ j ∈ Finset.range n, (if i = j then (1 : ℝ) else 0) * d j = d i := by
   simp [Finset.mem_range.2 hi]
@@ -289,6 +309,7 @@ structure Facts (Fs : List IExpr) (bs : List (ℚ × ℚ)) (c : KCert) : Prop wh
       (boxes bs ++ boxes (ptBoxes c.m) ++ c.B ++ c.J)
       (boxes (unitBoxes bs.length) ++ boxes (ptBoxes c.m) ++ c.B ++ c.J) i = true
 
+omit [ExtSem] in
 theorem facts_of_check (h : krawCheck Fs bs c = true) : Facts Fs bs c := by
   simp only [krawCheck, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq, List.all_eq_true,
     List.mem_range] at h
@@ -308,6 +329,7 @@ def Fk (Fs : List IExpr) (n k : Nat) (x : Nat → ℝ) : ℝ := (fget Fs k).deno
 def Gv (Fs : List IExpr) (n : Nat) (Y : List (List ℚ)) (x : Nat → ℝ) (i : Nat) : ℝ :=
   x i - ∑ k ∈ Finset.range n, (qget Y i k : ℝ) * Fk Fs n k x
 
+omit [ExtTbl] [ExtSem] in
 theorem kraw_alg {n i : Nat} (hi : i < n) (Y : Nat → Nat → ℝ) (x m Fx Fm : Nat → ℝ)
     (a : Nat → Nat → ℝ) (heq : ∀ k, Fx k - Fm k = ∑ j ∈ Finset.range n, a k j * (x j - m j)) :
     x i - ∑ k ∈ Finset.range n, Y i k * Fx k = m i - ∑ k ∈ Finset.range n, Y i k * Fm k +
@@ -339,12 +361,14 @@ structure Lay (n : Nat) (L : List ℝ) (w m Fm : Nat → ℝ) (a : Nat → Nat �
   db : ∀ k < n, L.getD (2 * n + k) 0 = Fm k
   da : ∀ k < n, ∀ j < n, L.getD (3 * n + (k * n + j)) 0 = a k j
 
+omit [ExtTbl] [ExtSem] in
 theorem div_mod_aux {n k j : Nat} (hj : j < n) : (k * n + j) / n = k ∧ (k * n + j) % n = j := by
   have hn : 0 < n := by omega
   constructor
   · rw [Nat.add_comm, Nat.add_mul_div_right _ _ hn, Nat.div_eq_of_lt hj, Nat.zero_add]
   · rw [Nat.add_comm, Nat.add_mul_mod_self_right, Nat.mod_eq_of_lt hj]
 
+omit [ExtTbl] [ExtSem] in
 theorem lay_mk (n : Nat) (w m Fm : Nat → ℝ) (a : Nat → Nat → ℝ) :
     Lay n (vec n w ++ vec n m ++ vec n Fm ++ vec (n * n) (fun t => a (t / n) (t % n))) w m Fm a := by
   have h4 := getD_app4 (vec n w) (vec n m) (vec n Fm) (vec (n * n) (fun t => a (t / n) (t % n)))
@@ -397,14 +421,17 @@ end Layout
 
 variable {Fs : List IExpr} {bs : List (ℚ × ℚ)} {c : KCert}
 
+omit [ExtTbl] [ExtSem] in
 theorem ptBoxes_getD (mq : List ℚ) (j : Nat) : (ptBoxes mq).getD j (0, 0) = (mq.getD j 0, mq.getD j 0) := by
   show (mq.map fun c => (c, c)).getD j ((fun c : ℚ => (c, c)) 0) = _
   rw [List.getD_map]
 
+omit [ExtSem] in
 theorem inBoxes_m (hf : Facts Fs bs c) : InBoxes (vec bs.length (mR c)) (ptBoxes c.m) := by
   rw [inBoxes_vec (by simp [ptBoxes, hf.hm])]
   intro j _; rw [ptBoxes_getD]; exact ⟨le_rfl, le_rfl⟩
 
+omit [ExtSem] in
 theorem inBoxes_m' (hf : Facts Fs bs c) : InBoxes (vec bs.length (mR c)) bs := by
   rw [inBoxes_vec rfl]
   intro j hj; have := hf.hmb j hj
@@ -430,6 +457,7 @@ theorem env_mem (hf : Facts Fs bs c) {l0 : List ℝ} {E0 : List KI}
       · exact h
     exact ha _ (Nat.div_lt_of_lt_mul ht) _ (Nat.mod_lt _ hn)
 
+omit [ExtSem] in
 theorem env_wf (hf : Facts Fs bs c) {E0 : List KI} (h0 : ∀ X ∈ E0, WF X) :
     ∀ X ∈ E0 ++ boxes (ptBoxes c.m) ++ c.B ++ c.J, WF X := by
   refine wf_app (wf_app (wf_app h0 (boxes_wf _)) ?_) ?_
@@ -665,6 +693,7 @@ end Sound
 
 /-! ### Statements over a type of points -/
 
+omit [ExtTbl] [ExtSem] in
 theorem existsUnique_of {T : Type} (toL : T → List ℝ) (ofL : List ℝ → T) (P : List ℝ → Prop)
     (n : Nat) (hlen : ∀ xs, P xs → xs.length = n) (hto : ∀ xs, xs.length = n → toL (ofL xs) = xs)
     (hinj : ∀ p q, toL p = toL q → p = q) (hex : ∃ xs, P xs)
@@ -693,27 +722,35 @@ theorem kraw_exists' {T : Type} (Fs : List IExpr) (bs : List (ℚ × ℚ)) (c : 
 
 /-! Coordinate lists for `ℝ`, `ℝ × ℝ`, `ℝ × ℝ × ℝ` and `Fin n → ℝ`. -/
 
+omit [ExtTbl] [ExtSem] in
 theorem coords1_to (xs : List ℝ) (h : xs.length = 1) : [xs.getD 0 0] = xs := by
   match xs, h with | [_], _ => rfl
+omit [ExtTbl] [ExtSem] in
 theorem coords1_inj (p q : ℝ) (h : [p] = [q]) : p = q := by simpa using h
 
+omit [ExtTbl] [ExtSem] in
 theorem coords2_to (xs : List ℝ) (h : xs.length = 2) :
     [(xs.getD 0 0, xs.getD 1 0).1, (xs.getD 0 0, xs.getD 1 0).2] = xs := by
   match xs, h with | [_, _], _ => rfl
+omit [ExtTbl] [ExtSem] in
 theorem coords2_inj (p q : ℝ × ℝ) (h : [p.1, p.2] = [q.1, q.2]) : p = q := by
   simp only [List.cons.injEq, and_true] at h; exact Prod.ext h.1 h.2
 
+omit [ExtTbl] [ExtSem] in
 theorem coords3_to (xs : List ℝ) (h : xs.length = 3) :
     [(xs.getD 0 0, xs.getD 1 0, xs.getD 2 0).1, (xs.getD 0 0, xs.getD 1 0, xs.getD 2 0).2.1,
       (xs.getD 0 0, xs.getD 1 0, xs.getD 2 0).2.2] = xs := by
   match xs, h with | [_, _, _], _ => rfl
+omit [ExtTbl] [ExtSem] in
 theorem coords3_inj (p q : ℝ × ℝ × ℝ) (h : [p.1, p.2.1, p.2.2] = [q.1, q.2.1, q.2.2]) : p = q := by
   simp only [List.cons.injEq, and_true] at h; exact Prod.ext h.1 (Prod.ext h.2.1 h.2.2)
 
+omit [ExtTbl] [ExtSem] in
 theorem coordsFin_to (n : Nat) (xs : List ℝ) (h : xs.length = n) :
     List.ofFn (fun i : Fin n => xs.getD i 0) = xs := by
   apply List.ext_getElem (by simp [h]); intro j h1 h2
   simp [List.getD_eq_getElem?_getD, h2]
+omit [ExtTbl] [ExtSem] in
 theorem coordsFin_inj (n : Nat) (p q : Fin n → ℝ) (h : List.ofFn p = List.ofFn q) : p = q :=
   List.ofFn_injective h
 
@@ -726,6 +763,7 @@ def subBoxes : List (ℚ × ℚ) → List (ℚ × ℚ) → Bool
   | p :: s, q :: t => decide (q.1 ≤ p.1) && decide (p.2 ≤ q.2) && subBoxes s t
   | _, _ => false
 
+omit [ExtTbl] [ExtSem] in
 theorem subBoxes_length : ∀ {bs' bs : List (ℚ × ℚ)}, subBoxes bs' bs = true → bs'.length = bs.length
   | [], [], _ => rfl
   | _ :: s, _ :: t, h => by
@@ -734,6 +772,7 @@ theorem subBoxes_length : ∀ {bs' bs : List (ℚ × ℚ)}, subBoxes bs' bs = tr
   | [], _ :: _, h => by simp [subBoxes] at h
   | _ :: _, [], h => by simp [subBoxes] at h
 
+omit [ExtTbl] [ExtSem] in
 theorem inBoxes_sub {xs : List ℝ} {bs' : List (ℚ × ℚ)} (hx : InBoxes xs bs') :
     ∀ {bs : List (ℚ × ℚ)}, subBoxes bs' bs = true → InBoxes xs bs := by
   unfold InBoxes at *

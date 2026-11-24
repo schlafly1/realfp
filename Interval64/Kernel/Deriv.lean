@@ -49,6 +49,7 @@ def IExpr.diff (i : Nat) : IExpr → IExpr
   | .tan a => .div (a.diff i) (.pow (.cos a) 2)
   | .asin a => .div (a.diff i) (.sqrt (.sub (.rat 1) (.pow a 2)))
   | .acos a => .neg (.div (a.diff i) (.sqrt (.sub (.rat 1) (.pow a 2))))
+  | .ext _ d a => .mul (d.subst a.subst0) (a.diff i)
 
 /-! ### Light algebraic simplification (exact rational constant folding)
 
@@ -114,6 +115,7 @@ def IExpr.dsimp : IExpr → IExpr
   | .tan a => .tan a.dsimp
   | .asin a => .asin a.dsimp
   | .acos a => .acos a.dsimp
+  | .ext k d a => .ext k d a.dsimp
   | e => e
 
 /-- Simplified partial derivative (used by the checker). -/
@@ -123,6 +125,8 @@ def IExpr.deriv (i : Nat) (e : IExpr) : IExpr := (e.diff i).dsimp
 def posK (X : KI) : Bool := !isNaN X.lo && !isNaN X.hi && lt 0 X.lo
 /-- The enclosure is non-NaN and excludes `0`. -/
 def nzK (X : KI) : Bool := !isNaN X.lo && !isNaN X.hi && (lt 0 X.lo || lt X.hi 0)
+
+variable [ExtTbl]
 
 def domOK (env : List KI) : IExpr → Bool
   | .var _ => true
@@ -151,6 +155,7 @@ def domOK (env : List KI) : IExpr → Bool
   | .tan a => domOK env a && nzK (evalK env (.cos a))
   | .asin a => domOK env a && posK (evalK env (.sub (.rat 1) (.pow a 2)))
   | .acos a => domOK env a && posK (evalK env (.sub (.rat 1) (.pow a 2)))
+  | .ext k d a => domOK env a && extDomK k (evalK env a) && decide (d = (ExtTbl.get k).deriv)
 
 /-- Finite float bit pattern. -/
 def finK (p : Nat) : Bool := !isNaN p && !isInf p && Nat.blt p (2 ^ 64)

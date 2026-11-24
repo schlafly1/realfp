@@ -17,6 +17,7 @@ import RealFPMathlib.Demo
 import RealFPMathlib.Examples.Bernstein
 import RealFPMathlib.Examples.Conv
 import RealFPMathlib.Examples.Cubic
+import RealFPMathlib.Examples.Erf
 import RealFPMathlib.Examples.IntegralTactic
 import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.MatrixPD
@@ -32,6 +33,7 @@ import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Examples.Trig
 import RealFPMathlib.Examples.Tutorial
 import RealFPMathlib.Ext
+import RealFPMathlib.Extensions.Erf
 import RealFPMathlib.Front
 import RealFPMathlib.Hyp
 import RealFPMathlib.I128DD
@@ -56,6 +58,7 @@ import RealFPMathlib.PosDefTactic
 import RealFPMathlib.Pow
 import RealFPMathlib.Quad
 import RealFPMathlib.Quad2
+import RealFPMathlib.Registry
 import RealFPMathlib.RootTactic
 import RealFPMathlib.Roots
 import RealFPMathlib.Split

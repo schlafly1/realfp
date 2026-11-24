@@ -322,6 +322,46 @@ theorem atan2K_toI {y x : KI} (hy : WF y) (hx : WF x) :
       rw [(atan_toI hyx).1, mul_toI hy (inv_wf hx), inv_toI hx]
   · simp only [Bool.cond_true, ite_true]; exact ⟨toI_invalid, wf_invalid⟩
 
+theorem toNat_toBits_lt (f : Float) : f.toBits.toNat < 2 ^ 64 := f.toBits.toNat_lt
+
+theorem isNaN_toBits (f : Float) : isNaN f.toBits.toNat = f.isNaN := by
+  have hx := toNat_toBits_lt f
+  rw [← isNaN_toF hx]
+  show (Spec.unpackBits (toF _).toBits).isNaN = (Spec.unpackBits f.toBits).isNaN
+  rw [unpack_toF hx, ← unpackBits_ofNat hx, UInt64.ofNat_toNat]
+
+theorem toBits_toF_toBits {f : Float} (h : f.isNaN = false) :
+    (toF f.toBits.toNat).toBits = f.toBits := by
+  rw [toBits_toF_of_not_nan (toNat_toBits_lt f) (by rw [isNaN_toBits]; exact h),
+    UInt64.ofNat_toNat]
+
+theorem ofI_wf (X : Interval64) : WF (ofI X) := ⟨toNat_toBits_lt _, toNat_toBits_lt _⟩
+
+theorem toIv_eq (X : KI) : toIv X = toI X := rfl
+
+theorem extK_toI [ExtTbl] (k : Nat) {Y : KI} (hY : WF Y) :
+    toI (extK k Y) = extI k (toI Y) ∧ WF (extK k Y) := by
+  have hs : ∀ Z : KI, WF (sanitizeK Z) := by
+    intro Z; unfold sanitizeK
+    cases h1 : Nat.blt Z.lo (2 ^ 64) <;> cases h2 : Nat.blt Z.hi (2 ^ 64) <;>
+      simp only [Bool.and_true, Bool.and_false, Bool.cond_true, Bool.cond_false]
+    all_goals first | exact wf_whole | exact ⟨Nat.blt_eq ▸ h1, Nat.blt_eq ▸ h2⟩
+  unfold extK extI
+  simp only [toI, isNaN_toF hY.1, isNaN_toF hY.2]
+  cases hl : isNaN Y.lo <;> cases hh : isNaN Y.hi <;>
+    simp only [Bool.or_true, Bool.or_false, Bool.cond_true, Bool.cond_false, ite_true,
+      Bool.false_eq_true, ite_false]
+  · have e : ofI ⟨toF Y.lo, toF Y.hi⟩ = Y := by
+      cases Y with
+      | mk lo hi =>
+        simp only [ofI, toBits_toF_of_not_nan hY.1 hl, toBits_toF_of_not_nan hY.2 hh,
+          UInt64.toNat_ofNat_of_lt' hY.1, UInt64.toNat_ofNat_of_lt' hY.2]
+    rw [e]; exact ⟨rfl, hs _⟩
+  all_goals exact ⟨toI_whole, wf_whole⟩
+
+section
+variable [ExtTbl]
+
 theorem evalK_toI {env : List KI} (h : ∀ X ∈ env, WF X) :
     ∀ e : IExpr, toI (evalK env e) = evalI (env.map toI) e ∧ WF (evalK env e) := by
   intro e
@@ -382,6 +422,10 @@ theorem evalK_toI {env : List KI} (h : ∀ X ∈ env, WF X) :
     exact ⟨by simp only [evalK, evalI]; rw [(asin_toI iha.2).1, iha.1], (asin_toI iha.2).2⟩
   | acos a iha =>
     exact ⟨by simp only [evalK, evalI]; rw [(acos_toI iha.2).1, iha.1], (acos_toI iha.2).2⟩
+  | ext k _ a _ iha =>
+    exact ⟨by simp only [evalK, evalI]; rw [(extK_toI k iha.2).1, iha.1], (extK_toI k iha.2).2⟩
+
+end
 
 theorem boxes_wf (bs : List (Rat × Rat)) : ∀ X ∈ boxes bs, WF X := by
   induction bs with

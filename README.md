@@ -726,6 +726,33 @@ Hessian/second-order or Taylor-model bounds; boxes only (no constraints); `sInf 
 attained at a rational point; localisation is one-dimensional; argmin needs `fun_prop` to prove
 continuity.
 
+### Adding a function (`RealFPMathlib/Registry.lean`, `RealFPMathlib/Extensions/Erf.lean`)
+
+Real functions beyond the built-in ones are plugged into all realfp tactics through a registry,
+without editing the library. The reflected expressions have a node `IExpr.ext k d a` (key `k`,
+derivative template `d`, argument `a`); the evaluators, derivatives, domain checks and all
+certificate checkers take an extension table `[ExtTbl]` (kernel enclosures, core) and the
+soundness theorems additionally `[ExtSem]` (real functions and proofs). A user registers
+
+* `f : ℝ → ℝ` (a constant),
+* `F : ExtFn` — `evK : KI → KI` (kernel enclosure, optionally `@[implemented_by]` a faster
+  native version), `domK` (differentiability test) and `deriv` (an ext-free `IExpr` template);
+  `ExtFn.ofMono` builds `evK` for monotone functions from rational point bounds,
+* a theorem `ExtSound f D F`, tagged `@[realfp_fn]`.
+
+The tactics reify `f a` for registered `f`, run the native search with a runtime table of the
+registered functions occurring in the goal, and state the proof for auxiliary definitions
+`ExtTbl.ofList …` / `ExtSem.ofList …` built from the soundness theorems, so no axiom is added.
+Goals without registered functions are unchanged (empty default table).
+
+`RealFPMathlib/Extensions/Erf.lean` registers `erf x = 2/√π ∫₀ˣ e^{-t²}` (defined there, Mathlib
+has none): monotone enclosure from the integrated alternating Taylor bounds of `e^{-t²}`
+(input rounded to `2⁻³⁰`, odd symmetry, clamped at `|x| ≥ 6`), derivative `2/√π e^{-x²}`.
+`RealFPMathlib/Examples/Erf.lean` has bounds, `erf x = 1/2` (∃ and ∃!), a 2×2 system,
+`∫₀¹ erf`, and a maximum/argmax. Limitations: unary functions applied as `f a`; ext-free
+derivative templates; no C tape for registered functions (Lean evaluation in the search);
+`integral_bound` orders ≤ 4 for them; not supported by 2D quadrature or `Interval64.Quad`.
+
 ## `interval` tactic (Mathlib layer, `RealFPMathlib/IntervalTactic.lean`)
 
 ```lean

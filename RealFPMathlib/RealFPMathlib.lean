@@ -37,4 +37,6 @@ import RealFPMathlib.Taylor2
 import RealFPMathlib.KTaylor2
 import RealFPMathlib.IntegralTactic
 import RealFPMathlib.Front
+import RealFPMathlib.Registry
+import RealFPMathlib.Extensions.Erf
 import RealFPMathlib.Kernel

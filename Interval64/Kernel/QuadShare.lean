@@ -13,37 +13,6 @@ import Interval64.Kernel.Quad
 
 namespace Interval64.KF
 
-deriving instance DecidableEq for IExpr
-
-/-- Substitute `σ i` for `var i`. -/
-def IExpr.subst (σ : Nat → IExpr) : IExpr → IExpr
-  | .var i => σ i
-  | .rat q => .rat q
-  | .add a b => .add (a.subst σ) (b.subst σ)
-  | .sub a b => .sub (a.subst σ) (b.subst σ)
-  | .mul a b => .mul (a.subst σ) (b.subst σ)
-  | .div a b => .div (a.subst σ) (b.subst σ)
-  | .neg a => .neg (a.subst σ)
-  | .inv a => .inv (a.subst σ)
-  | .sqrt a => .sqrt (a.subst σ)
-  | .abs a => .abs (a.subst σ)
-  | .pow a n => .pow (a.subst σ) n
-  | .exp a => .exp (a.subst σ)
-  | .log a => .log (a.subst σ)
-  | .sin a => .sin (a.subst σ)
-  | .cos a => .cos (a.subst σ)
-  | .pi => .pi
-  | .atan a => .atan (a.subst σ)
-  | .atan2 a b => .atan2 (a.subst σ) (b.subst σ)
-  | .sinh a => .sinh (a.subst σ)
-  | .cosh a => .cosh (a.subst σ)
-  | .tanh a => .tanh (a.subst σ)
-  | .log2 a => .log2 (a.subst σ)
-  | .log10 a => .log10 (a.subst σ)
-  | .tan a => .tan (a.subst σ)
-  | .asin a => .asin (a.subst σ)
-  | .acos a => .acos (a.subst σ)
-
 /-- All variables `< n`. -/
 def IExpr.varsLt (n : Nat) : IExpr → Bool
   | .var i => Nat.blt i n
@@ -52,8 +21,11 @@ def IExpr.varsLt (n : Nat) : IExpr → Bool
   | .add a b | .sub a b | .mul a b | .div a b | .atan2 a b => a.varsLt n && b.varsLt n
   | .neg a | .inv a | .sqrt a | .abs a | .pow a _ | .exp a | .log a | .sin a | .cos a | .atan a
   | .sinh a | .cosh a | .tanh a | .log2 a | .log10 a | .tan a | .asin a | .acos a => a.varsLt n
+  | .ext _ _ a => a.varsLt n
 
 namespace KQ
+
+variable [ExtTbl]
 
 /-- `env` extended by the values of the lets. -/
 def evalLets (env : List KI) (lets : List IExpr) : List KI :=

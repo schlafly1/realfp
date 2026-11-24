@@ -49,9 +49,15 @@ theorem inBoxes_cons' {x : ℝ} {xs : List ℝ} {b : ℚ × ℚ} {bs : List (ℚ
     InBoxes (x :: xs) (b :: bs) ↔ ((b.1 : ℝ) ≤ x ∧ x ≤ (b.2 : ℝ)) ∧ InBoxes xs bs :=
   List.forall₂_cons
 theorem inBoxes_nil' : InBoxes [] [] ↔ True := ⟨fun _ => trivial, fun _ => List.Forall₂.nil⟩
+set_option linter.concreteInstances false
+variable [ExtTbl]
+
+section
+variable [ExtSem]
 theorem allZero_cons {e : IExpr} {es : List IExpr} {xs : List ℝ} :
     AllZero (e :: es) xs ↔ e.denote xs = 0 ∧ AllZero es xs := List.forall_mem_cons
 theorem allZero_nil {xs : List ℝ} : AllZero [] xs ↔ True := by simp [AllZero]
+end
 
 /-! ### Native helpers (untrusted search) -/
 
@@ -262,22 +268,22 @@ def kindLemmas (k : PtKind) : MetaM (Expr × Expr × Expr) := do
   match k with
   | .real =>
     let ofL ← withLocalDeclD `xs listR fun xs => do mkLambdaFVars #[xs] (← gd 0 xs)
-    return (ofL, mkConst ``coords1_to, mkConst ``RealFP.Roots.coords1_inj)
+    return (ofL, mkConst ``coords1_to, (← mkC ``RealFP.Roots.coords1_inj))
   | .prod2 =>
     let ofL ← withLocalDeclD `xs listR fun xs => do
       mkLambdaFVars #[xs] (← mkAppM ``Prod.mk #[← gd 0 xs, ← gd 1 xs])
-    return (ofL, mkConst ``coords2_to, mkConst ``RealFP.Roots.coords2_inj)
+    return (ofL, mkConst ``coords2_to, (← mkC ``RealFP.Roots.coords2_inj))
   | .prod3 =>
     let ofL ← withLocalDeclD `xs listR fun xs => do
       mkLambdaFVars #[xs] (← mkAppM ``Prod.mk #[← gd 0 xs, ← mkAppM ``Prod.mk #[← gd 1 xs, ← gd 2 xs]])
-    return (ofL, mkConst ``coords3_to, mkConst ``RealFP.Roots.coords3_inj)
+    return (ofL, mkConst ``coords3_to, (← mkC ``RealFP.Roots.coords3_inj))
   | .fin n =>
     let finT := mkApp (mkConst ``Fin) (toExpr n)
     let ofL ← withLocalDeclD `xs listR fun xs => do
       withLocalDeclD `i finT fun i => do
         let iN ← mkAppM ``Fin.val #[i]
         mkLambdaFVars #[xs, i] (← mkAppM ``List.getD #[xs, iN, (← mkNumeral (mkConst ``Real) 0)])
-    return (ofL, mkApp (mkConst ``RealFP.Roots.coordsFin_to) (toExpr n), mkApp (mkConst ``RealFP.Roots.coordsFin_inj) (toExpr n))
+    return (ofL, mkApp ((← mkC ``RealFP.Roots.coordsFin_to)) (toExpr n), mkApp ((← mkC ``RealFP.Roots.coordsFin_inj)) (toExpr n))
 
 /-- Prove `lhs = rhs` (closed real numerals) by `norm_num`. -/
 def proveNumEq (lhs rhs : Expr) : TacticM Expr := do
@@ -344,7 +350,7 @@ partial def canon (coords : Array Expr) (xsE : Expr) (a : Expr) :
       let hb ← proveNumEq u (← ratCastR qu)
       let hc ← mkEqRefl x
       let q := mkAnd (← mkAppM ``LE.le #[← ratCastR ql, c]) (← mkAppM ``LE.le #[c, ← ratCastR qu])
-      return (q, mkAppN (mkConst ``RealFP.RootTactic.icc_iff)
+      return (q, mkAppN ((← mkC ``RealFP.RootTactic.icc_iff))
         #[x, c, l, u, toExpr ql, toExpr qu, hc, ha, hb])
     | _ => throwError "realfp: only closed boxes `Set.Icc a b` are supported, got {s}"
   | (``GE.ge, #[_, _, l, r]) => canon coords xsE (← mkAppM ``LE.le #[r, l])
@@ -355,14 +361,14 @@ partial def canon (coords : Array Expr) (xsE : Expr) (a : Expr) :
         setBound true i ql
         let c := coords[i]!
         let ha ← proveNumEq l (← ratCastR ql)
-        return (← mkAppM ``LE.le #[← ratCastR ql, c], mkAppN (mkConst ``RealFP.RootTactic.lo_iff)
+        return (← mkAppM ``LE.le #[← ratCastR ql, c], mkAppN ((← mkC ``RealFP.RootTactic.lo_iff))
           #[r, c, l, toExpr ql, ← mkEqRefl r, ha])
     if let some i ← coordIdx coords l then
       if let some qu ← ratOf? r then
         setBound false i qu
         let c := coords[i]!
         let hb ← proveNumEq r (← ratCastR qu)
-        return (← mkAppM ``LE.le #[c, ← ratCastR qu], mkAppN (mkConst ``RealFP.RootTactic.hi_iff)
+        return (← mkAppM ``LE.le #[c, ← ratCastR qu], mkAppN ((← mkC ``RealFP.RootTactic.hi_iff))
           #[l, c, r, toExpr qu, ← mkEqRefl l, hb])
     throwError "realfp: unsupported constraint {a}; expected a numeral bound on one coordinate"
   | (``Eq, #[ty, l, r]) =>
@@ -370,9 +376,9 @@ partial def canon (coords : Array Expr) (xsE : Expr) (a : Expr) :
     let d ← mkAppM ``HSub.hSub #[l, r]
     let e ← reify coords d
     modify fun s => { s with eqs := s.eqs.push e }
-    let D := mkApp2 (mkConst ``IExpr.denote) xsE (iexprToExpr e)
+    let D := mkApp2 ((← mkC ``IExpr.denote)) xsE (iexprToExpr e)
     let h ← proveDenoteEq d D
-    return (← mkEq D ((← mkNumeral (mkConst ``Real) 0)), mkApp4 (mkConst ``RealFP.RootTactic.eq_iff_sub) l r D h)
+    return (← mkEq D ((← mkNumeral (mkConst ``Real) 0)), mkApp4 ((← mkC ``RealFP.RootTactic.eq_iff_sub)) l r D h)
   | (``LT.lt, _) => throwError "realfp: strict bound {a}; use closed bounds (`≤` or `Set.Icc`)"
   | _ => throwError "realfp: unsupported constraint {a}"
 
@@ -411,8 +417,8 @@ def analyse (T pred : Expr) : TacticM RootGoal := do
     let es := st.eqs.toList
     let bsE := toExpr bs
     let esE ← mkListLit (mkConst ``IExpr) (es.map iexprToExpr)
-    let canonE := mkAnd (mkApp2 (mkConst ``RealFP.InBoxes) xsE bsE)
-      (mkApp2 (mkConst ``RealFP.Roots.AllZero) esE xsE)
+    let canonE := mkAnd (mkApp2 ((← mkC ``RealFP.InBoxes)) xsE bsE)
+      (mkApp2 ((← mkC ``RealFP.Roots.AllZero)) esE xsE)
     -- `Q ↔ Canon` by unfolding `Canon` into the same atoms and propositional reasoning
     let hQC ← mkFreshExprMVar (mkApp2 (mkConst ``Iff) Q canonE)
     let saved ← getGoals
@@ -495,11 +501,11 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
       if ivtCheck e a b then
         match derivCert cfg e a b with
         | some (inc, c) =>
-          let chk := mkApp2 (mkConst ``and) (mkApp3 (mkConst ``RealFP.Roots.ivtCheck) (iexprToExpr e) (toExpr a)
-            (toExpr b)) (mkAppN (mkConst ``RealFP.Roots.derivSign) #[iexprToExpr e, toExpr a, toExpr b,
+          let chk := mkApp2 (mkConst ``and) (mkApp3 ((← mkC ``RealFP.Roots.ivtCheck)) (iexprToExpr e) (toExpr a)
+            (toExpr b)) (mkAppN ((← mkC ``RealFP.Roots.derivSign)) #[iexprToExpr e, toExpr a, toExpr b,
               toExpr inc, dcertToExpr c])
           let h ← proveTrue chk
-          core? := some (mkAppN (mkConst ``RealFP.Roots.unique_one) #[iexprToExpr e, toExpr a, toExpr b,
+          core? := some (mkAppN ((← mkC ``RealFP.Roots.unique_one)) #[iexprToExpr e, toExpr a, toExpr b,
             toExpr inc, dcertToExpr c, h])
         | none => errs := errs.push s!"f' has no certified strict sign on the box (depth \
             {cfg.depth}, order {cfg.order}), so monotonicity cannot give uniqueness"
@@ -507,10 +513,10 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
     else
       match ivtSub e a b with
       | some (a', b') =>
-        let chk := mkApp2 (mkConst ``and) (mkApp2 (mkConst ``RealFP.Roots.subBoxes) (toExpr [(a', b')])
-          (toExpr [(a, b)])) (mkApp3 (mkConst ``RealFP.Roots.ivtCheck) (iexprToExpr e) (toExpr a') (toExpr b'))
+        let chk := mkApp2 (mkConst ``and) (mkApp2 ((← mkC ``RealFP.Roots.subBoxes)) (toExpr [(a', b')])
+          (toExpr [(a, b)])) (mkApp3 ((← mkC ``RealFP.Roots.ivtCheck)) (iexprToExpr e) (toExpr a') (toExpr b'))
         let h ← proveTrue chk
-        core? := some (mkAppN (mkConst ``RealFP.Roots.ivt_exists_in) #[iexprToExpr e, toExpr a, toExpr b,
+        core? := some (mkAppN ((← mkC ``RealFP.Roots.ivt_exists_in)) #[iexprToExpr e, toExpr a, toExpr b,
           toExpr a', toExpr b', h])
       | none => errs := errs.push "no sign change of f found on a 512-point grid (a root of \
           even multiplicity, or no root)"
@@ -519,8 +525,8 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
     if unique then
       match krawWhole rg.es rg.bs with
       | .ok c =>
-        let h ← proveTrue (mkApp3 (mkConst ``RealFP.Roots.krawCheck) esE bsE (kcertE c))
-        core? := some (mkAppN (mkConst ``RealFP.Roots.kraw_existsUnique [])
+        let h ← proveTrue (mkApp3 ((← mkC ``RealFP.Roots.krawCheck)) esE bsE (kcertE c))
+        core? := some (mkAppN ((← mkC ``RealFP.Roots.kraw_existsUnique))
           #[rg.T, esE, bsE, kcertE c, rg.toL, ofL, hto, hinj, h])
       | .error s => errs := errs.push s!"Krawczyk on the whole box {fmtBox rg.bs}: {s}"
     else
@@ -532,10 +538,10 @@ def proveRoots (cfg : Cfg) (unique : Bool) : TacticM Unit := do
           | .error s2 => .error s!"{s1}; {s2}"
       match attempt with
       | .ok (bs', c) =>
-        let chk := mkApp2 (mkConst ``and) (mkApp2 (mkConst ``RealFP.Roots.subBoxes) (toExpr bs') bsE)
-          (mkApp3 (mkConst ``RealFP.Roots.krawCheck) esE (toExpr bs') (kcertE c))
+        let chk := mkApp2 (mkConst ``and) (mkApp2 ((← mkC ``RealFP.Roots.subBoxes)) (toExpr bs') bsE)
+          (mkApp3 ((← mkC ``RealFP.Roots.krawCheck)) esE (toExpr bs') (kcertE c))
         let h ← proveTrue chk
-        core? := some (mkAppN (mkConst ``RealFP.Roots.kraw_exists_in [])
+        core? := some (mkAppN ((← mkC ``RealFP.Roots.kraw_exists_in))
           #[rg.T, esE, bsE, toExpr bs', kcertE c, rg.toL, ofL, hto, h])
       | .error s => errs := errs.push s!"Krawczyk: {s}"
   let some core := core? | do
@@ -580,11 +586,11 @@ syntax (name := rootUniqueTac) "root_unique" (ppSpace intervalOpt)* : tactic
 @[tactic rootExistsTac] def evalRootExists : Tactic := fun stx => do
   let (cfg, trust) ← parseCfg stx[1].getArgs "root_exists"
   requireNative
-  withTrust trust (proveRoots cfg false)
+  withTrust trust (withRegistered (proveRoots cfg false))
 
 @[tactic rootUniqueTac] def evalRootUnique : Tactic := fun stx => do
   let (cfg, trust) ← parseCfg stx[1].getArgs "root_unique"
   requireNative
-  withTrust trust (proveRoots cfg true)
+  withTrust trust (withRegistered (proveRoots cfg true))
 
 end RealFP.RootTactic
