@@ -22,6 +22,7 @@ How it works:
    `checkK`; soundness comes from `RealFP.checkK_sound` (no `native_decide`, standard axioms).
 -/
 import RealFPMathlib.IntervalSound
+import RealFPMathlib.I128Sound
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.Opt
 import RealFPMathlib.Roots
@@ -725,6 +726,8 @@ structure Cfg where
   deriv : Bool := true
   /-- Highest derivative order used to prove monotonicity. -/
   order : Nat := 3
+  /-- Endpoint precision: `64` (Interval64, default) or `128` (Interval128 double-double). -/
+  precision : Nat := 64
 
 def denoteSimp : TacticM Unit := do
   let ids ← (← extSimpLemmas).mapM fun n => `(Lean.Parser.Tactic.simpLemma| $(mkIdent n):ident)
@@ -865,6 +868,109 @@ def findCertDM (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (nvars :
     return (none, n1 + n2 + n3)
   return (none, n1 + n2)
 
+/-! ### `(precision := 128)`: Interval128 (double-double) checks -/
+
+theorem checkD128_split_of {e : IExpr} {g : Interval128.Refl.I → Bool} {i : Nat} {q : ℚ}
+    {l r : Interval128.Refl.Cert} {env : List Interval128.Refl.I}
+    (hl : Interval128.Refl.checkD e g l
+      (env.set i (Interval128.Refl.leftAt (env.getD i Interval128.Refl.zeroD) q)) = true)
+    (hr : Interval128.Refl.checkD e g r
+      (env.set i (Interval128.Refl.rightAt (env.getD i Interval128.Refl.zeroD) q)) = true) :
+    Interval128.Refl.checkD e g (.split i q l r) env = true := by
+  simp only [Interval128.Refl.checkD, hl, hr, Bool.and_self]
+
+partial def cert128ToExpr : Interval128.Refl.Cert → Expr
+  | .leaf => mkConst ``Interval128.Refl.Cert.leaf
+  | .split i q l r => mkApp4 (mkConst ``Interval128.Refl.Cert.split) (toExpr i) (toExpr q)
+      (cert128ToExpr l) (cert128ToExpr r)
+
+/-- Proof of `checkD e g cert env = true`, `chunk` boxes per kernel check. -/
+partial def proveCheck128 (chunk : Nat) (eE gE : Expr) (cert : Interval128.Refl.Cert)
+    (envE : Expr) : TacticM Expr := do
+  match cert with
+  | .split i q l r =>
+    if cert.leaves > chunk then
+      let lem := mkAppN (← mkC ``checkD128_split_of)
+        #[eE, gE, toExpr i, toExpr q, cert128ToExpr l, cert128ToExpr r, envE]
+      let ty ← inferType lem
+      let .forallE _ hlT b1 _ := ty | throwError "interval: internal (split lemma)"
+      let .forallE _ hrT _ _ := b1 | throwError "interval: internal (split lemma)"
+      let getEnv (t : Expr) : MetaM Expr := do
+        let some (_, lhs, _) := t.eq? | throwError "interval: internal (env)"
+        return lhs.appArg!
+      let hl ← proveCheck128 chunk eE gE l (← getEnv hlT)
+      let hr ← proveCheck128 chunk eE gE r (← getEnv hrT)
+      return mkAppN lem #[hl, hr]
+    else leafChunk
+  | .leaf => leafChunk
+where
+  leafChunk : TacticM Expr := do
+    let chk := mkApp4 (← mkC ``Interval128.Refl.checkD) eE gE (cert128ToExpr cert) envE
+    let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
+    let saved ← getGoals
+    setGoals [hM.mvarId!]
+    RealFP.closeCheck
+    setGoals saved
+    instantiateMVars hM
+
+/-- Close `lhs ≤ rhs` / `lhs < rhs` (main goal) from `pf : A ≤ B` / `A < B` via two
+equalities proved by `denoteSimp`. -/
+def closeWith (strict : Bool) (pf : Expr) : TacticM Unit := do
+  let saved ← getGoals
+  let pfTy ← inferType pf
+  let goal ← getMainGoal
+  let t ← whnfR (← instantiateMVars (← goal.getType))
+  let some (_, A, B) := (if strict then pfTy.lt? else pfTy.le?) | throwError "interval: internal"
+  let (_, a, b) ← match (if strict then t.lt? else t.le?) with
+    | some x => pure x | none => throwError "interval: internal (goal shape)"
+  let lem := if strict then ``close_lt else ``close_le
+  let ha ← mkFreshExprMVar (← mkEq a A)
+  let hb ← mkFreshExprMVar (← mkEq b B)
+  goal.assign (mkAppN (mkConst lem) #[a, b, A, B, pf, ha, hb])
+  for m in [ha, hb] do
+    setGoals [m.mvarId!]
+    denoteSimp
+    unless (← getGoals).isEmpty do
+      throwError "interval: could not match the goal with its reified form"
+  setGoals saved.tail
+
+/-- `f ≤ c` etc. with Interval128 endpoints: plain bisection at rational midpoints, checked by
+`RealFP.I128.prove_le` / `_lt` / `_ge` / `_gt`. -/
+def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) (e : IExpr)
+    (bs : Array (ℚ × ℚ)) : TacticM Unit := do
+  let env := Interval128.Refl.boxes bs.toList
+  let (g, gName, pName) :=
+    match strict, upper with
+    | false, true => (Interval128.Refl.gLe c, ``Interval128.Refl.gLe, ``RealFP.I128.prove_le)
+    | true, true => (Interval128.Refl.gLt c, ``Interval128.Refl.gLt, ``RealFP.I128.prove_lt)
+    | false, false => (Interval128.Refl.gGe c, ``Interval128.Refl.gGe, ``RealFP.I128.prove_ge)
+    | true, false => (Interval128.Refl.gGt c, ``Interval128.Refl.gGt, ``RealFP.I128.prove_gt)
+  let (cert?, evals) := (Interval128.Refl.search e g cfg.depth cfg.maxBoxes env).run 0
+  let lifted := (Interval128.Refl.lifted e).eraseDups
+  let note : MessageData := if lifted.isEmpty then m!"" else
+    m!"; note: {", ".intercalate lifted} {if lifted.length == 1 then "is" else "are"} evaluated \
+      with Interval64 precision (about 1e-16 relative) even at precision 128"
+  let some cert := cert? | do
+    let F := Interval128.Refl.evalD env e
+    throwError "interval (precision := 128): no certificate within depth {cfg.depth} / \
+      {cfg.maxBoxes} boxes ({evals} evaluations); enclosure on the whole box: \
+      {repr F}, bound {fmtRat c}{note}"
+  withCurrHeartbeats do
+    trace[interval] "precision 128: {vars.size} variable(s), {cert.leaves} boxes, {evals} native \
+      evaluations{note}"
+    let eE := iexprToExpr e
+    let bsE := toExpr bs.toList
+    let cE := toExpr c
+    let xsE ← mkListLit (mkConst ``Real) vars.toList
+    let gE := mkApp (mkConst gName) cE
+    let envE := mkApp (mkConst ``Interval128.Refl.boxes) bsE
+    let saved ← getGoals
+    let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
+    let hM ← proveCheck128 cfg.chunk eE gE cert envE
+    setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
+    let pf := mkAppN (← mkC pName) #[eE, bsE, cE, cert128ToExpr cert, hM, xsE, hxsM]
+    closeWith strict pf
+
 /-- Prove `lhs ≤ rhs` (`strict = false`) or `lhs < rhs` on the main goal. -/
 def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let goal ← getMainGoal
@@ -883,6 +989,7 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let vars ← collectVars f
   let e ← reify vars f
   let bs ← vars.mapM (fun v => (findBounds v : MetaM (ℚ × ℚ)))
+  if cfg.precision == 128 then return ← proveCmp128 cfg strict upper c vars e bs
   let env := boxes bs.toList
   let cK := KI.ofRat c
   let (g, gName, pName) :=
@@ -909,8 +1016,14 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
           attained near {pt}), so the bound {fmtFloat cF} has a margin of only \
           {fmtFloat (if upper then cF - hi else lo - cF)}; loosen it or raise (depth := _) / \
           (maxBoxes := _)"
+    let margin := if upper then cF - hi else lo - cF
+    let hint : MessageData :=
+      if !false? && margin.abs ≤ 1e-12 * max 1 cF.abs then
+        m!"; the margin is at the resolution of binary64, so `(precision := 128)` \
+          (double-double endpoints) may prove it"
+      else m!""
     throwError "interval: no certificate within depth {cfg.depth} / {cfg.maxBoxes} boxes \
-      ({evals} evaluations): {expl}"
+      ({evals} evaluations): {expl}{hint}"
   -- the (untrusted, native) search above does not count against `maxHeartbeats`
   withCurrHeartbeats do
     let leaves := match cert with | .inl c => dLeaves c | .inr c => mLeaves c
@@ -968,6 +1081,9 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
 /-- Prove `lhs ≠ rhs` (exclusion of zeros of `lhs - rhs` on the box) by bisection until every
 box excludes `0`. -/
 def proveNe (cfg : Cfg) (lhs rhs : Expr) : TacticM Unit := do
+  if cfg.precision == 128 then
+    throwError "interval: `≠` goals are not supported at (precision := 128) yet; use the default \
+      precision 64"
   let goal ← getMainGoal
   let f ← goal.withContext do
     if let some q ← ratOf? rhs then
@@ -1047,7 +1163,7 @@ declare_syntax_cat intervalOpt
 syntax "(" ident " := " num ")" : intervalOpt
 syntax "(" ident " := " ident ")" : intervalOpt
 /-- `interval` with options in any order: `(depth := n)`, `(maxBoxes := n)`, `(chunk := n)`,
-    `(deriv := false)`, `(order := n)`, `(trust := kernel|native)`. -/
+    `(deriv := false)`, `(order := n)`, `(trust := kernel|native)`, `(precision := 64|128)`. -/
 syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
 
 @[tactic intervalTac] def evalInterval : Tactic := fun stx => do
@@ -1063,8 +1179,14 @@ syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
     else if k == `order then cfg := { cfg with order := n.getD cfg.order }
     else if k == `deriv then cfg := { cfg with deriv := v.getId != `false }
     else if k == `trust then trust := v.getId
+    else if k == `precision then
+      match n with
+      | some 64 => cfg := { cfg with precision := 64 }
+      | some 128 => cfg := { cfg with precision := 128 }
+      | _ => throwErrorAt o "interval: (precision := _) must be 64 (default, Interval64) or 128 \
+          (Interval128 double-double)"
     else throwErrorAt o "interval: unknown option {k} (expected depth, maxBoxes, chunk, deriv, \
-      order, trust)"
+      order, trust, precision)"
   RealFP.requireNative
   RealFP.withTrust trust do
   -- keep the user's binder names (`x`, not `x✝`) so messages can refer to them

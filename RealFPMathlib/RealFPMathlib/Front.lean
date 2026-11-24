@@ -21,7 +21,8 @@ See `RealFPMathlib/OptTactic.lean` for the optimisation forms and `#realfp_min`/
 Options (any order): `(trust := kernel|native)` (default `kernel`: `decide +kernel`, only the
 standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom), and for
 `interval`/root/optimisation goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`,
-`(deriv := false)`, `(chunk := n)`. Integrals take `order` (Taylor order 2/4/6/8) and
+`(deriv := false)`, `(chunk := n)`, `(precision := 64|128)` (128: Interval128 double-double
+endpoints; `interval` goals only so far). Integrals take `order` (Taylor order 2/4/6/8) and
 `maxBoxes` (cells); `pos_def` takes only `trust`. An option a backend cannot use is an error.
 -/
 import RealFPMathlib.IntervalTactic
@@ -35,7 +36,7 @@ open Lean Meta Elab Tactic
 namespace RealFP.Front
 
 /-- `realfp` with options `(trust := kernel|native)`, `(depth := n)`, `(maxBoxes := n)`,
-`(order := n)`, `(deriv := false)`, `(chunk := n)`. -/
+`(order := n)`, `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)`. -/
 syntax (name := realfpTac) "realfp" (ppSpace intervalOpt)* : tactic
 
 inductive Route | conj | unique | exists | witness | discover | argmin | infsup | posDef | integral
@@ -83,6 +84,16 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
       realfpCore rest
       acc := acc ++ (← getGoals)
     setGoals acc.toList
+  -- `(precision := 128)` is implemented by `interval` only so far
+  let prec128 := rest.any fun o => o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 128
+  if prec128 then
+    match r with
+    | .conj | .infsup | .interval => pure ()
+    | _ => throwError "(precision := 128) is supported only for `interval` goals (bounds \
+        `f ≤ c`, `f < c`, `f ∈ Icc a b` over a box) so far, not for `{r.name}`; drop it to use \
+        precision 64"
+  let rest := if r matches .interval then rest else
+    rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)
   try
     match r with
     | .conj =>

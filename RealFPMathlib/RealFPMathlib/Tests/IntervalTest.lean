@@ -3,7 +3,7 @@ Tests for the `interval` tactic (`RealFPMathlib.IntervalTactic`).
 Every proof is a single `decide +kernel` evaluation of the certificate checker
 (no `native_decide`; `RealFPMathlibAxioms.lean` checks the axioms).
 -/
-import RealFPMathlib.IntervalTactic
+import RealFPMathlib.Front
 
 set_option maxHeartbeats 0
 
@@ -103,5 +103,29 @@ theorem a05 : 1.0471 < Real.arccos 0.5 ∧ Real.arccos 0.5 < 1.0472 := by interv
 -- options
 theorem t31 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1/4 + 1/1000 := by
   interval (depth := 30) (maxBoxes := 100000)
+
+-- (precision := 128): Interval128 endpoints (every node kind; small, kernel-checked)
+theorem p01 : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by interval (precision := 128)
+theorem p02 : 4.99e-11 < Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 := by interval (precision := 128)
+theorem p03 : Real.pi < 3.1415926535897932385 := by interval (precision := 128)
+theorem p04 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 2) : |x| / (x ^ 2 + 1) + (x ^ 2 + 2)⁻¹ ≤ 2 := by
+  interval (precision := 128)
+theorem p05 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) :
+    Real.log x + Real.exp x + Real.arctan x ≤ 10 := by
+  interval (precision := 128)
+theorem p06 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : x ^ 4 ≤ 1 ∧ 0 ≤ x ^ 2 := by
+  interval (precision := 128)
+theorem p07 (x : ℝ) (h0 : -1 ≤ x) (h1 : x ≤ 1) : Real.sqrt x ≤ 1.01 := by
+  realfp (precision := 128)
+theorem p08 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-3 := by
+  interval (precision := 128)
+
+/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b` over a box) so far, not for `root_exists`; drop it to use precision 64 -/
+#guard_msgs in
+example : ∃ x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp (precision := 128)
+
+/-- error: interval: (precision := _) must be 64 (default, Interval64) or 128 (Interval128 double-double) -/
+#guard_msgs in
+example : (1 : ℝ) ≤ 2 := by interval (precision := 32)
 
 end RealFP.IntervalTests
