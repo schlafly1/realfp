@@ -1047,8 +1047,12 @@ syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
     else if k == `trust then trust := v.getId
     else throwErrorAt o "interval: unknown option {k} (expected depth, maxBoxes, chunk, deriv, \
       order, trust)"
+  RealFP.requireNative
   RealFP.withTrust trust do
-  evalTactic (← `(tactic| intros))
+  -- keep the user's binder names (`x`, not `x✝`) so messages can refer to them
+  liftMetaTactic fun g => do
+    let (_, g) ← g.introNP (getIntrosSize (← instantiateMVars (← g.getType)))
+    return [g]
   evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
     ge_iff_le, gt_iff_lt] at *))
   evalTactic (← `(tactic| try casesm* _ ∧ _))

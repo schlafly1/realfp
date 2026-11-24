@@ -103,10 +103,15 @@ def provePosDef : TacticM Unit := withMainContext do
 
 /-- `pos_def` proves `M.PosDef` for a concrete `n × n` real matrix with rational entries
 (`!![2, 1; 1, 2]`, `Matrix.of fun i j => ...`). Option `(trust := native)`. -/
-syntax (name := posDefTac) "pos_def" (ppSpace "(" ident " := " ident ")")? : tactic
+syntax (name := posDefTac) "pos_def" (ppSpace intervalOpt)* : tactic
 
 @[tactic posDefTac] def evalPosDef : Tactic := fun stx => do
-  let trust := if stx[1].getNumArgs > 0 then stx[1][3].getId else `inherit
+  let mut trust : Name := `inherit
+  for o in stx[1].getArgs do
+    let k := o[1].getId
+    if k == `trust then trust := o[3].getId
+    else throwErrorAt o "pos_def: option `{k}` does not apply (pos_def takes only `trust`)"
+  requireNative
   withTrust trust provePosDef
 
 end RealFP.PosDefTactic

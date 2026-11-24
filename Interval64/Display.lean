@@ -12,7 +12,7 @@ namespace Interval64
 
 /-- Decimal string of a rational with `sig` significant digits (round half up), in fixed
 notation for exponents `-5 ≤ e < sig` and `d.ddde±x` otherwise; trailing zeros are dropped. -/
-def fmtRat (q : Rat) (sig : Nat := 17) : String := Id.run do
+def decimalOfRat (q : Rat) (sig : Nat := 17) : String := Id.run do
   if q == 0 then return "0"
   let sig := max sig 1
   let neg := q < 0
@@ -52,15 +52,15 @@ def fmtRat (q : Rat) (sig : Nat := 17) : String := Id.run do
 
 /-- A double as a decimal with `sig` significant digits (17 by default: reads back exactly);
 `NaN`, `inf`, `-inf`, `-0` for the special values. -/
-def fmtFloat (f : Float) (sig : Nat := 17) : String :=
+def decimalOfFloat (f : Float) (sig : Nat := 17) : String :=
   if f.isNaN then "NaN"
   else if f.isInf then (if f < 0 then "-inf" else "inf")
   else match Spec.bitsToRat? f.toBits with
-    | some q => if q == 0 && f.toBits ≥ 0x8000000000000000 then "-0" else fmtRat q sig
+    | some q => if q == 0 && f.toBits ≥ 0x8000000000000000 then "-0" else decimalOfRat q sig
     | none => "NaN"
 
 /-- `[lo, hi]` with 17 significant digits per endpoint. -/
-protected def toString (X : Interval64) : String := s!"[{fmtFloat X.lo}, {fmtFloat X.hi}]"
+protected def toString (X : Interval64) : String := s!"[{decimalOfFloat X.lo}, {decimalOfFloat X.hi}]"
 
 /-- Exact endpoints as rationals (`none` for an infinite or NaN endpoint). -/
 def exact (X : Interval64) : Option Rat × Option Rat :=

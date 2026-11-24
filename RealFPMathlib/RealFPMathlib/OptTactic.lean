@@ -639,7 +639,9 @@ partial def reportGo (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (bod
       should prove:\n  {s1}\n  {s2}"
 
 def realfpReport (maximize : Bool) (bs : Array (TSyntax `realfpBinder)) (body : Term) :
-    CommandElabM Unit := liftTermElabM (reportGo maximize bs body 0 #[] #[] #[])
+    CommandElabM Unit := liftTermElabM do
+  RealFP.requireNative
+  reportGo maximize bs body 0 #[] #[] #[]
 
 /-- `#realfp_min (x ∈ Set.Icc a b) (y ∈ Set.Icc c d), f x y`: approximate minimum, minimiser
 and a bound for `realfp` (branch and bound with the interval enclosures; nothing is proved). -/

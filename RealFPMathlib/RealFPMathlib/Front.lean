@@ -20,8 +20,9 @@ See `RealFPMathlib/OptTactic.lean` for the optimisation forms and `#realfp_min`/
 
 Options (any order): `(trust := kernel|native)` (default `kernel`: `decide +kernel`, only the
 standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom), and for
-`interval`/root goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`, `(deriv := false)`,
-`(chunk := n)`.
+`interval`/root/optimisation goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`,
+`(deriv := false)`, `(chunk := n)`. Integrals take `order` (Taylor order 2/4/6/8) and
+`maxBoxes` (cells); `pos_def` takes only `trust`. An option a backend cannot use is an error.
 -/
 import RealFPMathlib.IntervalTactic
 import RealFPMathlib.IntegralTactic
@@ -74,8 +75,6 @@ def route (t : Expr) : MetaM Route := do
 
 partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := withMainContext do
   let r ← route (← getMainTarget)
-  let noOpts (n : String) : TacticM Unit := do
-    unless rest.isEmpty do throwError "{n} takes only the `trust` option"
   let each : TacticM Unit := do
     let gs ← getGoals
     let mut acc := #[]
@@ -105,15 +104,21 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
       RealFP.Opt.reduceInfSup
       each
       setGoals ((← getGoals) ++ others)
-    | .posDef => noOpts "pos_def"; evalTactic (← `(tactic| pos_def))
-    | .integral => noOpts "integral_bound"; evalTactic (← `(tactic| integral_bound))
+    | .posDef => evalTactic (← `(tactic| pos_def $rest*))
+    | .integral => evalTactic (← `(tactic| integral_bound $rest*))
     | .interval => evalTactic (← `(tactic| interval $rest*))
   catch ex =>
     match r with
     | .conj | .infsup => throw ex
-    | _ => throwError "routed to `{r.name}`: {ex.toMessageData}"
+    | _ =>
+      -- the backend's own message usually starts with its name; say it once
+      let msg ← ex.toMessageData.toString
+      let pre := r.name ++ ": "
+      let msg := if msg.startsWith pre then (msg.drop pre.length).toString else msg
+      throwError "via `{r.name}`: {msg}"
 
 @[tactic realfpTac] def evalRealfp : Tactic := fun stx => withMainContext do
+  RealFP.requireNative
   let opts := stx[1].getArgs
   let mut trust : Name := `inherit
   let mut rest : Array (TSyntax `intervalOpt) := #[]

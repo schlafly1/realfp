@@ -139,3 +139,20 @@ def contains (a : Interval64) (f : Float) : Bool :=
   decide (a.lo ≤ f) && decide (f ≤ a.hi)
 
 end Interval64
+
+namespace Interval64
+
+/-- `X.hiLe q`: the upper endpoint of `X` is a finite double `≤ q`. Decidable by evaluation
+(`decide +kernel`); with `RealFP.le_of_mem_hiLe` it turns `x ∈ X` into `x ≤ q`. -/
+def hiLe (X : Interval64) (q : Rat) : Bool :=
+  match Spec.bitsToRat? X.hi.toBits with
+  | some h => decide (h ≤ q)
+  | none => false
+
+/-- `X.loGe q`: the lower endpoint of `X` is a finite double `≥ q` (see `RealFP.ge_of_mem_loGe`). -/
+def loGe (X : Interval64) (q : Rat) : Bool :=
+  match Spec.bitsToRat? X.lo.toBits with
+  | some l => decide (q ≤ l)
+  | none => false
+
+end Interval64

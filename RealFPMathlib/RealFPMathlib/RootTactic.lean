@@ -579,10 +579,12 @@ syntax (name := rootUniqueTac) "root_unique" (ppSpace intervalOpt)* : tactic
 
 @[tactic rootExistsTac] def evalRootExists : Tactic := fun stx => do
   let (cfg, trust) ← parseCfg stx[1].getArgs "root_exists"
+  requireNative
   withTrust trust (proveRoots cfg false)
 
 @[tactic rootUniqueTac] def evalRootUnique : Tactic := fun stx => do
   let (cfg, trust) ← parseCfg stx[1].getArgs "root_unique"
+  requireNative
   withTrust trust (proveRoots cfg true)
 
 end RealFP.RootTactic

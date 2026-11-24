@@ -25,8 +25,8 @@ def widthRat (X : Interval128) : Option Rat :=
 
 private def fmtEnd (h l : Float) (sig : Nat) : String :=
   match ddRat? h l with
-  | some q => if q == 0 then Interval64.fmtFloat h else Interval64.fmtRat q sig
-  | none => Interval64.fmtFloat h
+  | some q => if q == 0 then Interval64.decimalOfFloat h else Interval64.decimalOfRat q sig
+  | none => Interval64.decimalOfFloat h
 
 /-- `[lo, hi]` with 34 significant digits per endpoint. -/
 protected def toString (X : Interval128) : String :=

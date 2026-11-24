@@ -109,10 +109,11 @@ def letCost : IExpr → Nat
     estimated kernel cost `cells × Σ cost(lets)` (shared subexpressions, `quadBoundS`). The certificate is checked only by
     the kernel; the search checks the same conditions on the `Float` mirror (`quadF` cells are
     bit-identical to `quadK`, `domOKF` mirrors `domOK`). -/
-def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
+def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat)
+    (orders : List Nat := [2, 4, 6, 8]) :
     Option (Nat × List (Nat × Nat × Nat) × ℚ × ℚ) := Id.run do
   let mut best : Option (Nat × Nat × List (Nat × Nat × Nat)) := none
-  for K in [2, 4, 6, 8] do
+  for K in orders do
     let ds := derivs e K
     let cost1 := (shareDerivs e K).1.foldl (fun s d => s + letCost d) 1
     if let some cs := adaptCells e K a b lower upper maxCells then
@@ -129,8 +130,13 @@ def searchQ (e : IExpr) (a b : Nat) (_qa _qb : ℚ) (lower upper : Option (ℚ �
     return some (K, cs, ql, qh)
   | _, _ => return none
 
+/-- Options of `integral_bound`: Taylor orders to try and the maximum number of cells. -/
+structure ICfg where
+  orders : List Nat := [2, 4, 6, 8]
+  maxCells : Nat := 512
+
 /-- Prove `ql ≤ ∫ ∧ ∫ ≤ qh` for the integral `I = ∫ x in a..b, body x`, adding it as `hI`. -/
-def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := do
+def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {}) : TacticM Unit := do
   let some (f, aE, bE) ← (do
       let (fn, as) := I.getAppFnArgs
       if fn == ``intervalIntegral && as.size ≥ 4 then
@@ -143,8 +149,9 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) : TacticM Unit := d
   let e ← lambdaTelescope f fun xs body => do
     unless xs.size == 1 do throwError "integral_bound: unexpected integrand"
     reify xs body
-  let some (K, cs, ql, qh) := searchQ e a b qa qb lower upper 512 |
-    throwError "integral_bound: no certificate with K ≤ 8 and ≤ 512 adaptive cells"
+  let some (K, cs, ql, qh) := searchQ e a b qa qb lower upper cfg.maxCells cfg.orders |
+    throwError "integral_bound: no certificate with Taylor order K ∈ {cfg.orders} and ≤ \
+      {cfg.maxCells} adaptive cells; loosen the bound or raise (maxBoxes := _)"
   let (lets, roots) := shareDerivs e K
   let lst := fun (l : List IExpr) => mkListLit (mkConst ``IExpr) (l.map iexprToExpr)
   let kiE := fun (k : KI) => mkApp2 (mkConst ``KI.mk) (toExpr k.lo) (toExpr k.hi)
@@ -194,7 +201,7 @@ def closeTac : TacticM Unit := do
      | linarith
      | (norm_num at $h1:ident $h2:ident ⊢; linarith))))
 
-partial def core : TacticM Unit := do
+partial def core (cfg : ICfg := {}) : TacticM Unit := do
   let goal ← getMainGoal
   let t ← whnfR (← instantiateMVars (← goal.getType))
   match t.getAppFnArgs with
@@ -202,11 +209,11 @@ partial def core : TacticM Unit := do
     evalTactic (← `(tactic| constructor))
     let gs ← getGoals
     for g in gs do
-      setGoals [g]; core
+      setGoals [g]; core cfg
   | (``LE.le, #[_, _, l, r]) | (``LT.lt, #[_, _, l, r]) =>
     let strict := t.isAppOf ``LT.lt
-    if let some c ← ratOf? l then addBound r (some (c, strict)) none
-    else if let some c ← ratOf? r then addBound l none (some (c, strict))
+    if let some c ← ratOf? l then addBound r (some (c, strict)) none cfg
+    else if let some c ← ratOf? r then addBound l none (some (c, strict)) cfg
     else throwError "integral_bound: one side must be a rational numeral"
     closeTac
   | _ => throwError "integral_bound: unsupported goal {t}"
@@ -214,8 +221,30 @@ partial def core : TacticM Unit := do
 /-- `integral_bound` : rigorous numeric bounds on `∫ x in a..b, f x` by kernel-checked Taylor
     quadrature. Strict bounds `<` are proved from the non-strict certificate with slack only if
     the computed enclosure is strictly inside; give a slightly weaker numeral otherwise. -/
-elab "integral_bound" : tactic => do
+syntax (name := integralBoundTac) "integral_bound" (ppSpace intervalOpt)* : tactic
+
+/-- Options: `(trust := kernel|native)`, `(order := K)` (only Taylor order `K ∈ {2,4,6,8}`;
+default: try all and keep the cheapest), `(maxBoxes := n)` (at most `n` cells, default 512). -/
+@[tactic integralBoundTac] def evalIntegralBound : Tactic := fun stx => do
+  let mut cfg : ICfg := {}
+  let mut trust : Name := `inherit
+  for o in stx[1].getArgs do
+    let k := o[1].getId
+    let n := o[3].isNatLit?
+    if k == `trust then trust := o[3].getId
+    else if k == `order then
+      let some K := n | throwErrorAt o "integral_bound: (order := K) needs a numeral"
+      unless K ∈ [2, 4, 6, 8] do
+        throwErrorAt o "integral_bound: order must be 2, 4, 6 or 8 (got {K})"
+      cfg := { cfg with orders := [K] }
+    else if k == `maxBoxes then
+      let some m := n | throwErrorAt o "integral_bound: (maxBoxes := n) needs a numeral"
+      cfg := { cfg with maxCells := m }
+    else throwErrorAt o "integral_bound: option `{k}` does not apply (integral_bound takes \
+      `trust`, `order`, `maxBoxes`)"
+  RealFP.requireNative
+  RealFP.withTrust trust do
   evalTactic (← `(tactic| try simp only [Set.mem_Icc] ))
-  core
+  core cfg
 
 end RealFP.IntegralTactic

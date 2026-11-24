@@ -144,7 +144,30 @@ theorem mem_toSet_of_rat_bounds {Z : Interval64} {x : ℝ} {p q : ℚ}
     x ∈ Z.toSet :=
   mem_toSet_of_between (cast_mem_toSet_iff.2 hp) (cast_mem_toSet_iff.2 hq) hpx hxq
 
-/-- Upper bound from a compiled comparison (`native_decide`) on the upper endpoint. -/
+/-- `x ∈ X` and `X.hiLe q` (a Boolean check, e.g. by `decide +kernel`) give `x ≤ q`. -/
+theorem le_of_mem_hiLe {X : Interval64} {x : ℝ} {q : ℚ} (hx : x ∈ X.toSet)
+    (h : X.hiLe q = true) : x ≤ (q : ℝ) := by
+  unfold Interval64.hiLe at h
+  split at h
+  · rename_i hq e
+    have h2 := hx.2
+    rw [bitsToEVal_rat_of_bitsToRat? e] at h2
+    exact h2.trans (by exact_mod_cast (of_decide_eq_true h))
+  · exact absurd h (by simp)
+
+/-- `x ∈ X` and `X.loGe q` give `q ≤ x`. -/
+theorem ge_of_mem_loGe {X : Interval64} {x : ℝ} {q : ℚ} (hx : x ∈ X.toSet)
+    (h : X.loGe q = true) : (q : ℝ) ≤ x := by
+  unfold Interval64.loGe at h
+  split at h
+  · rename_i hq e
+    have h1 := hx.1
+    rw [bitsToEVal_rat_of_bitsToRat? e] at h1
+    exact (by exact_mod_cast (of_decide_eq_true h) : (q : ℝ) ≤ _).trans h1
+  · exact absurd h (by simp)
+
+/-- Upper bound from a comparison `I.hi ≤ c` on the upper endpoint (closed by `decide +kernel`
+or `native_decide`) and the exact value `q` of `c`. `le_of_mem_hiLe` needs no side goal. -/
 theorem le_of_mem_toSet_of_hi_le {I : Interval64} {x : ℝ} {c : Float} {q : ℚ}
     (hx : x ∈ I.toSet) (hle : I.hi ≤ c) (hc : bitsToRat? c.toBits = some q) : x ≤ (q : ℝ) := by
   obtain ⟨p, hp, hxp⟩ := exists_rat_ge_of_mem hx
