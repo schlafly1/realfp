@@ -26,6 +26,11 @@ of those scalars, so they inherit both the spec and the fast path.
 **Proving real inequalities, integral bounds, roots and positive definiteness in Mathlib:**
 see the front-door tactic [`realfp`](#realfp-one-tactic-for-kernel-checked-real-numerics-mathlib-layer)
 (kernel-checked by default, standard axioms only).
+
+**New here? Start with [TUTORIAL.md](TUTORIAL.md)**, a hands-on guide from setup to
+tactics and hand-written certificates (every snippet is compiled, in
+`RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean`).
+
 Comparisons with [FloatLib](https://github.com/lean-dojo/FloatLib),
 [LeanCert](https://docs.leancert.io/), and two research showcases are in
 [COMPARISONS.md](COMPARISONS.md).

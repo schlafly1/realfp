@@ -18,6 +18,16 @@ open Interval64
 
 namespace RealFP.Examples.Tutorial
 
+/-! ## §1 Setup: is the C backend loaded and usable on this CPU? -/
+
+/-- info: true -/
+#guard_msgs in
+#eval Interval64.Directed.backendOk ()
+
+-- "avx512 (embedded rounding)" on x86-64, "rn+err (…)" on arm64 (not pinned: machine-dependent).
+#guard_msgs (drop info) in
+#eval Interval64.Directed.backendName
+
 /-! ## §2 Computing with `Interval64` -/
 
 -- Literals are *exact* decimals enclosed outward: `0.1` is two adjacent doubles.
@@ -90,7 +100,7 @@ info: { lo := 1.414214, hi := 1.414214 }
 #guard_msgs in
 open Interval128 in
 #eval (Interval128.sqrt 2).toInterval64
--- Widths of `√2`: one ulp (2⁻⁵²) for Interval64, about 2⁻¹⁰⁴ for Interval128.
+-- Widths of `√2`: one ulp (2⁻⁵²) for Interval64, about 2⁻¹⁰⁵ for Interval128.
 /--
 info: some (1 / 4503599627370496)
 -/
