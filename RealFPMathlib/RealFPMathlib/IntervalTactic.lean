@@ -208,7 +208,7 @@ def encKd (e : IExpr) (ds : Array IExpr) : ECert → List KI → KI
         (KI.mul (evalF env (ds.getD i (e.deriv i))) (KI.sub (env.getD i zeroK) ⟨m, m⟩))
     else evalF env e
 
-def derivs (e : IExpr) (n : Nat) : Array IExpr := (List.range n).toArray.map e.deriv
+def partials (e : IExpr) (n : Nat) : Array IExpr := (List.range n).toArray.map e.deriv
 
 def absMaxF (X : KI) : Float := max (toFl X.lo).abs (toFl X.hi).abs
 
@@ -230,6 +230,35 @@ def pickSplitM (e : IExpr) (ds : Array IExpr) (env : List KI) : Option (Nat × N
       bestS := s
       best := some (i, m)
   if best.isNone then return pickSplit env
+  return best
+
+/-- Does the box pass with the natural or nested centred enclosure? -/
+def passM (e : IExpr) (ds : Array IExpr) (g : KI → Bool) (env : List KI) : Bool :=
+  g (evalF env e) || (domOK env e && g (encKd e ds (cenCert env) env))
+
+/-- Split with one-step lookahead: prefer the variable whose halves pass (natural or centred
+form); ties broken by `pickSplitM`'s `width × |∂ᵢf|` score. -/
+def pickSplitLook (e : IExpr) (ds : Array IExpr) (g : KI → Bool) (env : List KI) :
+    Option (Nat × Nat) := Id.run do
+  let dflt := pickSplitM e ds env
+  let ws := wideVars env
+  if ws.length < 2 then return dflt
+  let mut best := dflt
+  let mut bestS : Nat := 0
+  if let some (i, m) := dflt then
+    let X := env.getD i zeroK
+    bestS := (if passM e ds g (env.set i ⟨X.lo, m⟩) then 1 else 0) +
+      (if passM e ds g (env.set i ⟨m, X.hi⟩) then 1 else 0)
+  if bestS == 2 then return best
+  for i in ws do
+    let X := env.getD i zeroK
+    let some m := midBits X | continue
+    if m == X.lo || m == X.hi then continue
+    let sc := (if passM e ds g (env.set i ⟨X.lo, m⟩) then 1 else 0) +
+      (if passM e ds g (env.set i ⟨m, X.hi⟩) then 1 else 0)
+    if sc > bestS then
+      bestS := sc
+      best := some (i, m)
   return best
 
 /-- Depth-first search for an `MCert`: natural enclosure, nested centred form, monotonicity on
@@ -256,13 +285,95 @@ partial def searchM (maxEvals : Nat) (e : IExpr) (ds : Array IExpr) (g : KI → 
             if let some c ← searchM maxEvals e ds g upper depth (env.set i ⟨p, p⟩) then
               return some (.mono i inc .leaf c)
     if depth == 0 || (← get) ≥ maxEvals then return none
-    match pickSplitM e ds env with
+    match pickSplitLook e ds g env with
     | none => return none
     | some (i, m) =>
       let X := env.getD i zeroK
       let some l ← searchM maxEvals e ds g upper (depth - 1) (env.set i ⟨X.lo, m⟩) | return none
       let some r ← searchM maxEvals e ds g upper (depth - 1) (env.set i ⟨m, X.hi⟩) | return none
       return some (.split i m l r)
+
+/-! ### Horner form for polynomial objectives (untrusted rewriting; the equality with the
+user's expression is proved by `ring_nf` when the goal is matched) -/
+
+/-- Sparse multivariate polynomial: monomials (exponent list, coefficient). -/
+abbrev Poly := List (List Nat × ℚ)
+
+def Poly.norm (p : Poly) : Poly := Id.run do
+  let mut out : Array (List Nat × ℚ) := #[]
+  for (m, c) in p do
+    match out.findIdx? (·.1 == m) with
+    | some j => out := out.modify j fun (m', c') => (m', c' + c)
+    | none => out := out.push (m, c)
+  return (out.filter (·.2 != 0)).toList
+
+def expAdd : List Nat → List Nat → List Nat
+  | a :: as, b :: bs => (a + b) :: expAdd as bs
+  | [], bs => bs
+  | as, [] => as
+
+def Poly.mul (p q : Poly) : Poly :=
+  Poly.norm (p.flatMap fun (m, c) => q.map fun (m', c') => (expAdd m m', c * c'))
+
+def unitExp (i : Nat) : List Nat := (List.replicate i 0) ++ [1]
+
+partial def toPoly : IExpr → Option Poly
+  | .var i => some [(unitExp i, 1)]
+  | .rat q => some (if q == 0 then [] else [([], q)])
+  | .add a b => do return Poly.norm ((← toPoly a) ++ (← toPoly b))
+  | .sub a b => do return Poly.norm ((← toPoly a) ++ (← toPoly b).map fun (m, c) => (m, -c))
+  | .neg a => do return (← toPoly a).map fun (m, c) => (m, -c)
+  | .mul a b => do return Poly.mul (← toPoly a) (← toPoly b)
+  | .div a (.rat q) => do
+    if q == 0 then none
+    return (← toPoly a).map fun (m, c) => (m, c / q)
+  | .pow a n => do
+    let pa ← toPoly a
+    let mut r : Poly := [([], 1)]
+    for _ in [0:n] do r := Poly.mul r pa
+    return r
+  | _ => none
+
+def expGet (m : List Nat) (i : Nat) : Nat := m.getD i 0
+def expDrop (m : List Nat) (i : Nat) : List Nat := m.set i 0
+
+def varPow (v d : Nat) : IExpr := if d == 1 then .var v else .pow (.var v) d
+
+/-- Horner form, variables taken in the order `vs` (nested Horner for the coefficients). -/
+partial def horner (vs : List Nat) (p : Poly) : IExpr :=
+  match vs.find? (fun v => p.any fun (m, _) => expGet m v > 0) with
+  | none => .rat (p.foldl (fun s (_, c) => s + c) 0)
+  | some v =>
+    let ks := ((p.map fun (m, _) => expGet m v).eraseDups.toArray.qsort (· < ·)).toList
+    let coef (k : Nat) : IExpr :=
+      horner vs (p.filterMap fun (m, c) => if expGet m v == k then some (expDrop m v, c) else none)
+    let rec build : List Nat → IExpr
+      | [] => .rat 0
+      | [k] => coef k
+      | k :: k' :: rest =>
+        let tail := build (k' :: rest)
+        let c := coef k
+        let t := match tail with
+          | .rat 1 => varPow v (k' - k)
+          | _ => IExpr.mul (varPow v (k' - k)) tail
+        match c with
+        | .rat 0 => t
+        | _ => .add c t
+    let body := build ks
+    match ks with
+    | k0 :: _ => if k0 == 0 then body else match body with
+      | .rat 1 => varPow v k0
+      | _ => .mul (varPow v k0) body
+    | [] => .rat 0
+
+def polyDeg (p : Poly) (v : Nat) : Nat := p.foldl (fun d (m, _) => max d (expGet m v)) 0
+
+/-- Horner form of a polynomial expression (highest-degree variables outermost), if `e` is a
+polynomial and the form differs from `e`. -/
+def hornerOf? (e : IExpr) (n : Nat) : Option IExpr := do
+  let p ← toPoly e
+  let vs := ((List.range n).toArray.qsort (fun a b => polyDeg p a > polyDeg p b)).toList
+  some (horner vs p)
 
 /-! ### Branch and bound for the global minimum (untrusted estimate, used for discovery,
 witnesses and error messages; every claim is re-proved by a certificate) -/
@@ -312,7 +423,7 @@ def bbUpperAt (e : IExpr) (maximize : Bool) (env : List KI) : Float × List Floa
 (absolute, plus `tol·|upper|`) or after `maxBoxes` boxes. -/
 partial def bnbMin (e : IExpr) (maximize : Bool) (env0 : List KI) (maxBoxes : Nat := 20000)
     (tol : Float := 1e-9) (maxDepth : Nat := 200) : BBResult := Id.run do
-  let ds := derivs e env0.length
+  let ds := partials e env0.length
   let lb0 := bbLower e ds maximize env0
   let (u0, a0) := bbUpperAt e maximize env0
   let mut heap : Batteries.BinaryHeap BBNode := Batteries.BinaryHeap.empty
@@ -632,16 +743,27 @@ where
 budget, then the multivariate centred-form search (`searchM`), then `searchD` with the full
 budget. Returns the certificate and the number of native evaluations. -/
 def findCertDM (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (nvars : Nat)
-    (env : List KI) : Option (DCert ⊕ MCert) × Nat := Id.run do
+    (env : List KI) : Option (IExpr × (DCert ⊕ MCert)) × Nat := Id.run do
   let full := 2 * cfg.maxBoxes
   let b1 := min full 6000
   let (c1, n1) := (searchD cfg.deriv b1 e g upper cfg.order true cfg.depth env).run 0
-  if let some c := c1 then return (some (.inl c), n1)
-  let (c2, n2) := (searchM full e (derivs e nvars) g upper (cfg.depth + 8 * nvars) env).run 0
-  if let some c := c2 then return (some (.inr c), n1 + n2)
+  if let some c := c1 then return (some (e, .inl c), n1)
+  let depthM := cfg.depth + 8 * nvars
+  let (c2, n2) := (searchM full e (partials e nvars) g upper depthM env).run 0
+  -- polynomial objectives: also try the Horner form and keep the smaller certificate
+  let (c2, n2) : Option (IExpr × MCert) × Nat := match hornerOf? e nvars with
+    | some h =>
+      let (ch, nh) := (searchM full h (partials h nvars) g upper depthM env).run 0
+      match c2, ch with
+      | some a, some b => (some (if mLeaves b < mLeaves a then (h, b) else (e, a)), n2 + nh)
+      | some a, none => (some (e, a), n2 + nh)
+      | none, some b => (some (h, b), n2 + nh)
+      | none, none => (none, n2 + nh)
+    | none => (c2.map (e, ·), n2)
+  if let some (e', c) := c2 then return (some (e', .inr c), n1 + n2)
   if b1 < full then
     let (c3, n3) := (searchD cfg.deriv full e g upper cfg.order true cfg.depth env).run 0
-    if let some c := c3 then return (some (.inl c), n1 + n2 + n3)
+    if let some c := c3 then return (some (e, .inl c), n1 + n2 + n3)
     return (none, n1 + n2 + n3)
   return (none, n1 + n2)
 
@@ -672,7 +794,7 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
     | false, false => (gGe cK.hi, ``gGe, ``proveD_ge)
     | true, false => (gGt cK.hi, ``gGt, ``proveD_gt)
   let (cert?, evals) := findCertDM cfg e g upper vars.size env
-  let some cert := cert? |
+  let some (e, cert) := cert? |
     throwError "interval: no certificate within depth {cfg.depth} / {cfg.maxBoxes} boxes \
       ({evals} evaluations); try larger (depth := _) (maxBoxes := _) or tighter bounds"
   -- the (untrusted, native) search above does not count against `maxHeartbeats`
