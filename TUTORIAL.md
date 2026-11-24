@@ -30,7 +30,7 @@ realfp is two Lake packages in one repository:
 | package | directory | depends on | import |
 |---|---|---|---|
 | `interval64` (core) | repo root | nothing (no Mathlib) | `import Interval64`, `import Interval128` |
-| `realfp_mathlib` | `RealFPMathlib/` | core + Mathlib | `import RealFPMathlib.Front` (tactics), `import RealFPMathlib` (theorems) |
+| `realfp_mathlib` | `RealFPMathlib/` | core + Mathlib | `import RealFPMathlib` (theorems and tactics) |
 
 If you only want fast, rigorous interval computation (no proofs about `ℝ`), use the core.
 If you want theorems about Mathlib's reals, use `realfp_mathlib`.
@@ -80,9 +80,21 @@ the tactics' searches run the compiled C kernels. You do **not** set it in your 
 (in a Mathlib project it would compile Mathlib to native code).
 
 **Run Lean through Lake.** Use the editor, `lake build`, or `lake lean File.lean`. Plain
-`lean` or `lake env lean` do not load the compiled kernels, so `#eval` and any tactic whose
-search calls C (for example `realfp` on an integral) stop with
-`Could not find native implementation of external declaration …`.
+`lean` and `lake env lean` do not load the compiled kernels. Then `#eval` on an interval stops
+with `Could not find native implementation of external declaration …`, and the tactics stop
+with a message that says what is wrong and prints the two flags that fix it:
+
+```
+realfp: the compiled realfp code (C kernels) is not loaded in this Lean process, so the
+certificate search cannot run (…). Run Lean through Lake: the editor, `lake build`, or
+`lake lean File.lean`. With plain `lean` / `lake env lean`, pass:
+--load-dynlib=…/.lake/build/lib/libleaninterval64.so --plugin=…/.lake/build/lib/libinterval64_Interval64.so
+```
+
+So `lake env lean --load-dynlib=<core>/.lake/build/lib/libleaninterval64.so
+--plugin=<core>/.lake/build/lib/libinterval64_Interval64.so File.lean` works too (the dynlib
+must come first). Lean cannot load the plugin by itself after start-up (it crashes), so the
+flags are needed.
 
 A first sanity check (`Tutorial.lean` §1):
 
@@ -102,29 +114,35 @@ An `Interval64` is a pair of doubles `lo ≤ hi`. Every operation rounds the low
 the upper end up, so the result contains the exact real result. Literals are **exact
 decimals**: `0.1 : Interval64` is the two doubles around 1/10, unlike `0.1 : Float`.
 
+`#eval` prints `[lo, hi]` with 17 significant digits per endpoint, which is enough to read each
+double back exactly. `.exact` gives the endpoints as exact rationals (`none` for NaN or ±∞):
+
 ```lean
 open Interval64
 
-#eval (0.1 : Interval64)
--- { lo := 0.100000, hi := 0.100000 }
-#eval Interval64.Spec.bitsToRat? (0.1 : Interval64).lo.toBits
--- some (7205759403792793 / 72057594037927936)
-#eval Interval64.Spec.bitsToRat? (0.1 : Interval64).hi.toBits
--- some (3602879701896397 / 36028797018963968)
+#eval (0.1 : Interval64)                    -- [0.099999999999999992, 0.10000000000000001]
+#eval (0.1 : Interval64).exact
+-- (some (7205759403792793 / 72057594037927936), some (3602879701896397 / 36028797018963968))
 ```
-
-The `Repr` prints only six decimals; `Interval64.Spec.bitsToRat?` shows the exact rational
-value of an endpoint.
 
 Arithmetic and the elementary functions (`sqrt`, `exp`, `log`, `sin`, `cos`, `atan`, `pi`,
 `sinh`…, `tan`, `asin`, `acos`, `rpow`; correctly rounded via CORE-MATH):
 
 ```lean
-#eval (0.1 : Interval64) + 0.2              -- { lo := 0.300000, hi := 0.300000 }
-#eval Interval64.sqrt 2                     -- { lo := 1.414214, hi := 1.414214 }
-#eval Interval64.exp 1                      -- { lo := 2.718282, hi := 2.718282 }
-#eval Interval64.pi                         -- { lo := 3.141593, hi := 3.141593 }
-#eval Interval64.sin (ofRatInterval 1 2)    -- { lo := 0.841471, hi := 1.000000 }
+#eval (0.1 : Interval64) + 0.2              -- [0.29999999999999993, 0.30000000000000004]
+#eval Interval64.sqrt 2                     -- [1.4142135623730949, 1.4142135623730951]
+#eval Interval64.exp 1                      -- [2.7182818284590451, 2.7182818284590455]
+#eval Interval64.pi                         -- [3.1415926535897931, 3.1415926535897936]
+#eval Interval64.sin (ofRatInterval 1 2)    -- [0.8414709848078965, 1]
+```
+
+Dot notation works: for `X : Interval64`, `X.sqrt` is `Interval64.sqrt X`, and so on.
+`X.widthRat` is the exact width `hi − lo` as a rational (`X.width` is the rounded-up `Float`).
+
+```lean
+def X : Interval64 := ofRatInterval 1 2
+#eval X.sqrt                                -- [1, 1.4142135623730951]
+#eval X.sqrt.widthRat                       -- some (1865452045155277 / 4503599627370496)
 ```
 
 `ofRatInterval a b` is the outward-rounded `[a, b]`. Interval arithmetic has the
@@ -132,7 +150,7 @@ Arithmetic and the elementary functions (`sqrt`, `exp`, `log`, `sin`, `cos`, `at
 
 ```lean
 #eval ofRatInterval 0 1 * ofRatInterval 0 1 - ofRatInterval 0 1
--- { lo := -1.000000, hi := 1.000000 }   (true range: [-1/4, 0])
+-- [-1, 1]   (true range: [-1/4, 0])
 ```
 
 The tactics below fight this by bisection and derivative information. For hand-written code,
@@ -142,33 +160,34 @@ Edge cases never raise errors. An empty result is `[NaN, NaN]` (it contains no r
 and division by an interval containing 0 gives the whole line:
 
 ```lean
-#eval Interval64.sqrt (-1)                       -- { lo := NaN, hi := NaN }
-#eval (1 : Interval64) / ofRatInterval (-1) 1    -- { lo := -inf, hi := inf }
+#eval Interval64.sqrt (-1)                       -- [NaN, NaN]
+#eval (1 : Interval64) / ofRatInterval (-1) 1    -- [-inf, inf]
 ```
 
 **Interval128** has double-double endpoints (about 106 bits) and the same design (Lean spec,
-C runtime, enclosure theorems in `RealFP.I128`):
+C runtime, enclosure theorems in `RealFP.I128`). It prints 34 significant digits:
 
 ```lean
 open Interval128 in
-#eval (Interval128.sqrt 2).toInterval64          -- { lo := 1.414214, hi := 1.414214 }
+#eval Interval128.sqrt 2
+-- [1.414213562373095048801688724209682, 1.414213562373095048801688724209706]
 -- Widths of √2: one ulp (2⁻⁵²) for Interval64, about 2⁻¹⁰⁵ for Interval128.
-#eval Interval64.Spec.bitsToRat? (Interval64.width (Interval64.sqrt 2)).toBits
--- some (1 / 4503599627370496)
+#eval (Interval64.sqrt 2).widthRat               -- some (1 / 4503599627370496)
 open Interval128 in
-#eval Interval64.Spec.bitsToRat? (Interval128.sqrt 2).width.toBits
--- some (1 / 40564819207303340847894502572032)
+#eval (Interval128.sqrt 2).widthRat              -- some (1 / 40564819207303340847894502572032)
 ```
 
-Interval128 has `+ - * /`, `sqrt` and conversions; the tactics use Interval64 only.
+Interval128 has `+ - * /`, `sqrt` and conversions; the tactics use Interval64 only. Its type is
+`Interval128.Interval128` (write `Interval128` after `open Interval128`); dot notation works
+there too.
 
 ## 3. First proofs with `realfp`
 
 File: `Tutorial.lean` §3. Reference: README
 [`realfp`](README.md#realfp-one-tactic-for-kernel-checked-real-numerics-mathlib-layer).
 
-`import RealFPMathlib.Front` gives one tactic, `realfp`, which looks at the goal and picks a
-backend. (Note: `import RealFPMathlib` gives the theorems but **not** the tactics.)
+`import RealFPMathlib` gives one tactic, `realfp`, which looks at the goal and picks a
+backend. (`import RealFPMathlib.Front` gives just the tactics.)
 
 ```lean
 example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by realfp
@@ -203,13 +222,13 @@ example : ∀ x ∈ Set.Icc (0 : ℝ) 4, x * Real.exp (-x) ≤ 0.3678 := by real
 ```
 
 ```
-realfp (trust := kernel): routed to `interval`: interval: no certificate within depth 24 /
-50000 boxes (1589 evaluations): the bound is false: the maximum is ≈ 0.367879441171 at
-x✝ ≈ 1 (rigorous value at that point), beyond 0.3678
+realfp (trust := kernel): via `interval`: no certificate within depth 24 / 50000 boxes
+(1589 evaluations): the bound is false: the maximum is ≈ 0.367879441171 at x ≈ 1 (rigorous
+value at that point), beyond 0.3678
 ```
 
 The message names the backend (`interval`), the trust mode, the search budget, and either a
-counterexample (as here: the max of `x e⁻ˣ` is `1/e ≈ 0.36788`) or how small the margin is.
+counterexample (with your variable names) (here the max of `x e⁻ˣ` is `1/e ≈ 0.36788`) or how small the margin is.
 If the bound is true but tight, raise `depth`/`maxBoxes`, or loosen the constant.
 
 ### Options
@@ -232,6 +251,20 @@ example : ∀ x ∈ Set.Icc (0 : ℝ) 1, x * (1 - x) ≤ 1/4 + 1/100 := by realf
 ```
 
 `set_option realfp.native true` sets the trust default for a whole section or declaration.
+
+The table is for the `interval` backend (and optimisation). The other backends take their own
+options (§5): `integral_bound` takes `trust`, `order` and `maxBoxes`; `pos_def` takes only
+`trust`; `root_exists`/`root_unique` take the same options as `interval`. The same syntax
+works whether you call `realfp` or the backend by name, and an option the chosen backend
+cannot use is an error, not silently ignored:
+
+```lean
+example : (!![2, 1; 1, 2] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by realfp (depth := 30)
+```
+
+```
+realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def takes only `trust`)
+```
 
 ## 4. Trust: what a proof depends on
 
@@ -324,9 +357,13 @@ symbolic (`IExpr.diff`) and proved correct against Mathlib's `HasDerivAt`. Trace
 ```lean
 example : (0.7468 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp
 example : (∫ x in (1 : ℝ)..2, 1 / x) ∈ Set.Icc (0.6931 : ℝ) 0.6932 := by integral_bound
+example : (∫ x in (1 : ℝ)..2, 1 / x) ∈ Set.Icc (0.6931 : ℝ) 0.6932 := by
+  integral_bound (order := 6) (maxBoxes := 64)
 ```
 
-Adaptive Taylor quadrature of order 2–8 with a Lagrange remainder on each cell. Limits are
+Adaptive Taylor quadrature of order 2–8 with a Lagrange remainder on each cell. By default it
+tries orders 2, 4, 6, 8 with up to 512 cells; `(order := n)` (2, 4, 6 or 8) fixes the order and
+`(maxBoxes := n)` caps the cells. Limits are
 rational numerals and must be exact doubles; the integrand must be differentiable on the
 interval (no `|x|`). Trigonometric integrands needing many cells are slow under `kernel`
 (about 1 s per kernel `sin`/`cos`).
@@ -364,8 +401,7 @@ example : ∃! p : ℝ × ℝ, p.1 ∈ Set.Icc (0 : ℝ) 3 ∧ p.2 ∈ Set.Icc (
 ```
 
 ```
-realfp (trust := kernel): routed to `root_unique`: root_unique: no certificate for the system
-on [0, 3] × [0, 3]:
+realfp (trust := kernel): via `root_unique`: no certificate for the system on [0, 3] × [0, 3]:
 • Krawczyk on the whole box [0, 3] × [0, 3]: centre = midpoint: contraction factor
   ‖I - Y·J(X)‖∞ ≈ 1.000000 ≥ 1 (box too wide or Jacobian too ill-conditioned); centre =
   Newton point: contraction factor ‖I - Y·J(X)‖∞ ≈ 1.121320 ≥ 1 (…)
@@ -384,7 +420,7 @@ example : (!![4, 1, 0; 1, 3, 1; 0, 1, 2] : Matrix (Fin 3) (Fin 3) ℝ).PosDef :=
 
 A floating-point congruence `X ≈ L⁻¹` (from Cholesky, untrusted) is checked in the kernel:
 `X M Xᵀ` must be strictly diagonally dominant with positive diagonal. Entries must be
-rational numerals. `Examples/MatrixPD.lean` does the 10×10 Hilbert matrix (condition number
+rational numerals. The only option is `trust`. `Examples/MatrixPD.lean` does the 10×10 Hilbert matrix (condition number
 ≈ 1.6·10¹³) and eigenvalue lower bounds.
 
 ### Optimisation: minima and maxima over a box
@@ -457,21 +493,24 @@ statement that isn't a box inequality), you build the proof yourself from three 
 ### One interval evaluation
 
 ```lean
-open Interval64.Spec
-
 def I : Interval64 := ofRatInterval (1/10) (3/10)   -- [1/10, 3/10], rounded outward
 def J : Interval64 := I * I + I                      -- one interval evaluation of x*x + x
 
-theorem J_hi_le : J.hi ≤ 0.40625 := by decide +kernel
+theorem J_hiLe : J.hiLe (13/32) = true := by decide +kernel
 
 theorem sq_add_le (x : ℝ) (hx : x ∈ Set.Icc (1/10 : ℝ) (3/10)) : x * x + x ≤ 13/32 := by
   have hxI : x ∈ I :=
     mem_toSet_ofRatInterval (by push_cast; linarith [hx.1]) (by push_cast; linarith [hx.2])
   have hJ : x * x + x ∈ J := Iv.add_mem (Iv.mem_mul hxI hxI) hxI
-  have h := le_of_mem_toSet_of_hi_le (q := 13/32) hJ J_hi_le (by decide +kernel)
+  have h := le_of_mem_hiLe hJ J_hiLe
   push_cast at h
-  linarith
+  exact h
 ```
+
+`X.hiLe q` is the Boolean check "the upper endpoint is a finite double and at most the rational
+`q`" (`X.loGe q` is the mirror image); `RealFP.le_of_mem_hiLe` / `ge_of_mem_loGe` turn it into
+`x ≤ q` / `q ≤ x` for every `x ∈ X`. (The older `le_of_mem_toSet_of_hi_le` takes the
+comparison `X.hi ≤ c` on doubles plus a separate `bitsToRat?` fact; it still works.)
 
 The kernel evaluates `J` by running the Lean specification of IEEE directed rounding. For
 anything bigger than a few dozen operations, use the bit-pattern ("`KF`/`KI`") evaluator that
@@ -483,16 +522,22 @@ expressions), `evalK` and the bisection checkers `checkK` / `checkD` live in
 
 ### Matrices, polynomials, quadrature
 
-The toolkit's checkers can be called directly. Positive definiteness with a precomputed
+The toolkit's checkers can be called directly. After `open RealFP`, the kernel-path names
+are short: `KI`, `IExpr` (and `IExpr.denote`), `ofRatFn`, `PDCert`, `pdCheckK`, `quadK`,
+`quadBound`, `posDef_of_ratMat`, `posDef_of_pdCheckK`, `integral_bounds_of_quadBound`, … (aliases
+from `RealFPMathlib/Kernel.lean`; the long names such as `Interval64.KF.KM.ofRatFn` and
+`RealFP.KM.posDef_of_ratMat` still work). Positive definiteness with a precomputed
 certificate (`ki_lit%` rounds rational entries to literal bit patterns, `pd_certs%` computes
 the congruence natively; the kernel re-checks both):
 
 ```lean
+open RealFP
+
 def hq (i j : ℕ) : ℚ := 1 / ((i : ℚ) + j + 1)
-def H4 : Array Interval64.KF.KI := ki_lit% (Interval64.KF.KM.ofRatFn 4 hq)
+def H4 : Array KI := ki_lit% (ofRatFn 4 hq)
 
 theorem hilbert4_posDef : (Matrix.of fun i j : Fin 4 => ((hq i j : ℚ) : ℝ)).PosDef :=
-  RealFP.KM.posDef_of_ratMat (A := H4) (c := pd_certs% 4 H4) (by decide +kernel)
+  posDef_of_ratMat (A := H4) (c := pd_certs% 4 H4) (by decide +kernel)
     (by decide +kernel) (fun i j _ _ => by simp [hq, add_comm])
 ```
 
@@ -500,10 +545,8 @@ Taylor quadrature with an explicit rule (order `K = 4`, 4 uniform cells) on a re
 integrand:
 
 ```lean
-open Interval64.KF in
 def g : IExpr := .exp (.neg (.mul (.var 0) (.var 0)))
 
-open Interval64.KF Interval64.KF.KQ RealFP.KQ in
 theorem gauss_bounds :
     (7468 / 10000 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) ∧
       (∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2)) ≤ 7469 / 10000 := by
@@ -568,8 +611,9 @@ four-body central-configuration proof; see [COMPARISONS.md](COMPARISONS.md)):
 
 | symptom | fix |
 |---|---|
-| `unknown tactic realfp` | `import RealFPMathlib.Front` (not just `RealFPMathlib`) |
-| `Could not find native implementation of external declaration …` | run through the editor, `lake build` or `lake lean`, not `lean` / `lake env lean` |
+| `unknown tactic realfp` | `import RealFPMathlib` (or `RealFPMathlib.Front`) |
+| `Could not find native implementation of external declaration …`, or "the compiled realfp code (C kernels) is not loaded" | run through the editor, `lake build` or `lake lean`; with plain `lean` / `lake env lean` pass the `--load-dynlib … --plugin …` flags the message prints (§1) |
+| "option `k` does not apply" | that backend does not use the option; see the options in §3 and §5 |
 | build error about `immintrin.h` | `cc` is clang without x86 intrinsics headers; install gcc |
 | illegal instruction on x86 | CPU lacks AVX-512F: build with `-Kbackend=rnerr` (§1) |
 | Mathlib version mismatch | your `lean-toolchain` and Mathlib tag must be `v4.36.0` |

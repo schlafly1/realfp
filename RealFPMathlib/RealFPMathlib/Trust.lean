@@ -46,7 +46,10 @@ unsafe def requireNativeImpl : MetaM Unit := do
     let how := match flags with
       | some f => s!" With plain `lean` / `lake env lean`, pass: {f}"
       | none => ""
-    throwError "realfp: the compiled realfp code (C kernels) is not loaded in this Lean       process, so the certificate search cannot run ({err}). Run Lean through Lake: the       editor, `lake build`, or `lake lean File.lean`.{how}"
+    let first := (toString err).splitOn "\n" |>.headD ""
+    throwError m!"realfp: the compiled realfp code (C kernels) is not loaded in this Lean \
+      process, so the certificate search cannot run ({first}). Run Lean through Lake: the \
+      editor, `lake build`, or `lake lean File.lean`.{how}"
 
 /-- Fail with a clear message (instead of aborting the process) if realfp's compiled code is
 not loaded, e.g. under plain `lean` or `lake env lean`. -/

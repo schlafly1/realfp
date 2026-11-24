@@ -60,6 +60,15 @@ lake exe interval64_native
 taskset -c 0 nice -n 19 lake exe interval64_bench
 ```
 
+**Plain `lean`.** `#eval` and the tactics need the compiled code, which Lake loads for the
+editor, `lake build` and `lake lean File.lean`. Plain `lean` / `lake env lean` do not; pass
+`--load-dynlib=<core>/.lake/build/lib/libleaninterval64.so
+--plugin=<core>/.lake/build/lib/libinterval64_Interval64.so` (in that order). Without them the
+tactics stop with a clear message that prints these flags (`RealFP.requireNative`, using
+`Interval64.NativeLoad.loadFlags`); `#eval` gives Lean's `Could not find native
+implementation` error. Loading the plugin from inside Lean at run time is not possible (it
+crashes), so the flags cannot be applied automatically.
+
 A tiny downstream project lives at `/workspace/interval64_consumer`
 (`require interval64 from "../interval64_avx512"`).
 
@@ -414,6 +423,21 @@ hypotheses; the older `Iv.{mul,div,sqrt}_mem`, which took them, are deprecated a
 Example (`RealFPMathlib/Examples/Conv.lean`):
 `∀ x ∈ [0, 1], x * x - 0.1 * x + 2 ≤ 3` from one evaluation of `X * X - 0.1 * X + 2`.
 
+## Display, exact endpoints, dot notation (`Interval64/Display.lean`)
+
+`#eval`/`Repr`/`toString` print `[lo, hi]` with 17 significant digits per endpoint (round to
+nearest; enough to read each double back exactly), `NaN`, `inf`, `-inf`, `-0`:
+`(0.1 : Interval64)` shows `[0.099999999999999992, 0.10000000000000001]`. Rigorous values:
+`X.exact : Option Rat × Option Rat` (exact endpoints, `none` for NaN/±∞) and
+`X.widthRat : Option Rat` (exact `hi − lo`). `decimalOfRat q (sig := 17)` and
+`decimalOfFloat f` are the formatters. Interval128 has the same (`Interval128/Display.lean`,
+34 digits).
+
+The type is the root-level structure `Interval64` (fields `lo hi : Float`) and its operations
+live in the namespace `Interval64`, so dot notation works: `X.sqrt`, `X.width`,
+`X.hiLe q`, `(X * X).exact`. The old name `Interval64.Interval64` is kept as an alias
+(`export _root_ (Interval64)`), so downstream code that wrote it still compiles.
+
 ## Extended (split) division (`Interval64/Split.lean`)
 
 `divSplit a b : Interval64Pair` encloses `{x / y | x ∈ a, y ∈ b, y ≠ 0}` as a union
@@ -498,6 +522,7 @@ sees the spec. Invalid (NaN) arguments give `invalid` (NaN for scalars).
 | `mag X`, `mig X` | largest `abs x` on `X` (= `max (-lo) hi`); smallest `abs x` (`0` if `0 ∈ X`) |
 | `bisect X` | `([lo, mid X], [mid X, hi])` |
 | `subset X Y`, `contains X f` | `Y.lo ≤ X.lo ∧ X.hi ≤ Y.hi` (false if either is invalid); `lo ≤ f ≤ hi` |
+| `X.hiLe q`, `X.loGe q` (`q : Rat`) | `hi` is finite and `≤ q`; `lo` is finite and `≥ q` (exact rational comparison, decidable by `decide +kernel`) |
 
 Proofs (`RealFPMathlib/Ops.lean`; none needs finite endpoints): `mem_neg`, `mem_abs`,
 `mem_square` (`x ^ 2 ∈ square X`), `mem_pown` (`x ^ n ∈ pown X n`), `mem_min`,
@@ -507,7 +532,9 @@ Proofs (`RealFPMathlib/Ops.lean`; none needs finite endpoints): `mem_neg`, `mem_
 `mid_spec` (`lo ≤ mid X ≤ hi`, not NaN, for nonempty `X`), `contains_mid`,
 `bisect_cover`, `bisect_fst_subset`, `bisect_snd_subset` (for nonempty `X`),
 `abs_le_mag`, `mig_le_abs`, `sub_le_width` (`x - y ≤ width X` for `x, y ∈ X`), and
-`width_ge` (`hi - lo ≤ width X` for finite endpoints). Example
+`width_ge` (`hi - lo ≤ width X` for finite endpoints), and (in `RealFPMathlib/Basic.lean`)
+`le_of_mem_hiLe : x ∈ X.toSet → X.hiLe q = true → x ≤ q` and `ge_of_mem_loGe`, the one-step
+way to turn an evaluation into a real bound (no separate `bitsToRat?` side goal). Example
 (`RealFPMathlib/Examples/Ops.lean`, `decide +kernel` only): `square [-1, 2] = [0, 4]`
 versus `[-1, 2] * [-1, 2] = [-2, 4]`, and `sq_bounds : -1 ≤ x ≤ 2 → 0 ≤ x² ≤ 4`.
 Tests (`opsTests` in `Interval64Test.lean`): 36000 random point pairs on random
@@ -583,7 +610,7 @@ Kernel time per operation (`decide +kernel`, x86-64, Lean 4.36):
 ## `realfp`: one tactic for kernel-checked real numerics (Mathlib layer)
 
 ```lean
-import RealFPMathlib.Front
+import RealFPMathlib   -- theorems and tactics (`import RealFPMathlib.Front`: tactics only)
 
 example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by realfp          -- interval
 example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.exp x ≠ 2 * x := by realfp               -- exclusion
@@ -597,8 +624,9 @@ example : … := by realfp (trust := native) (depth := 30)
 ```
 
 `realfp` (`RealFPMathlib/Front.lean`) looks at the goal and calls one backend; each backend is
-also available on its own. Errors name the backend, the trust mode and what failed (the
-subgoal, the box, the contraction factor, an approximate root) with a suggestion.
+also available on its own. Errors name the backend (`realfp (trust := kernel): via
+`interval`: …`), the trust mode and what failed (the subgoal, the box, the contraction factor,
+an approximate root or a counterexample, using your variable names) with a suggestion.
 
 | Goal shape | Backend | Method |
 |---|---|---|
@@ -629,8 +657,11 @@ upper bound (`x ∈ Set.Icc a b`, or `a ≤ x` and `x ≤ b`, any order); equati
 | variables | any number | integrals: 1; roots: `ℝ`, `ℝ×ℝ`, `ℝ×ℝ×ℝ`, `Fin n → ℝ` |
 
 **Options** (any order): `(trust := kernel|native)`, `(depth := n)`, `(maxBoxes := n)`,
-`(order := n)`, `(deriv := false)`, `(chunk := n)`. `pos_def` and `integral_bound` take only
-`trust`.
+`(order := n)`, `(deriv := false)`, `(chunk := n)` for `interval`, the root backends and
+optimisation. `integral_bound` takes `trust`, `(order := n)` (fix the Taylor order: 2, 4, 6 or
+8) and `(maxBoxes := n)` (maximum cells, default 512). `pos_def` takes only `trust`. The same
+options work through `realfp`; an option the chosen backend cannot use is an error
+(`pos_def: option `depth` does not apply …`).
 
 **Trust.** `trust := kernel` is the default: every certificate check is closed by
 `decide +kernel`, the Lean kernel re-runs the (Nat/Int) evaluator, and the theorem depends only
@@ -814,7 +845,8 @@ scripts/check_axioms.sh   # axiom report for every theorem of the layer
 
 Use it from your own Mathlib project (same Lean and Mathlib versions) with
 `require realfp_mathlib from "path/to/realfp/RealFPMathlib"` and
-`import RealFPMathlib`. (A git requirement with subdirectory,
+`import RealFPMathlib` (theorems, the tactics from `RealFPMathlib.Front`, and the short kernel
+names from `RealFPMathlib.Kernel`). (A git requirement with subdirectory,
 `... from git "https://github.com/schlafly1/realfp" @ "main" / "RealFPMathlib"`,
 should also work but has not been tested.)
 
@@ -823,7 +855,8 @@ should also work but has not been tested.)
 * `Basic`: `Float.toReal? : Float → Option ℝ` (exact value, `none` for ±∞/NaN),
   `Float.toReal` (total, junk `0`), `Interval64.toSet : Interval64 → Set ℝ`
   (extended-real reading: a `-∞`/`+∞` end gives an unbounded set, NaN gives `∅`;
-  `toSet_eq_Icc` for finite endpoints), `RepresentableR`, `IsRoundDownR`,
+  `toSet_eq_Icc` for finite endpoints), `le_of_mem_hiLe` / `ge_of_mem_loGe` (real bounds from
+  the Boolean checks `X.hiLe q` / `X.loGe q`), `RepresentableR`, `IsRoundDownR`,
   `IsRoundUpR` with transfer lemmas from the rational versions.
 * `Mem` (enclosure for real inputs):
   `add_mem_toSet`, `sub_mem_toSet` (`x ∈ X.toSet → y ∈ Y.toSet → x + y ∈ (X + Y).toSet`,
@@ -942,6 +975,14 @@ All conclusions are statements about Mathlib's `intervalIntegral`. Measured widt
 2¹⁴ (0.5 s). `cell0` gives 3.9e-5 with 2¹⁴ cells (14 ms).
 
 ### Kernel fast path for PD and quadrature (`Interval64/Kernel/{Matrix,Quad}.lean`)
+
+**Short names.** `RealFPMathlib/Kernel.lean` (imported by `RealFPMathlib`) exports the names
+below into `RealFP`, so after `open RealFP` you write `KI`, `IExpr`, `IExpr.denote`,
+`ofRatFn`, `PDCert`, `pdCheckL`, `pdCheckK`, `ratMatOK`, `quadK`, `quadBound`,
+`posDef_of_ratMat`, `posDef_of_pdCheckL`, `posDef_of_pdCheckK`, `lt_eigenvalue_of_posDef_sub`,
+`integral_mem_quadK`, `integral_bounds_of_quadBound` instead of `Interval64.KF.KM.ofRatFn`,
+`RealFP.KM.posDef_of_ratMat`, `Interval64.KF.KQ.quadBound`, `RealFP.KQ.…` (those long names
+still work; the short ones are aliases).
 
 The checks below run on the `KF`/`KI` Nat-bit-pattern kernel (the same evaluator the `interval`
 tactic uses), so `decide +kernel` is much cheaper than running the Float specification.
@@ -1109,6 +1150,8 @@ Benchmarks (`interval64_bench`, x86-64 box, one call each):
 
 It proves `c ≤ ∫ x in a..b, f x`, `∫ … ≤ c`, `<`, conjunctions, and `∈ Set.Icc`.
 
+- Options: `(trust := kernel|native)`, `(order := n)` (only that Taylor order, 2/4/6/8),
+  `(maxBoxes := n)` (cell limit, default 512); anything else is an error.
 - `a`, `b`, `c` must be rational numerals, with `a` and `b` exact floats. `f` may use the
   `interval` tactic's operations.
 - **Search (native, C kernels).** For each `K ∈ {2,4,6,8}` it bisects the cells with the widest
