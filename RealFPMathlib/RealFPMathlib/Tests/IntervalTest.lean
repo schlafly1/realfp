@@ -153,9 +153,11 @@ statements `realfp (precision := 128)` should prove:
 -/
 #guard_msgs in
 #realfp_min (precision := 128) (x ∈ Set.Icc (0 : ℝ) 1), x ^ 2 - x
+theorem p23 : (!![1, 1; 1, 1 + 1 / 10 ^ 25] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by
+  realfp (precision := 128)
 theorem p19 : Real.exp 1 ≠ 2.71828182845904523536028747135 := by interval (precision := 128)
 
-/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` bounds, argmin localisation and `root_exists` / `root_unique` so far, not for `integral_bound`; drop it to use precision 64 -/
+/-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b`, `f ≠ c` over a box), witnesses, `sInf` / `sSup` bounds, argmin localisation, `root_exists` / `root_unique` and `pos_def` so far, not for `integral_bound`; drop it to use precision 64 -/
 #guard_msgs in
 example : (0.7 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp (precision := 128)
 

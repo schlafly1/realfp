@@ -70,6 +70,7 @@ import RealFPMathlib.Mem
 import RealFPMathlib.Ops
 import RealFPMathlib.Poly
 import RealFPMathlib.PosDefTactic
+import RealFPMathlib.PosDefQ
 import RealFPMathlib.Pow
 import RealFPMathlib.Quad
 import RealFPMathlib.Quad2

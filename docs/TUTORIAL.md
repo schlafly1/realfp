@@ -263,7 +263,7 @@ example : (!![2, 1; 1, 2] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by realfp (dep
 ```
 
 ```
-realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def takes only `trust`)
+realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def takes only `trust` and `precision`)
 ```
 
 ## 4. Trust: what a proof depends on
@@ -388,7 +388,8 @@ at a time); the kernel check costs about 10–30 ms per box for arithmetic and 0
 elementary-function evaluation. The same `trust` options apply. `≠` goals, `root_exists` / `root_unique`
 (systems by Krawczyk), `sInf` / `sSup` bounds, witnesses and argmin localisation also accept
 `(precision := 128)`, and `#realfp_min (precision := 128) (x ∈ Set.Icc a b), f` reports a
-128-bit enclosure of the minimum; integrals reject it for now. More
+128-bit enclosure of the minimum; `pos_def (precision := 128)` is an exact rational check;
+integrals reject it for now. More
 examples: `RealFPMathlib/Examples/Precision128.lean`.
 
 ### `integral_bound`: definite integrals

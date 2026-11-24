@@ -303,6 +303,23 @@ enclosures of the extremum (branch and bound with natural and centred forms), e.
 `minimum ∈ [-0.472470393710577436787703977729340736, -0.472470393710577436787703977729335233]`
 (298 boxes, well under a second). -/
 
+/-! ### `pos_def` at 128 (exact)
+
+`pos_def (precision := 128)` does not round at all: an exact rational `LDLᵀ` gives `X = L⁻¹`, and
+the kernel checks that `X A Xᵀ` (exact in `ℚ`) is strictly diagonally dominant
+(`RealFPMathlib/PosDefQ.lean`). The binary64 congruence fails on this matrix (condition number
+about `10²⁰`); about 0.6 s. -/
+theorem near_singular_posDef : (!![1, 1, 1; 1, 1 + 1 / 10 ^ 20, 1; 1, 1, 1 + 2 / 10 ^ 20] :
+    Matrix (Fin 3) (Fin 3) ℝ).PosDef := by
+  fail_if_success pos_def
+  pos_def (precision := 128)
+
+/-- The 10×10 Hilbert matrix: about 10 s (1.3 s kernel; the rest is matching the entries),
+against about 23 s with the binary64 certificate. -/
+theorem hilbert10_posDef :
+    (Matrix.of fun i j : Fin 10 => (1 : ℝ) / ((i : ℝ) + j + 1)).PosDef := by
+  pos_def (precision := 128)
+
 /-! ### Functions without a 128-bit implementation
 
 `arctan`, `atan2`, `tan`, `arcsin`, `arccos` and extension functions (and `log` on arguments

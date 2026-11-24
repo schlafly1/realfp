@@ -31,7 +31,8 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   witness is refined at 128 bits by bisection on the sign of `f'`), argmin/argmax
   localisation in one variable (box width down to about `10⁻¹⁶`, limited by the quadratic value
   gap) and `#realfp_min` / `#realfp_max (precision := 128)` (an untrusted report).
-  `integral_bound` and `pos_def` reject it.
+  `pos_def (precision := 128)` is an exact rational check (no 128-bit arithmetic involved).
+  `integral_bound` rejects it.
 - `≠` at 128 is plain bisection (no derivative certificates for exclusion).
 - 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
   enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,

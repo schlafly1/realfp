@@ -9,6 +9,7 @@ The entries are read off by `simp`/`norm_num`, a congruence certificate is compu
 import RealFPMathlib.KMatrix
 import RealFPMathlib.IntervalTactic
 import RealFPMathlib.Trust
+import RealFPMathlib.PosDefQ
 
 open Lean Meta Elab Tactic Interval64.KF Interval64.KF.KM
 
@@ -47,7 +48,28 @@ def entryOf (M : Expr) (n i j : Nat) : MetaM ℚ := do
   | none => throwError "pos_def: entry ({i}, {j}) of the matrix does not evaluate to a rational \
       numeral (got {r.expr})"
 
-def provePosDef : TacticM Unit := withMainContext do
+/-- Exact `LDLᵀ` (no pivoting) of a symmetric rational matrix: `X = L⁻¹` (unit lower
+triangular), so that `X A Xᵀ = D`. `none` if a pivot is not positive. Untrusted. -/
+def ldlInv (n : Nat) (A : List (List ℚ)) : Except String (List (List ℚ)) := do
+  let mut M : Array (Array ℚ) := (List.range n).toArray.map fun i =>
+    (List.range n).toArray.map fun j => lget A i j
+  -- X starts as the identity; row operations on M are applied to X as well
+  let mut X : Array (Array ℚ) := (List.range n).toArray.map fun i =>
+    (List.range n).toArray.map fun j => if i == j then 1 else 0
+  for k in [0:n] do
+    let p := (M[k]!)[k]!
+    unless 0 < p do
+      throw s!"the exact LDLᵀ pivot {k} is {p} ≤ 0, so the matrix is not positive definite"
+    for i in [k+1:n] do
+      let f := (M[i]!)[k]! / p
+      if f != 0 then
+        let rk := M[k]!
+        let xk := X[k]!
+        M := M.set! i ((List.range n).toArray.map fun j => (M[i]!)[j]! - f * rk[j]!)
+        X := X.set! i ((List.range n).toArray.map fun j => (X[i]!)[j]! - f * xk[j]!)
+  return X.toList.map (·.toList)
+
+def provePosDef (prec128 : Bool := false) : TacticM Unit := withMainContext do
   let t ← instantiateMVars (← getMainTarget)
   unless t.isAppOf ``Matrix.PosDef do throwError "pos_def: goal is not `Matrix.PosDef _`"
   let M := t.appArg!
@@ -67,6 +89,40 @@ def provePosDef : TacticM Unit := withMainContext do
     for j in [0:n] do
       unless lget L i j == lget L j i do
         throwError "pos_def: the matrix is not symmetric (entries ({i}, {j}) and ({j}, {i}))"
+  if prec128 then
+    let Xl ← match ldlInv n L with
+      | .ok X => pure X
+      | .error s => throwError "pos_def (precision := 128): {s}"
+    unless RealFP.PDQ.congrCheckQ n (lget L) (lget Xl) do
+      throwError "pos_def (precision := 128): internal: the exact congruence check failed"
+    let fE := mkApp (mkConst ``lget) (toExpr L)
+    let xE := mkApp (mkConst ``lget) (toExpr Xl)
+    let nL := mkNatLit n
+    let h1 ← proveTrue (← mkEq (mkApp3 (mkConst ``RealFP.PDQ.congrCheckQ) nL fE xE)
+      (mkConst ``Bool.true))
+    let rng ← mkAppM ``List.range #[nL]
+    let inner ← withLocalDeclD `i (mkConst ``Nat) fun i => do
+      let body ← withLocalDeclD `j (mkConst ``Nat) fun j => do
+        mkLambdaFVars #[j] (← mkDecide (← mkEq (mkApp2 fE i j) (mkApp2 fE j i)))
+      mkLambdaFVars #[i] (← mkAppM ``List.all #[rng, body])
+    let symT ← mkEq (← mkAppM ``List.all #[rng, inner]) (mkConst ``Bool.true)
+    let h3 ← proveTrue symT
+    let hs ← mkAppOptM ``symm_of_check #[nL, fE, h3]
+    let hpd ← mkAppOptM ``RealFP.PDQ.posDef_of_congrQ #[nL, fE, xE, h1, hs]
+    let N := (← inferType hpd).appArg!
+    let eG ← mkFreshExprMVar (← mkEq M N)
+    let saved ← getGoals
+    setGoals [eG.mvarId!]
+    try
+      evalTactic (← `(tactic| (ext i j; fin_cases i <;> fin_cases j <;>
+        simp [lget, Matrix.of_apply] <;> norm_num)))
+    catch ex =>
+      throwError "pos_def: could not match the matrix with its rational entries: {ex.toMessageData}"
+    setGoals saved
+    let pf ← mkAppM ``posDef_of_eq #[hpd, ← instantiateMVars eG]
+    (← getMainGoal).assign pf
+    replaceMainGoal []
+    return
   let A := ofRatFn n (lget L)
   let c := mkCert n A
   let fE := mkApp (mkConst ``lget) (toExpr L)
@@ -102,16 +158,25 @@ def provePosDef : TacticM Unit := withMainContext do
   replaceMainGoal []
 
 /-- `pos_def` proves `M.PosDef` for a concrete `n × n` real matrix with rational entries
-(`!![2, 1; 1, 2]`, `Matrix.of fun i j => ...`). Option `(trust := native)`. -/
+(`!![2, 1; 1, 2]`, `Matrix.of fun i j => ...`). Options `(trust := native)` and
+`(precision := 128)` (exact rational congruence `X A Xᵀ` with `X = L⁻¹` from an exact `LDLᵀ`,
+`RealFP.PDQ.posDef_of_congrQ`: no rounding, any condition number). -/
 syntax (name := posDefTac) "pos_def" (ppSpace intervalOpt)* : tactic
 
 @[tactic posDefTac] def evalPosDef : Tactic := fun stx => do
   let mut trust : Name := `inherit
+  let mut prec128 := false
   for o in stx[1].getArgs do
     let k := o[1].getId
     if k == `trust then trust := o[3].getId
-    else throwErrorAt o "pos_def: option `{k}` does not apply (pos_def takes only `trust`)"
+    else if k == `precision then
+      match o[3].isNatLit? with
+      | some 64 => prec128 := false
+      | some 128 => prec128 := true
+      | _ => throwErrorAt o "pos_def: (precision := …) expects 64 or 128"
+    else throwErrorAt o "pos_def: option `{k}` does not apply (pos_def takes only `trust` and \
+      `precision`)"
   requireNative
-  withTrust trust provePosDef
+  withTrust trust (provePosDef prec128)
 
 end RealFP.PosDefTactic

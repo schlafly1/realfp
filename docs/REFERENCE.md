@@ -1001,7 +1001,14 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   form `f(m) + ∑ⱼ ∂ⱼf(X)(Xⱼ - mⱼ)`, best-first, bisection of the widest coordinate, stop at a
   relative gap of `10⁻³²` or 20000 boxes); prints the enclosure to 36 digits, the point and two
   statements for `realfp (precision := 128)`. Untrusted (nothing is proved).
-* Not yet at 128: `integral_bound`, `pos_def`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
+* **`pos_def (precision := 128)`** (`RealFPMathlib/PosDefQ.lean`): exact, no rounding. The
+  search computes an exact rational `LDLᵀ` (no pivoting; a pivot `≤ 0` means "not positive
+  definite") and `X = L⁻¹`; the kernel computes `B = X A Xᵀ` in `ℚ` (`RealFP.PDQ.bq`) and checks
+  strict diagonal dominance (`congrCheckQ`); `posDef_of_congrQ` then uses
+  `RealFP.Mat.posDef_of_diagDom` and `posDef_of_posDef_congr`. Works for any condition number;
+  the cost is the size of the rationals (Hilbert 10×10: 1.3 s kernel) and matching the entries
+  (`ext; fin_cases; simp`, which dominates beyond about 10×10).
+* Not yet at 128: `integral_bound`. `realfp (precision := 128)` on such goals is an error; `(precision := 64)` is
   accepted everywhere.
 * When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests
   `(precision := 128)`.

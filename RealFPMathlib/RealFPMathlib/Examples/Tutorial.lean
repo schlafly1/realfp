@@ -218,7 +218,7 @@ example : (!![4, 1, 0; 1, 3, 1; 0, 1, 2] : Matrix (Fin 3) (Fin 3) ℝ).PosDef :=
 
 -- An option a backend cannot use is an error, not silently ignored.
 /--
-error: realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def takes only `trust`)
+error: realfp (trust := kernel): via `pos_def`: option `depth` does not apply (pos_def takes only `trust` and `precision`)
 -/
 #guard_msgs in
 example : (!![2, 1; 1, 2] : Matrix (Fin 2) (Fin 2) ℝ).PosDef := by realfp (depth := 30)
