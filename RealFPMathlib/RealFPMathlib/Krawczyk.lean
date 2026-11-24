@@ -560,6 +560,161 @@ theorem y_inj (hf : Facts Fs bs c) {u : Nat → ℝ}
   have : (c.q : ℝ) < 1 := by exact_mod_cast this
   linarith
 
+
+theorem allZero_iff (hF : Fs.length = bs.length) {xs : List ℝ} :
+    AllZero Fs xs ↔ ∀ k < bs.length, (fget Fs k).denote xs = 0 := by
+  constructor
+  · intro h k hk; unfold fget; rw [List.getD_eq_getElem _ _ (by omega)]
+    exact h _ (List.getElem_mem _)
+  · intro h e he
+    obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem he
+    have := h k (by omega); unfold fget at this; rwa [List.getD_eq_getElem _ _ hk] at this
+
+/-- Fixed points of `G` are zeros of `F`. -/
+theorem zero_of_fixed (hf : Facts Fs bs c) {x : Nat → ℝ}
+    (hfix : ∀ i < bs.length, Gv Fs bs.length c.Y x i = x i) :
+    ∀ k < bs.length, Fk Fs bs.length k x = 0 :=
+  y_inj hf (u := fun k => Fk Fs bs.length k x) fun i hi => by
+    have := hfix i hi; simp only [Gv] at this; linarith
+
+/-- **Existence** (Banach fixed point theorem on the box). -/
+theorem kraw_exists (h : krawCheck Fs bs c = true) : ∃ xs, InBoxes xs bs ∧ AllZero Fs xs := by
+  have hf := facts_of_check h
+  let n := bs.length
+  let toN : (Fin n → ℝ) → ℕ → ℝ := fun v j => if hj : j < n then v ⟨j, hj⟩ else 0
+  let lo : Fin n → ℝ := fun i => ((bs.getD i (0, 0)).1 : ℝ)
+  let hi : Fin n → ℝ := fun i => ((bs.getD i (0, 0)).2 : ℝ)
+  let S : Set (Fin n → ℝ) := {v | ∀ i, lo i ≤ v i ∧ v i ≤ hi i}
+  have hmem : ∀ v, v ∈ S ↔ InBoxes (vec n (toN v)) bs := by
+    intro v; rw [inBoxes_vec rfl]
+    constructor
+    · intro hv j hj; rw [show toN v j = v ⟨j, hj⟩ from dif_pos hj]; exact hv ⟨j, hj⟩
+    · intro hv i; have := hv i i.2; simp only [toN, i.2, ↓reduceDIte] at this; exact this
+  have hS : IsClosed S := by
+    have : S = ⋂ i : Fin n, ({v : Fin n → ℝ | lo i ≤ v i} ∩ {v | v i ≤ hi i}) := by
+      ext v; simp [S]
+    rw [this]
+    exact isClosed_iInter fun i => (isClosed_le continuous_const (continuous_apply i)).inter
+      (isClosed_le (continuous_apply i) continuous_const)
+  have : CompleteSpace S := hS.completeSpace_coe
+  have hm0 : (fun i : Fin n => mR c i) ∈ S := by
+    rw [hmem]
+    have : vec n (toN fun i : Fin n => mR c i) = vec n (mR c) :=
+      vec_congr fun j hj => by simp [toN, hj]
+    rw [this]; exact inBoxes_m' hf
+  have : Nonempty S := ⟨⟨_, hm0⟩⟩
+  let Gf : (Fin n → ℝ) → Fin n → ℝ := fun v i => Gv Fs n c.Y (toN v) i
+  have hmaps : ∀ v ∈ S, Gf v ∈ S := fun v hv i => maps_into hf ((hmem v).1 hv) i i.2
+  let f : S → S := fun v => ⟨Gf v.1, hmaps v.1 v.2⟩
+  have hq0 : (0 : ℝ) ≤ c.q := by exact_mod_cast hf.hq0
+  have hK : ContractingWith (Real.toNNReal c.q) f := by
+    refine ⟨by rw [Real.toNNReal_lt_one]; exact_mod_cast hf.hq1,
+      LipschitzWith.of_dist_le_mul fun v w => ?_⟩
+    rw [Real.coe_toNNReal _ hq0, Subtype.dist_eq, Subtype.dist_eq]
+    refine (dist_pi_le_iff (mul_nonneg hq0 dist_nonneg)).2 fun i => ?_
+    rw [Real.dist_eq]
+    refine lip hf ((hmem _).1 v.2) ((hmem _).1 w.2) dist_nonneg (fun j hj => ?_) i i.2
+    rw [show toN v.1 j = v.1 ⟨j, hj⟩ from dif_pos hj, show toN w.1 j = w.1 ⟨j, hj⟩ from dif_pos hj]
+    rw [← Real.dist_eq]; exact dist_le_pi_dist v.1 w.1 ⟨j, hj⟩
+  have hp := ContractingWith.fixedPoint_isFixedPt (f := f) hK
+  set p := ContractingWith.fixedPoint f hK
+  have hfix : ∀ i < n, Gv Fs n c.Y (toN p.1) i = toN p.1 i := by
+    intro i hi
+    have := congrFun (congrArg Subtype.val hp) ⟨i, hi⟩
+    simp only [toN, hi, ↓reduceDIte]; exact this
+  have hz := zero_of_fixed hf hfix
+  refine ⟨vec n (toN p.1), (hmem _).1 p.2, (allZero_iff hf.hF).2 fun k hk => hz k hk⟩
+
+/-- **Uniqueness**: two zeros in the box coincide (`G` is a contraction). -/
+theorem kraw_unique (h : krawCheck Fs bs c = true) {xs ys : List ℝ} (hx : InBoxes xs bs)
+    (hzx : AllZero Fs xs) (hy : InBoxes ys bs) (hzy : AllZero Fs ys) : xs = ys := by
+  have hf := facts_of_check h
+  have lx : xs.length = bs.length := List.Forall₂.length_eq hx
+  have ly : ys.length = bs.length := List.Forall₂.length_eq hy
+  let x : Nat → ℝ := fun j => xs.getD j 0
+  let y : Nat → ℝ := fun j => ys.getD j 0
+  have ex : xs = vec bs.length x := by conv_lhs => rw [eq_vec xs]
+                                       rw [lx]
+  have ey : ys = vec bs.length y := by conv_lhs => rw [eq_vec ys]
+                                       rw [ly]
+  rw [ex] at hx hzx ⊢; rw [ey] at hy hzy ⊢
+  have fx : ∀ i < bs.length, Gv Fs bs.length c.Y x i = x i := fun i _ => by
+    have hz : ∀ k ∈ Finset.range bs.length, (qget c.Y i k : ℝ) * Fk Fs bs.length k x = 0 :=
+      fun k hk => by rw [Fk, (allZero_iff hf.hF).1 hzx k (Finset.mem_range.1 hk), mul_zero]
+    simp only [Gv, Finset.sum_eq_zero hz, sub_zero]
+  have fy : ∀ i < bs.length, Gv Fs bs.length c.Y y i = y i := fun i _ => by
+    have hz : ∀ k ∈ Finset.range bs.length, (qget c.Y i k : ℝ) * Fk Fs bs.length k y = 0 :=
+      fun k hk => by rw [Fk, (allZero_iff hf.hF).1 hzy k (Finset.mem_range.1 hk), mul_zero]
+    simp only [Gv, Finset.sum_eq_zero hz, sub_zero]
+  apply vec_congr
+  intro j hj
+  obtain ⟨jm, hjm, hmax⟩ := Finset.exists_max_image (Finset.range bs.length) (fun j => |x j - y j|)
+    ⟨j, Finset.mem_range.2 hj⟩
+  have hjm' := Finset.mem_range.1 hjm
+  have hl := lip hf hx hy (abs_nonneg (x jm - y jm))
+    (fun j hj => hmax j (Finset.mem_range.2 hj)) jm hjm'
+  rw [fx jm hjm', fy jm hjm'] at hl
+  have hq1 : (c.q : ℝ) < 1 := by exact_mod_cast hf.hq1
+  have h0 : |x jm - y jm| = 0 := by
+    have := abs_nonneg (x jm - y jm); nlinarith
+  have := hmax j (Finset.mem_range.2 hj)
+  rw [h0, abs_nonpos_iff, sub_eq_zero] at this
+  exact this
+
 end Sound
+
+/-! ### Statements over a type of points -/
+
+theorem existsUnique_of {T : Type} (toL : T → List ℝ) (ofL : List ℝ → T) (P : List ℝ → Prop)
+    (n : Nat) (hlen : ∀ xs, P xs → xs.length = n) (hto : ∀ xs, xs.length = n → toL (ofL xs) = xs)
+    (hinj : ∀ p q, toL p = toL q → p = q) (hex : ∃ xs, P xs)
+    (hu : ∀ xs ys, P xs → P ys → xs = ys) : ∃! p : T, P (toL p) := by
+  obtain ⟨xs, hxs⟩ := hex
+  have e := hto xs (hlen xs hxs)
+  refine ⟨ofL xs, by show P (toL (ofL xs)); rw [e]; exact hxs, fun p hp => hinj _ _ ?_⟩
+  rw [e]; exact hu _ _ hp hxs
+
+/-- **Krawczyk, existence and uniqueness** for points of any type `T` with a coordinate list. -/
+theorem kraw_existsUnique {T : Type} (Fs : List IExpr) (bs : List (ℚ × ℚ)) (c : KCert)
+    (toL : T → List ℝ) (ofL : List ℝ → T) (hto : ∀ xs, xs.length = bs.length → toL (ofL xs) = xs)
+    (hinj : ∀ p q, toL p = toL q → p = q) (h : krawCheck Fs bs c = true) :
+    ∃! p : T, InBoxes (toL p) bs ∧ AllZero Fs (toL p) :=
+  existsUnique_of toL ofL (fun xs => InBoxes xs bs ∧ AllZero Fs xs) bs.length
+    (fun _ h => List.Forall₂.length_eq h.1) hto hinj (kraw_exists h)
+    (fun _ _ h1 h2 => kraw_unique h h1.1 h1.2 h2.1 h2.2)
+
+/-- **Krawczyk, existence** only. -/
+theorem kraw_exists' {T : Type} (Fs : List IExpr) (bs : List (ℚ × ℚ)) (c : KCert)
+    (toL : T → List ℝ) (ofL : List ℝ → T) (hto : ∀ xs, xs.length = bs.length → toL (ofL xs) = xs)
+    (h : krawCheck Fs bs c = true) : ∃ p : T, InBoxes (toL p) bs ∧ AllZero Fs (toL p) := by
+  obtain ⟨xs, h1, h2⟩ := kraw_exists h
+  have e := hto xs (List.Forall₂.length_eq h1)
+  exact ⟨ofL xs, by rw [e]; exact ⟨h1, h2⟩⟩
+
+/-! Coordinate lists for `ℝ`, `ℝ × ℝ`, `ℝ × ℝ × ℝ` and `Fin n → ℝ`. -/
+
+theorem coords1_to (xs : List ℝ) (h : xs.length = 1) : [xs.getD 0 0] = xs := by
+  match xs, h with | [_], _ => rfl
+theorem coords1_inj (p q : ℝ) (h : [p] = [q]) : p = q := by simpa using h
+
+theorem coords2_to (xs : List ℝ) (h : xs.length = 2) :
+    [(xs.getD 0 0, xs.getD 1 0).1, (xs.getD 0 0, xs.getD 1 0).2] = xs := by
+  match xs, h with | [_, _], _ => rfl
+theorem coords2_inj (p q : ℝ × ℝ) (h : [p.1, p.2] = [q.1, q.2]) : p = q := by
+  simp only [List.cons.injEq, and_true] at h; exact Prod.ext h.1 h.2
+
+theorem coords3_to (xs : List ℝ) (h : xs.length = 3) :
+    [(xs.getD 0 0, xs.getD 1 0, xs.getD 2 0).1, (xs.getD 0 0, xs.getD 1 0, xs.getD 2 0).2.1,
+      (xs.getD 0 0, xs.getD 1 0, xs.getD 2 0).2.2] = xs := by
+  match xs, h with | [_, _, _], _ => rfl
+theorem coords3_inj (p q : ℝ × ℝ × ℝ) (h : [p.1, p.2.1, p.2.2] = [q.1, q.2.1, q.2.2]) : p = q := by
+  simp only [List.cons.injEq, and_true] at h; exact Prod.ext h.1 (Prod.ext h.2.1 h.2.2)
+
+theorem coordsFin_to (n : Nat) (xs : List ℝ) (h : xs.length = n) :
+    List.ofFn (fun i : Fin n => xs.getD i 0) = xs := by
+  apply List.ext_getElem (by simp [h]); intro j h1 h2
+  simp [List.getD_eq_getElem?_getD, h2]
+theorem coordsFin_inj (n : Nat) (p q : Fin n → ℝ) (h : List.ofFn p = List.ofFn q) : p = q :=
+  List.ofFn_injective h
 
 end RealFP.Roots
