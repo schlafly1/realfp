@@ -1,6 +1,6 @@
 /-
 Build-time axiom audit. `lake build` (default target) elaborates this file, which imports every
-module of the Mathlib layer with examples, walks **every** `RealFP.*` declaration and fails the
+module of the Mathlib layer (all files under `RealFPMathlib/`), walks **every** `RealFP.*` declaration and fails the
 build if any of them depends on an axiom other than `propext`, `Classical.choice`, `Quot.sound`
 — except that `RealFP.Demo.*` and `RealFP.Examples.*` may additionally use `native_decide`
 (compiler-trust) axioms. `sorryAx` is never allowed.
@@ -8,24 +8,64 @@ build if any of them depends on an axiom other than `propext`, `Classical.choice
 Run alone: `lake build RealFPMathlib.AxiomAudit` (or `scripts/audit_axioms.sh`).
 -/
 import RealFPMathlib
+import RealFPMathlib.Asin
+import RealFPMathlib.Basic
+import RealFPMathlib.Bern
+import RealFPMathlib.Conv
+import RealFPMathlib.Corners
 import RealFPMathlib.Demo
-import RealFPMathlib.Front
-import RealFPMathlib.Examples.Roots
-import RealFPMathlib.Examples.Cubic
-import RealFPMathlib.Examples.Jacobian
-import RealFPMathlib.Examples.Transc
-import RealFPMathlib.Examples.Pow
-import RealFPMathlib.Examples.Trig
-import RealFPMathlib.Examples.Conv
-import RealFPMathlib.Examples.Split
-import RealFPMathlib.Examples.Ops
-import RealFPMathlib.Examples.MatrixPD
-import RealFPMathlib.Examples.PolyQuad
 import RealFPMathlib.Examples.Bernstein
-import RealFPMathlib.Examples.Quad2
-import RealFPMathlib.Examples.Taylor2
+import RealFPMathlib.Examples.Conv
+import RealFPMathlib.Examples.Cubic
 import RealFPMathlib.Examples.IntegralTactic
+import RealFPMathlib.Examples.Jacobian
+import RealFPMathlib.Examples.MatrixPD
+import RealFPMathlib.Examples.Ops
+import RealFPMathlib.Examples.PolyQuad
+import RealFPMathlib.Examples.Pow
+import RealFPMathlib.Examples.Quad2
+import RealFPMathlib.Examples.Roots
+import RealFPMathlib.Examples.Split
+import RealFPMathlib.Examples.Taylor2
+import RealFPMathlib.Examples.Transc
+import RealFPMathlib.Examples.Trig
+import RealFPMathlib.Ext
+import RealFPMathlib.Front
+import RealFPMathlib.Hyp
+import RealFPMathlib.I128DD
+import RealFPMathlib.I128Mem
+import RealFPMathlib.I128Prims
+import RealFPMathlib.IntegralTactic
+import RealFPMathlib.IntervalDeriv
+import RealFPMathlib.IntervalSound
+import RealFPMathlib.IntervalTactic
+import RealFPMathlib.InvTrig
+import RealFPMathlib.KMatrix
+import RealFPMathlib.KQuad
+import RealFPMathlib.KQuadShare
+import RealFPMathlib.KTaylor2
+import RealFPMathlib.Krawczyk
+import RealFPMathlib.Matrix
+import RealFPMathlib.MatrixPD
+import RealFPMathlib.Mem
+import RealFPMathlib.Ops
+import RealFPMathlib.Poly
+import RealFPMathlib.PosDefTactic
+import RealFPMathlib.Pow
+import RealFPMathlib.Quad
+import RealFPMathlib.Quad2
+import RealFPMathlib.RootTactic
+import RealFPMathlib.Roots
+import RealFPMathlib.Split
+import RealFPMathlib.Tan
+import RealFPMathlib.Taylor2
+import RealFPMathlib.TaylorBound
 import RealFPMathlib.Tests.IntervalTest
+import RealFPMathlib.Tight
+import RealFPMathlib.Transc
+import RealFPMathlib.Trig
+import RealFPMathlib.Trust
+import RealFPMathlib.Unbounded
 
 open Lean Elab Command
 
