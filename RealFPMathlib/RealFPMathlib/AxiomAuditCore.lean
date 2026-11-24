@@ -24,6 +24,7 @@ import RealFPMathlib.Hyp
 import RealFPMathlib.I128DD
 import RealFPMathlib.I128Mem
 import RealFPMathlib.I128Prims
+import RealFPMathlib.I128Sound
 import RealFPMathlib.IntegralTactic
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.IntervalSound
