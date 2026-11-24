@@ -36,9 +36,14 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   `sinh`, …; `sin`/`cos` together about 0.4–0.7 s), and an interval needs two (`exp`, `log`,
   hyperbolic: both endpoints) or one (`sin`/`cos`: centre plus a Lipschitz radius, so wide
   intervals are coarse).
-- Plain bisection only: no monotonicity, centred-form or Taylor certificates, so dependency
-  (e.g. `x * c - x` on a wide box) is not reduced, and tight bounds on wide boxes need many
-  boxes.
+- Derivative certificates at 128 (`Interval128.Dy.DCert`: bisection, monotonicity with the sign
+  of `∂ᵢf` proved recursively up to `order`, centred form at the midpoint) mirror Interval64's
+  one-variable-at-a-time `DCert`; the multivariate centred forms (`MCert`), Taylor and
+  Bernstein certificates of precision 64 are not available at 128. Registered (extension)
+  functions are never differentiated at 128.
+- Kernel cost of transcendental boxes: a monotonicity step on `sin x + cos x` costs about 1.1 s
+  (derivative and endpoint values), so a tight bound at an interior maximum (30 splits, 36
+  monotonicity steps for a `1e-16` margin) takes about 55 s in the kernel.
 - Kernel cost: about 10–30 ms per box with the dyadic `Nat`/`Int` path (a one-variable bound
   with 60–100 boxes takes about 1 s). Boxes are still plain bisection, so wide boxes with tight
   margins need many of them. The double-double `Interval128` type and its proved checker

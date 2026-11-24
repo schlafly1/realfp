@@ -382,10 +382,10 @@ example : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
 ```
 
 `arctan`, `tan`, `arcsin`, `arccos`, `atan2` and registered functions are accepted but
-evaluated with Interval64 precision, and a failure message says so. The search is plain
-bisection at dyadic midpoints (no derivative certificates yet); the kernel check costs about
-10–30 ms per box for arithmetic and 0.2–0.7 s per elementary-function evaluation, so it is
-best for tight bounds on small boxes. The same `trust` options apply. Other backends
+evaluated with Interval64 precision, and a failure message says so. The search uses
+bisection at dyadic midpoints, monotonicity and centred forms (as at precision 64, one variable
+at a time); the kernel check costs about 10–30 ms per box for arithmetic and 0.2–0.7 s per
+elementary-function evaluation. The same `trust` options apply. Other backends
 (roots, optimisation, integrals, `≠`) reject `(precision := 128)` for now. More
 examples: `RealFPMathlib/Examples/Precision128.lean`.
 

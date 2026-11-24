@@ -938,7 +938,21 @@ example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-
   `Interval128.Dy.ofLimbs neg limbs e` with base-`2^62` limbs: the kernel is much slower on
   terms that contain `Nat` literals of `2^63` or more (60 boxes: about 40 s with plain
   literals, under 1 s with limbs). `checkQ` walks the tree; `search` (compiled, untrusted)
-  splits the widest variable. No derivative or centred-form certificates at 128 yet.
+  splits the widest variable (plain bisection; `checkQ_sound`).
+* **Derivative certificates** `Interval128.Dy.DCert` / `checkDQ e g upper` (what the tactic
+  uses; mirror of Interval64's `DCert` / `checkD`): `leaf`, `split i d l r`, `mono i inc dc c`
+  (`domOKQ` holds on the box, `∂ᵢe ≥ 0` or `≤ 0` is proved by the nested certificate `dc` on
+  `e.deriv i`, and `c` checks `e` with variable `i` fixed at the relevant endpoint), and
+  `center i d` (`centerQ`: `f(…d…) + f'(box) · (xᵢ - d)` intersected with the plain enclosure,
+  `DI.meet`). `searchDQ` (compiled, untrusted) tries the plain enclosure, monotonicity with a
+  visible sign, the centred form at the midpoint, monotonicity with the sign proved by higher
+  derivatives (up to `order`), then bisection. `deriv := false` gives plain bisection.
+  Soundness: `RealFPMathlib/I128Deriv.lean` (`domOKQ_sound`, `checkDQ_sound`, `proveD_le` /
+  `_lt` / `_ge` / `_gt`, `checkDQ_split_of`), reusing `RealFP.Dom` / `hasDerivAt_denote` and
+  the mean value theorem from `IntervalDeriv.lean`. Example: `x² - x/3 ≤ 10/3 + 10⁻³⁰` on
+  `[1, 2]` is one monotonicity step (0.5 s, was 100 boxes / 1.6 s by bisection and 31 s in the
+  double-double path); `exp x - x ≤ 1.7182818284590452353602874713527` on `[0, 1]` is one split
+  plus one monotonicity step (about 1 s).
 * **Soundness** (`RealFPMathlib/I128Dyadic.lean`, namespace `RealFP.I128Q`, no `sorry`,
   standard axioms): `val d = m · 2^e`, `val_rdn` / `val_rup` / `val_ofRatDn` / `val_ofRatUp` /
   `val_invDnPos` / `val_sqrtDn` …, `mem_add` / `mem_mul` / `mem_inv` / `mem_sqrt` /

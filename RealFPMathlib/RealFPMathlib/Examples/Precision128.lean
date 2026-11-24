@@ -9,12 +9,15 @@ Elaboration times on the dev box (whole declaration, minus the file's import tim
 / 128-bit proof; in brackets the time before the dyadic kernel path (double-double `Float` spec):
 * `sqrt2_gap_*`, `pi_upper`, `sqrt_cancel_*`   fails / under 0.5 s each  [under 1 s]
 * `poly7_*`          fails / about 0.6 s each  [about 4 s]
-* `quad_box`         fails / about 1 s (60 boxes at depth 70)  [about 31 s]
-* `quad_box_30`      fails / about 1.5 s (100 boxes at depth 110)  [not feasible]
+* `quad_box`, `quad_box_30`  fails / under 0.2 s (one monotonicity step)  [bisection: about 31 s
+  in milestone 1, about 1–1.5 s with the dyadic path and 60–100 boxes]
+* `quad_box_30_bisect` (`deriv := false`)  about 2.6 s (100 boxes)
+* `logistic_box`     about 0.3 s (one split, two monotonicity steps)
+* `exp_box_30`, `log_box_30`  fails / about 1–2 s
 * `pi_*_30`, `pi_sq_*` fails / under 0.5 s each  [`π` known to 20 digits only]
 * `exp_one_*`, `log_two_*`, `exp_cancel`, `sin_cancel`, `log_cancel`  fails / under 0.3 s each
 * `sin_one_*`, `cos_one_*`, `logb_two_ten`, `cosh_sinh_one`, `sin_cos_two`  fails / 0.2–0.9 s
-* `exp_box` (bisection, plain enclosures)  about 2.8 s
+* `exp_box`  about 1 s
   [before the 128-bit elementary functions, all of these but `exp_box` failed at 128 too]
 -/
 import RealFPMathlib.Front
@@ -89,18 +92,29 @@ theorem sqrt_cancel_upper : Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 < 5.01e-11 := by
 theorem sqrt_cancel_lower : 4.99e-11 < Real.sqrt (10 ^ 20 + 1) - 10 ^ 10 := by
   interval (precision := 128)
 
-/-! ### A box
+/-! ### Boxes: monotonicity and centred forms at 128
 
 The maximum of `x² - x/3` on `[1, 2]` is `10/3` at `x = 2`. With a margin of `10⁻¹⁸` the
-64-bit check fails even with monotonicity (the endpoint value is rounded); at precision 128
-plain bisection proves it (the box next to `x = 2` must be narrower than `10⁻¹⁸`). -/
+64-bit check fails even with monotonicity (the endpoint value is rounded). At precision 128 the
+derivative `2x - 1/3 ≥ 0` is proved on the box and the bound is checked at `x = 2`: one
+monotonicity step, two kernel evaluations. Plain bisection (`deriv := false`) needs about 100
+boxes (the box next to `x = 2` must be narrower than the margin). -/
 theorem quad_box (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-18 := by
   fail_if_success interval
-  interval (precision := 128) (depth := 70)
+  interval (precision := 128)
 
-/-- The same with a margin of `10⁻³⁰` (the last box is about `10⁻³⁰` wide). -/
 theorem quad_box_30 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
-  interval (precision := 128) (depth := 110)
+  interval (precision := 128)
+
+/-- The same by plain bisection (100 boxes at depth 110). -/
+theorem quad_box_30_bisect (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) :
+    x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
+  interval (precision := 128) (deriv := false) (depth := 110)
+
+/-- Interior maximum `1/4` at `x = 1/2`: one split at `1/2`, then monotone on each half (all
+exact in binary64 too, so precision 64 also proves this one). -/
+theorem logistic_box (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x * (1 - x) ≤ 1 / 4 + 1e-30 := by
+  interval (precision := 128)
 
 /-! ### Elementary functions to about 30 digits
 
@@ -172,10 +186,25 @@ theorem sin_cos_two : 1 - 1e-30 < Real.sin 2 ^ 2 + Real.cos 2 ^ 2 := by
   fail_if_success interval
   interval (precision := 128)
 
-/-! ### A transcendental box -/
+/-! ### Transcendental boxes
+
+`exp x - x` on `[0, 1]` is maximal at `x = 1` with value `e - 1 = 1.71828182845904523536028747135266…`.
+The derivative `exp x - 1` is `≥ 0` on `[1/2, 1]` (one split, one monotonicity step); plain
+bisection at depth 24 cannot reach the margin of about `10⁻³²`. -/
+theorem exp_box_30 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) :
+    Real.exp x - x ≤ 1.7182818284590452353602874713527 := by
+  fail_if_success interval
+  fail_if_success interval (precision := 128) (deriv := false)
+  interval (precision := 128)
 
 theorem exp_box : ∀ x : ℝ, 0 ≤ x → x ≤ 1 → Real.exp x - x ≤ 1.72 := by
   realfp (precision := 128)
+
+/-- `log (1 + x) ≤ log 1.5 = 0.405465108108164381978013115464349…` on `[0, 1/2]`. -/
+theorem log_box_30 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1 / 2) :
+    Real.log (1 + x) ≤ 0.4054651081081643819780131154644 := by
+  fail_if_success interval
+  interval (precision := 128)
 
 /-! ### Functions without a 128-bit implementation
 

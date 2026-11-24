@@ -23,7 +23,7 @@ How it works:
 -/
 import RealFPMathlib.IntervalSound
 import RealFPMathlib.I128Sound
-import RealFPMathlib.I128Dyadic
+import RealFPMathlib.I128Deriv
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.Opt
 import RealFPMathlib.Roots
@@ -925,6 +925,53 @@ where
     setGoals saved
     instantiateMVars hM
 
+partial def dcertQToExpr : Interval128.Dy.DCert → Expr
+  | .leaf => mkConst ``Interval128.Dy.DCert.leaf
+  | .split i d l r => mkApp4 (mkConst ``Interval128.Dy.DCert.split) (toExpr i) (dyToExpr d)
+      (dcertQToExpr l) (dcertQToExpr r)
+  | .mono i inc dc c => mkApp4 (mkConst ``Interval128.Dy.DCert.mono) (toExpr i) (toExpr inc)
+      (dcertQToExpr dc) (dcertQToExpr c)
+  | .center i d => mkApp2 (mkConst ``Interval128.Dy.DCert.center) (toExpr i) (dyToExpr d)
+
+/-- (splits, monotonicity steps, centred-form leaves) of a 128-bit certificate. -/
+def dqStats : Interval128.Dy.DCert → Nat × Nat × Nat
+  | .leaf => (0, 0, 0)
+  | .center _ _ => (0, 0, 1)
+  | .split _ _ l r => let a := dqStats l; let b := dqStats r; (a.1 + b.1 + 1, a.2.1 + b.2.1, a.2.2 + b.2.2)
+  | .mono _ _ dc c => let a := dqStats dc; let b := dqStats c; (a.1 + b.1, a.2.1 + b.2.1 + 1, a.2.2 + b.2.2)
+
+/-- Proof of `Interval128.Dy.checkDQ e g upper cert env = true`, `chunk` boxes per kernel check. -/
+partial def proveCheckD128 (chunk : Nat) (eE gE upperE : Expr) (cert : Interval128.Dy.DCert)
+    (envE : Expr) : TacticM Expr := do
+  match cert with
+  | .split i q l r =>
+    if cert.leaves > chunk then
+      let lem := mkAppN (← mkC ``RealFP.I128Q.checkDQ_split_of)
+        #[eE, gE, upperE, toExpr i, dyToExpr q, dcertQToExpr l, dcertQToExpr r, envE]
+      let ty ← inferType lem
+      let .forallE _ hlT b1 _ := ty | throwError "interval: internal (split lemma)"
+      let .forallE _ hrT _ _ := b1 | throwError "interval: internal (split lemma)"
+      let getEnv (t : Expr) : MetaM Expr := do
+        let some (_, lhs, _) := t.eq? | throwError "interval: internal (env)"
+        return lhs.appArg!
+      let hl ← proveCheckD128 chunk eE gE upperE l (← getEnv hlT)
+      let hr ← proveCheckD128 chunk eE gE upperE r (← getEnv hrT)
+      return mkAppN lem #[hl, hr]
+    else leafChunk
+  | _ => leafChunk
+where
+  leafChunk : TacticM Expr := do
+    let chk := mkApp5 (← mkC ``Interval128.Dy.checkDQ) eE gE upperE (dcertQToExpr cert) envE
+    let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
+    let saved ← getGoals
+    setGoals [hM.mvarId!]
+    let t0 ← IO.monoMsNow
+    RealFP.closeCheck
+    let t1 ← IO.monoMsNow
+    trace[interval] "precision 128 check: {cert.leaves} leaves {dqStats cert}, {t1 - t0} ms"
+    setGoals saved
+    instantiateMVars hM
+
 /-- Close `lhs ≤ rhs` / `lhs < rhs` (main goal) from `pf : A ≤ B` / `A < B` via two
 equalities proved by `denoteSimp`. -/
 def closeWith (strict : Bool) (pf : Expr) : TacticM Unit := do
@@ -946,18 +993,20 @@ def closeWith (strict : Bool) (pf : Expr) : TacticM Unit := do
       throwError "interval: could not match the goal with its reified form"
   setGoals saved.tail
 
-/-- `f ≤ c` etc. with 128-bit dyadic endpoints (`Interval128/Dyadic.lean`): plain bisection at
-short dyadic midpoints, checked by `RealFP.I128Q.prove_le` / `_lt` / `_ge` / `_gt`. -/
+/-- `f ≤ c` etc. with 128-bit dyadic endpoints (`Interval128/Dyadic.lean`): bisection at short
+dyadic midpoints plus (unless `deriv := false`) monotonicity and centred-form steps, checked by
+`RealFP.I128Q.proveD_le` / `_lt` / `_ge` / `_gt`. -/
 def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) (e : IExpr)
     (bs : Array (ℚ × ℚ)) : TacticM Unit := do
   let env := Interval128.Dy.boxes bs.toList
   let (g, gName, pName) :=
     match strict, upper with
-    | false, true => (Interval128.Dy.gLe c, ``Interval128.Dy.gLe, ``RealFP.I128Q.prove_le)
-    | true, true => (Interval128.Dy.gLt c, ``Interval128.Dy.gLt, ``RealFP.I128Q.prove_lt)
-    | false, false => (Interval128.Dy.gGe c, ``Interval128.Dy.gGe, ``RealFP.I128Q.prove_ge)
-    | true, false => (Interval128.Dy.gGt c, ``Interval128.Dy.gGt, ``RealFP.I128Q.prove_gt)
-  let (cert?, evals) := (Interval128.Dy.search e g cfg.depth cfg.maxBoxes env).run 0
+    | false, true => (Interval128.Dy.gLe c, ``Interval128.Dy.gLe, ``RealFP.I128Q.proveD_le)
+    | true, true => (Interval128.Dy.gLt c, ``Interval128.Dy.gLt, ``RealFP.I128Q.proveD_lt)
+    | false, false => (Interval128.Dy.gGe c, ``Interval128.Dy.gGe, ``RealFP.I128Q.proveD_ge)
+    | true, false => (Interval128.Dy.gGt c, ``Interval128.Dy.gGt, ``RealFP.I128Q.proveD_gt)
+  let (cert?, evals) :=
+    (Interval128.Dy.searchDQ cfg.deriv cfg.maxBoxes e g upper cfg.order true cfg.depth env).run 0
   let lifted := (Interval128.Dy.lifted e).eraseDups
   let note : MessageData := if lifted.isEmpty then m!"" else
     m!"; note: {", ".intercalate lifted} {if lifted.length == 1 then "is" else "are"} evaluated \
@@ -968,19 +1017,21 @@ def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) 
       {cfg.maxBoxes} boxes ({evals} evaluations); enclosure on the whole box: \
       {F.toString}, bound {fmtRat c}{note}"
   withCurrHeartbeats do
-    trace[interval] "precision 128: {vars.size} variable(s), {cert.leaves} boxes, {evals} native \
-      evaluations{note}"
+    let (ns, nm, nc) := dqStats cert
+    trace[interval] "precision 128: {vars.size} variable(s), {cert.leaves} leaves ({ns} splits, \
+      {nm} monotonicity steps, {nc} centred forms), {evals} native evaluations{note}"
     let eE := iexprToExpr e
     let bsE := toExpr bs.toList
     let cE := toExpr c
+    let upperE := toExpr upper
     let xsE ← mkListLit (mkConst ``Real) vars.toList
     let gE := mkApp (mkConst gName) cE
     let envE := mkApp (mkConst ``Interval128.Dy.boxes) bsE
     let saved ← getGoals
     let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
-    let hM ← proveCheck128 cfg.chunk eE gE cert envE
+    let hM ← proveCheckD128 cfg.chunk eE gE upperE cert envE
     setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
-    let pf := mkAppN (← mkC pName) #[eE, bsE, cE, certQToExpr cert, hM, xsE, hxsM]
+    let pf := mkAppN (← mkC pName) #[eE, bsE, cE, dcertQToExpr cert, hM, xsE, hxsM]
     closeWith strict pf
 
 /-- Prove `lhs ≤ rhs` (`strict = false`) or `lhs < rhs` on the main goal. -/

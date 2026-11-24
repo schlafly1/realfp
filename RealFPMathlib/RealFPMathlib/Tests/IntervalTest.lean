@@ -128,6 +128,14 @@ theorem p12 : Real.sin 1 < 0.8414709848078965066525023216303 ∧
 theorem p13 : Real.cosh 1 ^ 2 - Real.sinh 1 ^ 2 < 1 + 1e-30 ∧ Real.tanh 1 < 0.761594155955764888119458282605 ∧
     Real.logb 10 2 < 0.301029995663981195213738894725 := by interval (precision := 128)
 theorem p14 : Real.sin 1000 < 0.82687954053200256025588742911 := by interval (precision := 128)
+-- 128-bit derivative certificates (monotonicity, split + monotonicity, two variables)
+theorem p15 (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
+  interval (precision := 128)
+theorem p16 (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : 1.718281828459045235360287471352 < Real.exp x - x + 1 := by
+  interval (precision := 128)
+theorem p17 (x y : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) (h2 : 0 ≤ y) (h3 : y ≤ 1) :
+    x * y - x - y ≤ 1e-30 := by
+  interval (precision := 128)
 
 /-- error: realfp (trust := kernel): (precision := 128) is supported only for `interval` goals (bounds `f ≤ c`, `f < c`, `f ∈ Icc a b` over a box) so far, not for `root_exists`; drop it to use precision 64 -/
 #guard_msgs in

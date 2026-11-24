@@ -14,6 +14,7 @@ or checked inside the definition. Soundness over `ℝ`: `RealFPMathlib/I128Dyadi
 An endpoint `none` is unbounded (`-∞` below, `+∞` above).
 -/
 import Interval128.Reflect
+import Interval64.Kernel.Deriv
 
 namespace Interval128.Dy
 
@@ -530,6 +531,150 @@ partial def search (e : IExpr) (g : DI → Bool) (depth maxEvals : Nat) :
       let X := env.getD i DI.zero
       let some l ← search e g (depth - 1) maxEvals (env.set i (leftAt X m)) | return none
       let some r ← search e g (depth - 1) maxEvals (env.set i (rightAt X m)) | return none
+      return some (.split i m l r)
+
+/-! ### Derivative certificates (monotonicity, centred form)
+
+Mirror of `Interval64.KF.DCert` / `checkD` (`Interval64/Kernel/Deriv.lean`) with dyadic
+endpoints. Soundness: `RealFP.I128Q.checkDQ_sound` (`RealFPMathlib/I128Deriv.lean`). -/
+
+/-- The lower endpoint is finite and `> 0`. -/
+def posQ (X : DI) : Bool := match X.lo with | some a => decide (0 < a.m) | none => false
+/-- The interval excludes `0` (finite endpoint of strict sign). -/
+def nzQ (X : DI) : Bool :=
+  posQ X || (match X.hi with | some b => decide (b.m < 0) | none => false)
+
+/-- `e` is differentiable on the box (as `Interval64.KF.domOK`). -/
+def domOKQ (env : List DI) : IExpr → Bool
+  | .var _ => true
+  | .rat _ => true
+  | .add a b => domOKQ env a && domOKQ env b
+  | .sub a b => domOKQ env a && domOKQ env b
+  | .mul a b => domOKQ env a && domOKQ env b
+  | .div a b => domOKQ env a && domOKQ env b && nzQ (evalQ env b)
+  | .neg a => domOKQ env a
+  | .inv a => domOKQ env a && nzQ (evalQ env a)
+  | .sqrt a => domOKQ env a && posQ (evalQ env a)
+  | .abs _ => false
+  | .pow a _ => domOKQ env a
+  | .exp a => domOKQ env a
+  | .log a => domOKQ env a && posQ (evalQ env a)
+  | .sin a => domOKQ env a
+  | .cos a => domOKQ env a
+  | .pi => true
+  | .atan a => domOKQ env a
+  | .atan2 _ _ => false
+  | .sinh a => domOKQ env a
+  | .cosh a => domOKQ env a
+  | .tanh a => domOKQ env a
+  | .log2 a => domOKQ env a && posQ (evalQ env a)
+  | .log10 a => domOKQ env a && posQ (evalQ env a)
+  | .tan a => domOKQ env a && nzQ (evalQ env (.cos a))
+  | .asin a => domOKQ env a && posQ (evalQ env (.sub (.rat 1) (.pow a 2)))
+  | .acos a => domOKQ env a && posQ (evalQ env (.sub (.rat 1) (.pow a 2)))
+  | .ext _ _ _ => false
+
+/-- Intersection (`none` = unbounded). -/
+def DI.meet (A B : DI) : DI :=
+  ⟨match A.lo, B.lo with
+    | some a, some b => some (Dy.max a b) | some a, none => some a | none, b => b,
+   match A.hi, B.hi with
+    | some a, some b => some (Dy.min a b) | some a, none => some a | none, b => b⟩
+
+/-- Centred form in variable `i` around the point `d`, intersected with the plain enclosure. -/
+def centerQ (env : List DI) (e : IExpr) (i : Nat) (d : Dy) : DI :=
+  DI.meet (evalQ env e)
+    (DI.add (evalQ (env.set i (DI.pt d)) e)
+      (DI.mul (evalQ env (e.deriv i)) (DI.sub (env.getD i DI.zero) (DI.pt d))))
+
+/-- `d` lies in `X` (both endpoints finite). -/
+def inside (X : DI) (d : Dy) : Bool :=
+  match X.lo, X.hi with
+  | some a, some b => decide (toRat a ≤ toRat d ∧ toRat d ≤ toRat b)
+  | _, _ => false
+
+inductive DCert where
+  | leaf
+  | split (i : Nat) (d : Dy) (l r : DCert)
+  /-- `∂ᵢe ≥ 0` (`inc`) or `≤ 0` on the box (certificate `dc`); continue at the endpoint. -/
+  | mono (i : Nat) (inc : Bool) (dc c : DCert)
+  /-- Centred form in variable `i` at the dyadic `d`. -/
+  | center (i : Nat) (d : Dy)
+  deriving Repr, Inhabited
+
+def DCert.leaves : DCert → Nat
+  | .leaf => 1
+  | .split _ _ l r => l.leaves + r.leaves
+  | .mono _ _ dc c => dc.leaves + c.leaves
+  | .center _ _ => 1
+
+/-- `upper`: the goal predicate is downward closed (`f ≤ c`, `f < c`); otherwise upward closed. -/
+def checkDQ (e : IExpr) (g : DI → Bool) (upper : Bool) : DCert → List DI → Bool
+  | .leaf, env => g (evalQ env e)
+  | .split i d l r, env =>
+    checkDQ e g upper l (env.set i (leftAt (env.getD i DI.zero) d)) &&
+      checkDQ e g upper r (env.set i (rightAt (env.getD i DI.zero) d))
+  | .mono i inc dc c, env =>
+    Nat.blt i env.length && domOKQ env e &&
+      (bif inc then checkDQ (e.deriv i) (gGe 0) false dc env
+       else checkDQ (e.deriv i) (gLe 0) true dc env) &&
+      (match (bif inc == upper then (env.getD i DI.zero).hi else (env.getD i DI.zero).lo) with
+       | some p => checkDQ e g upper c (env.set i (DI.pt p))
+       | none => false)
+  | .center i d, env =>
+    Nat.blt i env.length && domOKQ env e && inside (env.getD i DI.zero) d &&
+      g (centerQ env e i d)
+
+/-- Variables whose interval is not a point, widest first. -/
+def wideVarsQ (env : List DI) : List Nat :=
+  let ws := (List.range env.length).filterMap fun i =>
+    let X := env.getD i DI.zero
+    match X.lo, X.hi with
+    | some a, some b => if toRat a < toRat b then some (i, toRat b - toRat a) else none
+    | _, _ => none
+  (ws.mergeSort (fun p q => decide (q.2 ≤ p.2))).map (·.1)
+
+/-- Certificate search (compiled, untrusted), as `RealFP.IntervalTactic.searchD`: plain enclosure,
+then monotonicity with the derivative sign visible, then the centred form at the midpoint of the
+widest variable, then monotonicity with the sign proved by higher derivatives, else bisection. -/
+partial def searchDQ (deriv : Bool) (maxEvals : Nat) (e : IExpr) (g : DI → Bool) (upper : Bool)
+    (order : Nat) (allowSplit : Bool) : Nat → List DI → StateM Nat (Option DCert)
+  | depth, env => do
+    modify (· + 1)
+    if g (evalQ env e) then return some .leaf
+    if (← get) ≥ maxEvals then return none
+    if deriv && domOKQ env e then
+      let tryEnd (i : Nat) (inc : Bool) (dc : DCert) : StateM Nat (Option DCert) := do
+        let X := env.getD i DI.zero
+        let some p := (if inc == upper then X.hi else X.lo) | return none
+        let some c ← searchDQ deriv maxEvals e g upper order allowSplit depth (env.set i (DI.pt p))
+          | return none
+        return some (.mono i inc dc c)
+      for i in wideVarsQ env do
+        modify (· + 1)
+        let D := evalQ env (e.deriv i)
+        if gGe 0 D then
+          if let some c ← tryEnd i true .leaf then return some c
+        if gLe 0 D then
+          if let some c ← tryEnd i false .leaf then return some c
+      if let some (i, m) := pickSplit env then
+        modify (· + 1)
+        if checkDQ e g upper (.center i m) env then return some (.center i m)
+      if order > 0 then
+        for i in wideVarsQ env do
+          for inc in [true, false] do
+            let gs := if inc then gGe 0 else gLe 0
+            if let some dc ← searchDQ deriv maxEvals (e.deriv i) gs (!inc) (order - 1) false depth env then
+              if let some c ← tryEnd i inc dc then return some c
+    if depth == 0 || !allowSplit || (← get) ≥ maxEvals then return none
+    match pickSplit env with
+    | none => return none
+    | some (i, m) =>
+      let X := env.getD i DI.zero
+      let some l ← searchDQ deriv maxEvals e g upper order allowSplit (depth - 1)
+        (env.set i (leftAt X m)) | return none
+      let some r ← searchDQ deriv maxEvals e g upper order allowSplit (depth - 1)
+        (env.set i (rightAt X m)) | return none
       return some (.split i m l r)
 
 /-- Display. -/
