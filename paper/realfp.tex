@@ -1,0 +1,847 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cleveref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\F}{\mathbb{F}}
+\newcommand{\RD}{\mathrm{RD}}
+\newcommand{\RU}{\mathrm{RU}}
+\newcommand{\lean}[1]{\texttt{#1}}
+\newcommand{\realfp}{\textsf{realfp}}
+
+\definecolor{kw}{RGB}{0,0,160}
+\definecolor{cm}{RGB}{100,100,100}
+\lstdefinelanguage{lean}{
+  morekeywords={theorem,example,by,import,namespace,end,fun,def,open},
+  sensitive=true,
+  morecomment=[l]{--},
+  morecomment=[s]{/-}{-/},
+  morestring=[b]",
+}
+\lstset{
+  language=lean,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{kw}\bfseries,
+  commentstyle=\color{cm}\itshape,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  xleftmargin=1em,
+  aboveskip=0.6em, belowskip=0.6em,
+  extendedchars=true,
+  literate=
+    {∀}{{$\forall$}}1 {∃}{{$\exists$}}1 {∈}{{$\in$}}1 {ℝ}{{$\mathbb{R}$}}1
+    {ℚ}{{$\mathbb{Q}$}}1 {ℕ}{{$\mathbb{N}$}}1 {≤}{{$\le$}}1 {≥}{{$\ge$}}1
+    {∫}{{$\textstyle\int$}}1 {∧}{{$\wedge$}}1 {×}{{$\times$}}1 {→}{{$\to$}}1
+    {≠}{{$\ne$}}1 {ˢ}{{$^{s}$}}1 {π}{{$\pi$}}1 {√}{{$\surd$}}1
+    {²}{{$^2$}}1 {⁻}{{$^{-}$}}1 {¹}{{$^1$}}1,
+}
+
+\title{\realfp: Fast, Kernel-Checked Interval Arithmetic\\ for Lean~4 and Mathlib}
+\author{R.~Schlafly%
+% TODO: affiliation and e-mail
+}
+\date{November 2026}
+
+\emergencystretch=2em
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\realfp{} is an open-source Lean~4 library for proving inequalities, root
+existence and uniqueness, integral bounds, positive definiteness and extremal
+values of real-valued expressions by interval arithmetic. Interval endpoints
+are IEEE~754 binary64 numbers; every directed-rounding operation is a
+computable Lean definition proved correct against Mathlib's real numbers, and
+compiled code runs the same operations through a small C runtime that uses
+hardware directed rounding (AVX-512 embedded rounding on x86-64, or a portable
+round-to-nearest plus exact-error-term method elsewhere). A proof tactic
+splits each goal into an untrusted native search for a certificate and a
+verified Boolean checker. By default the checker is evaluated by Lean's
+kernel, so the resulting theorems depend only on Lean's three standard axioms
+and do not trust the C code, the compiler or the processor. Kernel checking
+uses natural-number mirrors of the floating-point operations that are proved
+equal to the specification. An opt-in native mode trades a larger trusted
+base for speed on very large certificates, and a 128-bit dyadic mode gives
+about 38 significant digits. Beyond plain bisection, \realfp{} uses derivative
+and monotonicity certificates, Krawczyk's operator, Taylor-model quadrature,
+exact rational $LDL^{\mathsf T}$ factorizations, and a second-order
+certificate for bounds that are attained at interior points. We describe the
+design, state the soundness theorems, give examples, compare with Arb/FLINT,
+CoqInterval, FloatLib and LeanCert, and report benchmarks.
+\end{abstract}
+
+\section{Introduction}
+
+Computer-assisted proofs in analysis often come down to a large number of
+explicit numerical facts: a function is positive on a box, a system has
+exactly one zero in a region, an integral lies in a given interval.
+Interval arithmetic~\cite{moore2009} turns such facts into theorems: if every
+operation returns an interval guaranteed to contain the exact result, an
+enclosure that excludes zero proves that the quantity is not zero. Rigorous
+numerics of this kind was essential to Tucker's proof that the Lorenz
+attractor exists~\cite{tucker2002} and to the Kepler conjecture, whose
+formal proof (Flyspeck) verified hundreds of nonlinear inequalities in HOL
+Light~\cite{flyspeck,solovyevhales2013}.
+
+Lean~4~\cite{lean4} with Mathlib~\cite{mathlib} has become a common system
+for formalizing mathematics, but its native \lean{Float} type is opaque to
+the kernel, so nothing can be proved about a hardware floating-point
+computation. \realfp{}~\cite{realfp} closes that gap. It is meant for the
+mathematician who has a numerical lemma inside a larger formal proof and
+wants it proved quickly, with a small and clearly stated trusted base, by a
+library that can simply be added as a Lake dependency. Two lines suffice for
+typical goals:
+\begin{lstlisting}
+example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by realfp
+example : ∃! x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp
+\end{lstlisting}
+Both theorems are checked by the Lean kernel and depend only on
+\lean{propext}, \lean{Classical.choice} and \lean{Quot.sound}.
+
+\paragraph{Contributions.}
+\begin{itemize}[nosep]
+\item A binary64 interval library whose directed roundings are Lean
+  definitions with machine-checked enclosure theorems, and whose compiled
+  implementation uses hardware directed rounding (\cref{sec:design}).
+\item A kernel fast path: natural-number mirrors of all operations, proved
+  equal to the specification, so that certificates are checked by
+  \lean{decide +kernel} without trusting compiled code (\cref{sec:kernel}).
+\item One front-door tactic, \lean{realfp}, over a family of verified
+  certificate checkers: bisection, derivative and monotonicity certificates,
+  multivariate centred forms, Krawczyk systems, Taylor-model integration,
+  exact positive-definiteness, optimization, and touching-point
+  certificates; and a 128-bit dyadic mode for all of them (\cref{sec:tactics}).
+\item An assurance story aimed at users: no \lean{sorry}, a build-time axiom
+  audit of every theorem, bit-for-bit differential tests of the C runtime,
+  and continuous integration (\cref{sec:assurance}).
+\item Benchmarks against other Lean tools and a downstream re-verification
+  of a published formal proof (\cref{sec:bench}).
+\end{itemize}
+This paper describes version~0.1.0 together with the touching-point
+features added after it on the main branch. The library is licensed under
+Apache-2.0; full documentation, benchmarks scripts and logs are in the
+repository~\cite{realfp}.
+
+\section{Background}
+
+\paragraph{Directed rounding.}
+Let $\F$ be the set of binary64 numbers, extended by $\pm\infty$. IEEE~754
+\cite{ieee754} specifies, for each basic operation $\circ\in\{+,-,\times,\div\}$
+and for $\sqrt{\cdot}$, that the result is the exact real result rounded by a
+stated rule. The rules $\RD$ (toward $-\infty$) and $\RU$ (toward
+$+\infty$) give $\RD(a\circ b)\le a\circ b\le\RU(a\circ b)$. An interval
+$[\ell,u]$ with $\ell,u\in\F$ denotes $\{x\in\R:\ell\le x\le u\}$, and
+outward rounding yields the inclusion property $x\in X,\ y\in Y\Rightarrow
+x\circ y\in X\circledcirc Y$. Composing such operations along an expression
+gives an enclosure of its range over a box; subdividing the box tightens it.
+On x86-64 the AVX-512 instruction set allows the rounding direction to be
+encoded in each instruction (``embedded rounding''), so no global rounding
+mode has to be switched.
+
+\paragraph{Kernel and native evaluation in Lean.}
+A Lean proof of a decidable proposition $P$ can be produced by evaluation.
+\lean{decide +kernel} asks the kernel to reduce the decision procedure to
+\lean{true}; the result depends on nothing but the kernel and the standard
+axioms. Lean's kernel has GMP-accelerated natural-number arithmetic, which
+makes evaluation on \lean{Nat} encodings fast. \lean{native\_decide} instead
+compiles the decision procedure, runs it, and admits the result through an
+auxiliary axiom (generated from \lean{Lean.ofReduceBool}); this trusts the
+Lean compiler, the C compiler, and any code attached with
+\lean{@[implemented\_by]} or \lean{@[extern]}. \realfp{} supports both,
+with kernel evaluation as the default.
+
+\section{Design}\label{sec:design}
+
+\subsection{Specification in Lean, speed in C}
+
+Every directed operation (\lean{addDown}, \lean{mulUp}, \lean{sqrtDown},
+\dots) is a plain, computable Lean definition: a software implementation of
+IEEE binary64 rounding toward $\pm\infty$ on the bit patterns, built on
+Lean's \lean{Float} model. A C kernel is attached to each definition with
+\lean{@[implemented\_by]}. Compiled code (\lean{\#eval}, the certificate
+search inside the tactics, and \lean{native\_decide}) runs the C version,
+while the kernel sees only the Lean definition. There are two C backends:
+\begin{itemize}[nosep]
+\item \emph{AVX-512.} Each operation is a single instruction with embedded
+  $\RD$ or $\RU$ rounding (e.g.\ \lean{\_mm\_add\_round\_sd}).
+\item \emph{Portable RN+error.} The result $s=\mathrm{RN}(a\circ b)$ is
+  computed in the default round-to-nearest mode together with its exact
+  error term: TwoSum for addition, $\mathrm{fma}(a,b,-s)$ for
+  multiplication, the residual $\mathrm{fma}(-q,b,a)$ for division and
+  $\mathrm{fma}(-s,s,x)$ for square root. The sign of the error decides
+  whether to step to the adjacent float. Rare cases where the error term
+  itself could underflow (tiny operands) take a scaled or exact slow path.
+  This backend is the default on arm64 and is used in CI.
+\end{itemize}
+Both backends are required to agree bit for bit with the Lean
+specification, and they are tested to do so (\cref{sec:assurance}). The
+theorems never depend on which backend is used.
+
+Elementary functions ($\exp,\log,\log_2,\log_{10},\sin,\cos,\tan,\arctan,
+\arcsin,\arccos,\sinh,\cosh,\tanh$, $\pi$, real powers) have a Lean
+specification given by rational enclosures with explicit error terms,
+refined by a Ziv loop until the directed rounding of both ends agrees. At
+run time they use the correctly rounded CORE-MATH functions~\cite{coremath}
+executed under $\RD$ or $\RU$ hardware rounding.
+
+\subsection{Interval semantics}
+
+An \lean{Interval64} is a pair of binary64 bit patterns. Its meaning is a set
+of reals,
+\[
+  \lean{X.toSet}=\{x\in\R:\ \lean{lo}\le x\le\lean{hi}\},
+\]
+where an endpoint is read as an extended real ($-\infty$ and $+\infty$
+are allowed, so overflow is harmless) and a NaN endpoint makes the set
+empty. Expressions are reified into an inductive type \lean{IExpr} with
+variables, rational constants, $+,-,\times,\div$, negation, inverse,
+$\sqrt{\cdot}$, $|\cdot|$, natural powers, the elementary functions above,
+$\pi$, $\operatorname{atan2}$, and user-registered unary functions. Its
+denotation \lean{e.denote xs} uses Mathlib's (total) real functions, so for
+example $\log 0=0$ and $1/0=0$ are covered by the enclosures as Mathlib
+defines them.
+
+\subsection{The kernel fast path}\label{sec:kernel}
+
+Reducing the bit-level specification in the kernel is correct but slow
+(about 3\,ms per operation, \cref{tab:ops}). \realfp{} therefore defines
+\lean{KF} and \lean{KI}: mirrors of the scalar and interval operations
+written directly on \lean{Nat}, which the kernel evaluates with GMP. They
+are proved equal to the specification
+(\lean{Interval64Proofs/KernelEq.lean} and neighbours); for expressions,
+\[
+  \lean{toI}\,(\lean{evalK}\ \mathit{env}\ e) \;=\; \lean{evalI}\,(\mathit{env}.\lean{map toI})\ e ,
+\]
+where \lean{evalI} is the specification-level evaluator
+(\lean{evalK\_toI}). Speed in the kernel therefore costs nothing in trust.
+
+\subsection{Search and check}
+
+Every tactic splits its work in two.
+\emph{Search} (untrusted) runs compiled code with the fast C kernels and
+produces a certificate: a bisection tree, derivative signs, a Krawczyk box
+and preconditioner, a quadrature partition, an $LDL^{\mathsf T}$ factor.
+A bug in the search can only make the tactic fail.
+\emph{Check} (trusted) is a Boolean function of the goal data and the
+certificate, proved sound in Lean/Mathlib, and closed by
+\lean{decide +kernel} (default) or \lean{native\_decide} (opt-in).
+
+\subsection{128-bit mode}
+
+When 16 digits are not enough, \lean{(precision := 128)} switches every
+tactic to 128-bit dyadic intervals (\lean{Interval128.Dy}): endpoints
+$m\cdot 2^{e}$ with 128-bit mantissas, implemented directly on \lean{Nat}
+and \lean{Int} for the kernel, so there is no separate C runtime to trust.
+Transcendental functions $\exp,\log,\log_2,\log_{10},\sin,\cos,\sinh,\cosh,
+\tanh$ are evaluated at this precision; $\pi$ comes from 40-digit rational
+bounds proved from Mathlib's. Two implementation details matter for kernel
+speed: split points are emitted as sums of 62-bit limbs (the kernel is slow
+on literals $\ge 2^{63}$), and 128-bit integration uses fixed-point Taylor
+models whose products are each certified by a witness, so the kernel never
+re-evaluates shared intermediate terms.
+
+\section{Soundness theorems}\label{sec:theorems}
+
+We state the main theorems in mathematical notation and give their Lean
+names. All of them are proved in Lean without \lean{sorry} and depend only
+on the three standard axioms.
+
+\begin{theorem}[Directed rounding; \lean{add\_encloses}, \lean{div\_encloses}, \dots]
+\label{thm:round}
+Let $a,b$ be finite binary64 numbers with rational values $q_a,q_b$, and
+let $\circ\in\{+,-,\times,\div\}$ (with $q_b\ne0$ for $\div$). Then
+\[
+  \lean{opDown}(a,b)\ \le\ q_a\circ q_b\ \le\ \lean{opUp}(a,b)
+\]
+as extended reals, and both sides equal $q_a\circ q_b$ when it is
+representable. The analogous statements hold for $\sqrt{\cdot}$.
+\end{theorem}
+These are proved in the core package \lean{Interval64Proofs}, which does not
+depend on Mathlib, by reasoning about the bit-level specification.
+
+\begin{theorem}[Inclusion; \lean{add\_mem\_toSet}, \dots, \lean{eval\_sound}]
+\label{thm:eval}
+For every expression $e$ and lists $x=(x_1,\dots,x_n)$ of reals and
+$X=(X_1,\dots,X_n)$ of intervals with $x_i\in X_i$,
+\[
+  e.\lean{denote}(x)\ \in\ \lean{evalI}(X,e).\lean{toSet}.
+\]
+\end{theorem}
+The proof is by induction on $e$; each case is an inclusion lemma for one
+operation over $\R$, such as $x\in X,\ y\in Y\Rightarrow x+y\in X+Y$, with
+infinite endpoints allowed.
+
+\begin{theorem}[Certificate soundness; \lean{prove\_le}, \lean{checkK\_sound}]
+\label{thm:cert}
+Let $e$ be an expression, $B=\prod_i[a_i,b_i]$ a box with rational
+endpoints, $c\in\Q$ and $\mathcal C$ a bisection certificate. If
+$\lean{checkK}(e,\ \lean{gLe}\ c,\ \mathcal C,\ B)=\lean{true}$, then
+$e.\lean{denote}(x)\le c$ for every $x\in B$. The same holds for $<$, $\ge$,
+$>$ and $\ne$ (\lean{prove\_lt}, \lean{prove\_ge}, \lean{prove\_gt},
+\lean{prove\_ne}).
+\end{theorem}
+
+In kernel mode the hypothesis $\lean{checkK}(\dots)=\lean{true}$ is
+discharged by \lean{decide +kernel}. Combining
+\cref{thm:round,thm:eval,thm:cert} with the kernel mirror gives:
+
+\begin{corollary}[Trusted base]\label{cor:trust}
+A theorem proved by a \realfp{} tactic in the default mode
+\lean{trust := kernel} depends only on \lean{propext},
+\lean{Classical.choice} and \lean{Quot.sound}. It trusts the Lean kernel
+(including its GMP arithmetic) and the meaning of the Mathlib definitions in
+its statement; it does not trust the C runtime, any compiler, the
+floating-point hardware, or the search code. In \lean{trust := native}
+mode the theorem additionally depends on generated
+\lean{native\_decide} axioms (one per checked chunk), and the proof additionally trusts the
+Lean and C compilers, the agreement of each C kernel with its Lean
+specification, CORE-MATH's correct rounding under directed modes, and the
+default floating-point environment (no flush-to-zero).
+\end{corollary}
+The corollary is not a Lean theorem but a statement about what
+\lean{\#print axioms} reports; it is enforced mechanically by the axiom audit
+described in \cref{sec:assurance}.
+
+The other certificate families have soundness theorems of the same shape.
+We list the mathematical content.
+
+\begin{theorem}[Derivative certificates; \lean{checkD\_sound}, \lean{checkM\_sound}]
+If, on a sub-box, the interval enclosure of $\partial f/\partial x_k$ has
+constant sign, the bound may be checked on the corresponding face; if
+$f(m)+\nabla f(X)\cdot(X-m)$ (a centred form) satisfies the bound, so does
+$f$ on $X$. Differentiability on the box is checked by a verified domain
+predicate (\lean{domOK\_sound}), and derivatives are computed symbolically
+by \lean{IExpr.deriv}, proved correct against Mathlib's \lean{HasDerivAt}.
+\end{theorem}
+
+\begin{theorem}[Krawczyk; \lean{kraw\_exists}, \lean{kraw\_unique}]
+Let $F:\R^n\to\R^n$ be given by expressions, $X$ a rational box, $m\in X$,
+$Y,Z$ rational matrices and $q<1$. If the checker verifies
+$m-YF(m)+(I-YJ)(X-m)\subseteq X$, the row sums of $|I-YJ|$ are at most $q$,
+and $\|I-ZY\|_\infty\le q$, where $J$ is an interval enclosure of the
+Jacobian on $X$, then $F$ has exactly one zero in $X$.
+\end{theorem}
+The proof applies Banach's fixed-point theorem to $G(x)=x-YF(x)$ on $X$;
+injectivity of $Y$ turns the fixed point into a zero of $F$~\cite{krawczyk1969}.
+
+\begin{theorem}[Integration; \lean{integral\_bounds\_of\_quadBound}, \lean{integral\_bounds\_of\_quadBoundF}]
+If a partition $a=t_0<\dots<t_N=b$ and, on each cell, a Taylor
+expansion of order $K$ about the midpoint with an interval remainder from
+$f^{(K)}$ on the cell pass the checker, then
+$\ell\le\int_a^b f(x)\,dx\le h$. In 128-bit mode the Taylor models are
+fixed-point polynomials with a rigorous radius, and each product carries
+a witness that the kernel verifies~\cite{makinoberz2003}.
+\end{theorem}
+
+\paragraph{Touching points.}
+Interval bisection cannot prove $f\ge c$ if $f(p)=c$ at an interior point
+$p$: every box containing $p$ has an enclosure whose lower end is slightly
+below $c$. \realfp{} handles such goals with a second-order certificate.
+
+\begin{theorem}[Tangent-plane leaf; \lean{touch\_expand\_gen}, \lean{quad\_nonneg\_of\_cert}, \lean{tanOK\_sound}]
+\label{thm:touch}
+Let $B$ be a box containing $p$, and let $H$ be the interval enclosure of
+the Hessian of $f$ on $B$. Suppose there are a rational symmetric matrix $C$
+and rationals $\rho_k$ such that $\sum_j|S_{kj}-C_{kj}|\le\rho_k$ for every
+real symmetric $S$ with entries in $H$, and $C-\operatorname{diag}(\rho)$
+is positive definite (checked exactly over $\Q$ by an $LDL^{\mathsf T}$
+congruence). Then for all $x\in B$,
+\[
+  f(x)\ \ge\ f(p)+\nabla f(p)\cdot(x-p).
+\]
+Hence $f\ge c$ on $B$ follows from $f(p)+\nabla f(p)\cdot(x-p)\ge c$ on $B$,
+which is checked by interval arithmetic.
+\end{theorem}
+The proof expands $f$ coordinate by coordinate with the one-variable mean
+value theorem, producing $2(f(x)-f(p))=2\nabla f(p)\cdot u+u^{\mathsf T}Su$
+with $u=x-p$ and $S$ symmetric with entries in $H$; the certificate makes
+$u^{\mathsf T}Su\ge0$. When $p$ is rational and $f$ uses only
+$+,-,\times,\div,|\cdot|$ and powers, $f(p)$ and $\nabla f(p)$ are
+evaluated exactly in $\Q$ (\lean{evalQ\_sound}), so the tangent plane at
+an exact touching point such as $(1/3,1/5)$ is exact. With
+\lean{touch := auto} the points are found by an untrusted multistart Newton
+search on $\nabla f=0$.
+
+\section{Tactics}\label{sec:tactics}
+
+\lean{realfp} inspects the goal and dispatches:
+\begin{itemize}[nosep]
+\item $\forall x\in B,\ f\bowtie g$ with ${\bowtie}\in\{\le,<,\ge,>,\ne\}$, and
+  closed inequalities between constants: \lean{interval} (bisection, then
+  derivative, monotonicity and centred-form certificates, Horner forms for
+  polynomials);
+\item $\exists x\in[a,b],\ f(x)=0$ and $\exists!$: \lean{root\_exists},
+  \lean{root\_unique} (sign change plus monotonicity in one variable,
+  Newton search plus Krawczyk for square systems);
+\item $\int_a^b f\in[\ell,h]$: \lean{integral\_bound} (adaptive Taylor
+  quadrature);
+\item \lean{Matrix.PosDef}: \lean{pos\_def} (interval or exact rational
+  $LDL^{\mathsf T}$ congruence certificates);
+\item $\operatorname{sInf}/\operatorname{sSup}$ of $f(B)$, existence of
+  $\exists m\,\forall x$ bounds, witnesses and one-variable argmin:
+  branch-and-bound search, then the same certificates.
+\end{itemize}
+Options include \lean{trust := kernel | native}, \lean{precision := 64 | 128},
+\lean{depth}, and \lean{touch := [p$_1$, \dots] | auto}. Failure messages name
+the failing box in the user's variables and report whether the bound appears
+false (with an estimate of the true minimum) or merely too tight.
+\lean{\#realfp\_min} and \lean{\#realfp\_max} report numeric extrema
+interactively. New unary functions can be registered with an attribute by
+supplying an interval extension, its derivative and a soundness proof; the
+library itself registers $\operatorname{erf}$, $\operatorname{arsinh}$,
+$\operatorname{artanh}$ and $\operatorname{sinc}$ this way.
+
+\section{Examples}\label{sec:examples}
+
+All snippets in this section are compiled in CI and, unless noted, are
+checked by the kernel with the three standard axioms; the times are file
+elaboration times measured for \cref{tab:kn}.
+
+\paragraph{Constants.} Thirty digits of $\pi$ need the 128-bit mode;
+Archimedes' bound and $e^\pi>\pi^e$ do not.
+\begin{lstlisting}
+theorem pi_bounds :
+    (3.14159265358979323846264338327950 : ℝ) < Real.pi ∧
+      Real.pi < 3.14159265358979323846264338327951 := by
+  realfp (precision := 128)
+
+theorem pi_lt_22_div_7 : Real.pi < 22 / 7 := by realfp
+
+theorem exp_pi_gt_pi_exp :
+    Real.exp (Real.exp 1 * Real.log Real.pi) < Real.exp Real.pi := by realfp
+\end{lstlisting}
+
+\paragraph{The Gaussian integral.} $\int_0^1 e^{-x^2}dx=0.746824132812427025\ldots$
+has no elementary antiderivative.
+\begin{lstlisting}
+theorem gauss_four_digits :
+    (∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2)) ∈ Set.Icc (0.7468 : ℝ) 0.7469 := by
+  integral_bound
+
+theorem gauss_18_digits :
+    (0.746824132812427025 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) ∧
+      (∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2)) ≤ 0.746824132812427026 := by
+  integral_bound (precision := 128)
+\end{lstlisting}
+
+\paragraph{Jordan's inequality.} The tactic needs numeral endpoints, so the
+interval is $[0,1.57]\subset[0,\pi/2]$.
+\begin{lstlisting}
+theorem jordan :
+    ∀ x ∈ Set.Icc (0 : ℝ) (157 / 100), 2 * x / Real.pi ≤ Real.sin x := by
+  realfp
+\end{lstlisting}
+
+\paragraph{Touching points.} AM--GM, $1+x\le e^x$ and the Motzkin
+polynomial~\cite{motzkin1967} $M(x,y)=x^4y^2+x^2y^4-3x^2y^2+1$, which is
+nonnegative but not a sum of squares, all attain their bound at interior
+points. On $[-2,2]^2$, $M\ge0$ follows from the quadrant by symmetry; with
+\lean{touch := auto} the four zeros $(\pm1,\pm1)$ are also found
+automatically.
+\begin{lstlisting}
+theorem sqrt_le_avg :
+    ∀ x ∈ Set.Icc (0 : ℝ) 10, Real.sqrt x ≤ (1 + x) / 2 := by
+  realfp (touch := [1])
+
+theorem one_add_le_exp : ∀ x ∈ Set.Icc (-2 : ℝ) 5, 1 + x ≤ Real.exp x := by
+  realfp (touch := auto)
+
+theorem motzkin_quadrant :
+    ∀ x ∈ Set.Icc (0 : ℝ) 2, ∀ y ∈ Set.Icc (0 : ℝ) 2,
+      0 ≤ x ^ 4 * y ^ 2 + x ^ 2 * y ^ 4 - 3 * x ^ 2 * y ^ 2 + 1 := by
+  realfp (touch := [(1, 1)])
+\end{lstlisting}
+The certificate also covers \emph{near} touching at irrational points. The
+polynomial below is $(x^2-2)^2+(3y^2-1)^2+10^{-13}$, whose minimum is at
+$(\sqrt2,1/\sqrt3)$; plain bisection fails, and \lean{touch := auto} proves
+it with about 40 boxes.
+\begin{lstlisting}
+theorem near_touch :
+    ∀ x ∈ Set.Icc (0 : ℝ) 2, ∀ y ∈ Set.Icc (0 : ℝ) 2,
+      0 < x ^ 4 - 4 * x ^ 2 + 4 + 9 * y ^ 4 - 6 * y ^ 2 + 1 + 1 / 10 ^ 13 := by
+  realfp (touch := auto)
+\end{lstlisting}
+
+\paragraph{Roots, systems, extrema, matrices.}
+\begin{lstlisting}
+theorem dottie_unique : ∃! x ∈ Set.Icc (0 : ℝ) 1, Real.cos x = x := by realfp
+
+theorem sys2_unique : ∃! p : ℝ × ℝ, p.1 ∈ Set.Icc (0.9 : ℝ) 1.1 ∧
+    p.2 ∈ Set.Icc (0.9 : ℝ) 1.1 ∧ p.1 ^ 2 + p.2 = 2 ∧ p.1 + p.2 ^ 2 = 2 := by
+  realfp
+
+theorem exp_sInf :
+    sInf ((fun x : ℝ => Real.exp x - 2 * x) '' Set.Icc 0 2) ∈
+      Set.Icc 0.613705 0.613706 := by
+  realfp
+
+example : (!![4, 1, 0; 1, 3, 1; 0, 1, 2] : Matrix (Fin 3) (Fin 3) ℝ).PosDef := by
+  pos_def
+\end{lstlisting}
+
+\paragraph{Native mode.} With \lean{(trust := native)}, \lean{\#print axioms}
+lists the three standard axioms and one generated axiom,
+\lean{exp\_pi\_native.\_native.\allowbreak native\_decide.ax\_1\_7}:
+\begin{lstlisting}
+theorem exp_pi_native :
+    Real.exp 1 * Real.log Real.pi < Real.pi := by realfp (trust := native)
+\end{lstlisting}
+
+\section{Benchmarks}\label{sec:bench}
+
+Unless stated otherwise, measurements were taken on 25~November~2026 on a
+shared Linux virtual machine with 8 vCPUs (Intel Xeon with AVX-512F) and
+15\,GiB of memory, with Lean and Mathlib \lean{v4.36.0}, gcc~14.2 and the
+AVX-512 backend, at \realfp{} commit \lean{61f8eef}. The scripts, raw logs
+and further comparisons are in the repository; numbers taken from earlier
+logged runs are marked as such.
+
+\paragraph{Kernel versus native checking.}
+\Cref{tab:kn} gives the elaboration time of single theorems, measured as
+the wall time of \lean{lake lean} on a file containing only that theorem
+(median of three runs) minus the time to load the imports (3.7\,s). The
+times include the untrusted search, which is the same in both modes. Every
+kernel-mode theorem depends only on the three standard axioms; every
+native-mode theorem depends in addition on one or more generated
+\lean{native\_decide} axioms (one per checked chunk, e.g.\ 26 for the camel
+function).
+
+\begin{table}[ht]
+\centering\small
+\caption{Elaboration time of single theorems, in seconds, above the 3.7\,s
+import baseline (``$<0.5$'': indistinguishable from the baseline).}
+\label{tab:kn}
+\begin{tabular}{@{}llrr@{}}
+\toprule
+Goal & Kind & kernel & native\\
+\midrule
+$\pi<22/7$ & constant & $<0.5$ & $<0.5$\\
+$\pi$ to 30 digits & constant, 128-bit & $<0.5$ & $<0.5$\\
+$e^\pi>\pi^e$ & constant & 2.1 & $<0.5$\\
+$\exists!$ zero of a $2\times2$ system & root of a system & $<0.5$ & $<0.5$\\
+$e^{xy}-x-y\ge-0.01$ on $[0,1]^2$ & 2-variable bound & 4.0 & 2.2\\
+six-hump camel $\ge-1.032$ on $[-2,2]\times[-1,1]$ & 2-variable polynomial & 22.2 & 3.6\\
+Jordan, $[0,1.57]$ & 1-variable bound & 17.4 & $<0.5$\\
+$\int_0^1e^{-x^2}$, 4 digits & integral & 3.6 & 1.2\\
+$\int_0^1e^{-x^2}$, 18 digits & integral, 128-bit & 4.7 & $<0.5$\\
+Motzkin $\ge0$ on $[0,2]^2$ & touching point & 15.9 & 2.5\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For small and medium certificates kernel checking costs a few seconds,
+which is why it is the default. The gap grows with the number of
+transcendental evaluations: Jordan's inequality needs many enclosures of
+$\sin$ on small boxes, each of which the kernel evaluates through rational
+series.
+
+\paragraph{Cost of one operation.}
+\Cref{tab:ops} shows the cost of a single directed operation in compiled
+code and in the kernel. Compiled times are from the repository's
+micro-benchmark (a dependent chain of $2\cdot10^7$ upward additions, one
+core); the elementary functions are CORE-MATH under directed rounding,
+called from Lean. Kernel times use FloatLib's kernel-reduction harness
+(\lean{benchmarks/kernel}, \lean{Lean.Kernel.whnf} on a table of eight
+binary64 operand triples with normal operands, fastest of three, a no-op
+over the same table subtracted), run on the same machine for both
+libraries: \realfp's \lean{KF} mirror rounding downward, and FloatLib's
+kernel path in its \lean{down} direction (revision \lean{d24844f}).
+
+\begin{table}[ht]
+\centering\small
+\caption{Cost of one binary64 directed operation.}
+\label{tab:ops}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+ & add & sub & mul & div & sqrt\\
+\midrule
+\multicolumn{6}{@{}l}{\emph{Compiled code (ns)}}\\
+\quad \realfp{} AVX-512 embedded rounding & 1.2 & & & & \\
+\quad \realfp{} portable RN+error & 5.3 & & & & \\
+\quad \lean{fesetround} around each operation (reference) & 14.3 & & & & \\
+\midrule
+\multicolumn{6}{@{}l}{\emph{Lean kernel ($\mu$s)}}\\
+\quad \realfp{} \lean{KF} (\lean{Nat} mirror) & 189 & 191 & 182 & 227 & 240\\
+\quad FloatLib kernel path & 87 & 73 & 51 & 61 & 52\\
+\quad \realfp{} bit-level specification$^{*}$ & 4900 & 4400 & 4800 & 3700 & 3800\\
+\bottomrule
+\end{tabular}
+
+\smallskip
+\parbox{0.92\linewidth}{\footnotesize $^{*}$Single \lean{Kernel.isDefEq}
+check of one result, median of ten operand pairs (a different harness);
+shown only to explain why the mirror exists. CORE-MATH $\exp$, $\log$,
+$\sin$ under directed rounding cost 17--21\,ns per call in compiled code.}
+\end{table}
+
+Two points stand out. Hardware directed rounding is about $10^5$ times
+faster than kernel evaluation, which is what makes the untrusted search
+cheap: a search can afford to explore many more boxes than the kernel will
+ever see. And in the kernel FloatLib's scalar operations are currently two
+to four times faster than \realfp's; \realfp{} is fast in kernel mode
+because its certificates need few operations (derivative and Taylor
+certificates instead of deep bisection), not because each operation is
+cheaper. Adopting FloatLib-style kernel arithmetic is an obvious
+improvement.
+
+\paragraph{Shared goals with LeanCert and FloatLib.}
+\Cref{tab:shared} lists 21 goals from a comparison with LeanCert
+(bounds with and without touching, multivariate polynomials and
+transcendental functions, integrals). All three tools were run in kernel
+mode, one goal per file, with wall times including imports. \realfp{} and
+LeanCert were measured on 23~November~2026 on the same machine (LeanCert
+revision \lean{44b323a} on Lean~4.35; median of three; imports 3.4\,s and
+3.5\,s respectively); FloatLib's \lean{interval} tactic was measured for this
+paper (revision \lean{d24844f}, Lean~4.36, imports 2.7\,s, timeout
+300\,s; median of three for successes; part of this run shared the machine
+with an unrelated job). A rerun of the \realfp{} column on the day of the
+FloatLib run, under the same load, again proved 20 of 21, with times
+0.1--4\,s higher; the table keeps the earlier, uncontended run. ``---'' means the tactic did not prove the goal; this is a
+statement about the automation on this exact statement, not about what can be
+proved with more manual guidance.
+
+\begin{table}[ht]
+\centering\small
+\caption{Shared goals, kernel mode: wall time in seconds including imports (top row). ``---'': not proved; n/s: integrals are not supported by FloatLib's \lean{interval} tactic.}
+\label{tab:shared}
+\begin{tabular}{@{}llrrr@{}}
+\toprule
+ & Goal & LeanCert & FloatLib & \realfp\\
+\midrule
+ & imports only & 3.48 & 2.7 & 3.43\\
+\midrule
+p01 & $\log 2<7/10$ & 3.44 & 2.66 & 3.34\\
+p02 & $0.6931471<\log 2<0.6931472$ & 4.48 & --- & 3.51\\
+p03 & $3.14159<\pi<3.1416$ & 3.62 & 2.58$^\dagger$ & 3.56\\
+p04 & $2.7182\le e\le2.7183$ & 3.86 & 2.70$^\dagger$ & 3.44\\
+p05 & $e^x\cos x\le3$ on $[0,1]$ & 3.97 & 2.60 & 4.22\\
+p06 & $x(1-x)\le1/4+10^{-3}$ on $[0,1]$ & 3.75 & 2.77$^\dagger$ & 3.36\\
+p07 & $\sin x\le x+10^{-3}$ on $[0,1]$ & ---$^\ddagger$ & 4.74$^\dagger$ & 4.23\\
+p08 & $1+x+x^2/2\le e^x$ on $[0,1]$ (equality at 0) & --- & --- & 3.52\\
+p09 & $\sin x\le x$ on $[0,2]$ (equality at 0) & --- & --- & 4.37\\
+p10 & $\sin x\cos y\le1.01$ on $[0,1]^2$ & 24.78 & 2.52 & 4.82\\
+p11 & $xy-x-y\ge-1.01$ on $[0,1]^2$ & --- & 8.29$^\dagger$ & 3.57\\
+p12 & $xy+yz+zx\le3$ on $[0,1]^3$ & 4.49 & 2.41 & 3.35\\
+p13 & $e^{xy}-x-y\ge-0.01$ on $[0,1]^2$ & --- & 5.01$^\dagger$ & 11.34\\
+p14 & $0.74\le\int_0^1e^{-x^2}$ & 89.54 & n/s & 4.67\\
+p15 & $0.7468\le\int_0^1e^{-x^2}$ & --- & n/s & 5.72\\
+p16 & $\int_1^2 dx/x\le0.6932$ & --- & n/s & 4.77\\
+p17 & $\int_0^1\arctan\le0.43882$ & --- & n/s & ---\\
+p18 & $\int_0^1\arctan\le0.439$ & --- & n/s & 9.35\\
+p19 & $\int_1^2 dx/x\le0.7$ & --- & n/s & 7.50\\
+p20 & $x^2+y^2-xy\ge-0.01$ on $[-1,1]^2$ & --- & 3.06$^\dagger$ & 5.57\\
+p21 & Rosenbrock $\ge-0.01$ on $[-2,2]\times[-1,3]$ & --- & 2.75 & 4.59\\
+\midrule
+ & proved & 9/21 & 12/21 & 20/21\\
+\bottomrule
+\end{tabular}
+\smallskip
+\parbox{0.95\linewidth}{\footnotesize $^\dagger$FloatLib with \lean{depth := 24} (default depth 8 failed), and for conjunctions after splitting with \lean{refine $\langle$?\_,~?\_$\rangle$}; all other FloatLib entries use the defaults. $^\ddagger$LeanCert's front door fails; its subdivision tactic on the rewritten goal $\sin x-x\le10^{-3}$ takes 63\,s.}
+\end{table}
+
+\paragraph{A downstream re-verification.}
+To test \realfp{} on a real research proof, we re-verified the Coulomb
+($s=1$) theorem of the Lean formalization accompanying Kryvonos, Liehr and
+Taylor's work on energy minimization for eight points on the
+sphere~\cite{em8} (release of 20~September~2026, Lean~4.33), replacing its
+numerical part by \realfp{} certificates. The re-verification exists in a
+\lean{native\_decide} version and in a kernel-only version whose main
+theorems use only the three standard axioms, as do the original's. Clean
+builds on an NVIDIA DGX Spark (20 cores; logged 23~November~2026, Mathlib
+prebuilt) took 37\,min~35\,s wall time and 11.7~CPU-hours for the original,
+6\,min~50\,s and 1.1~CPU-hours for the kernel-only \realfp{} version, and
+55\,s and 254~CPU-seconds for the native version; the native \realfp{} version has 101
+modules (7{,}560 lines) against the original's 1{,}195 modules. In the other direction, a
+\realfp{} re-verification of the branch-and-bound in Tomar's four-body
+proof~\cite{fourbody} builds in under two minutes on the same machine but
+only in native mode: replaying its roughly $6\cdot10^{10}$ interval
+operations in the kernel is estimated at hundreds of CPU-hours, whereas the
+original formalization's purpose-built kernel certificates take 7.6
+CPU-hours. Kernel mode is the default, but it is not free, and the
+appropriate trust level depends on the size of the computation.
+
+
+\section{Assurance}\label{sec:assurance}
+
+\paragraph{No \lean{sorry}; axiom audit.} The default build of the Mathlib
+layer includes an audit module that enumerates every declaration in the
+\lean{RealFP} namespace and fails the build if any theorem depends on an
+axiom other than \lean{propext}, \lean{Classical.choice} and
+\lean{Quot.sound}; \lean{sorryAx} is never allowed. Only theorems in the
+\lean{RealFP.Demo} and \lean{RealFP.Examples} namespaces may use
+\lean{native\_decide}, and the audit counts them. At the time of writing the
+full audit covers 2051 theorems; a script performs the same check for the
+Mathlib-free core.
+
+\paragraph{Differential testing.} The C runtime is a trust assumption only
+in native mode, but it is tested heavily because the search depends on it
+for completeness. Test executables compare every C kernel with the Lean
+specification bit for bit on random inputs, special values (signed zeros,
+subnormals, overflow, infinities, NaN) and hard cases; compare the portable
+backend with AVX-512 and with an \lean{fesetround} reference, also for
+aarch64 under QEMU; and check the transcendental bounds against
+high-precision \texttt{mpmath} oracles. A regression test checks that kernel
+and compiled evaluation of a checker agree and that a bound just past the
+true enclosure is rejected in both modes.
+
+\paragraph{Continuous integration.} Every push to the main branch builds
+the core library and proofs, runs the tests and both axiom audits, and
+compiles every tutorial snippet (about 11--16 minutes on GitHub-hosted
+runners, using the portable backend); the slow example files and the full
+audit run weekly.
+
+\paragraph{Size.} The library consists of about 51{,}000 lines of Lean in
+187 files and about 3{,}300 lines of C, plus the unmodified CORE-MATH
+sources.
+
+\section{Related work}\label{sec:related}
+
+\paragraph{Arb / FLINT.} Arb~\cite{arb}, now part of FLINT~\cite{flint},
+implements arbitrary-precision ball (midpoint--radius) arithmetic with an
+exceptionally broad range of special functions, polynomials, power series,
+matrices and rigorous integration, and it is very fast. It is the natural
+tool for rigorous numerics outside a proof assistant, but its results are
+not formal proofs: one trusts its C implementation. \realfp{} has far fewer
+functions and only two precisions, but its results are Lean theorems; Arb
+remains useful alongside it for exploration and for finding certificates.
+
+\paragraph{Coq/Rocq.} The most mature formal counterpart is CoqInterval by
+Melquiond and coauthors~\cite{melquiond2008,martindorelmelquiond2016},
+which provides the \lean{interval} tactic for Coq (now Rocq~\cite{rocq})
+with bisection, automatic differentiation, univariate Taylor models and
+verified definite integrals~\cite{mahboubi2016}. It builds on the Flocq
+formalization of floating-point arithmetic~\cite{flocq} and on the
+Coquelicot real-analysis library~\cite{coquelicot}, and since primitive
+binary64 floats were added to the Coq kernel~\cite{primfloats} it can
+evaluate with hardware floats in reduction. \realfp{} follows the same
+``compute, then check by reflection'' philosophy in Lean, where no such
+library existed. Two differences: \realfp{} offers an explicit choice
+between pure kernel evaluation and compiled evaluation per proof, and it
+adds multivariate Krawczyk systems, exact positive definiteness and
+touching-point certificates. CoqInterval's univariate Taylor-model
+machinery is more developed.
+
+\paragraph{Isabelle/HOL and HOL Light.} Isabelle's \lean{approximation}
+method~\cite{hoelzl2009} proves real inequalities by interval arithmetic
+with software floats. In HOL Light, Solovyev and Hales verified the
+nonlinear inequalities of the Kepler conjecture with formal Taylor interval
+approximations~\cite{solovyevhales2013,flyspeck}.
+
+\paragraph{FloatLib.} FloatLib~\cite{floatlib} is a large Lean~4 library of
+executable floating-point formats (IEEE binary and decimal, posits,
+low-precision machine-learning formats) with proved rounding, status flags,
+roundoff analysis, and kernel-checked automation: \lean{float\_decide}, and
+an \lean{interval} tactic that proves real inequalities by certified
+evaluation and subdivision, with quadratic forms for points where the margin
+is zero. Its emphasis is breadth of formats and floating-point semantics;
+its interval arithmetic runs on software floats in the kernel. At the
+revision we examined it had no hardware directed-rounding path in its
+proofs. \realfp{} adapts one routine from FloatLib (a bit-length
+method used by the kernel fast path; MIT license).
+
+\paragraph{LeanCert.} LeanCert~\cite{leancert} is a Lean~4 library for
+certified numerics with rational, dyadic and affine interval backends,
+automatic differentiation, global optimization, root existence and
+Krawczyk systems, integration, finite sums, natural-number tails and a
+Python SDK. It is broader than \realfp{} in goal shapes and tooling; its
+default trust mode is \lean{native\_decide} with a kernel option. \realfp{}
+is narrower but faster on the goals both handle (\cref{sec:bench}).
+
+\paragraph{Other Lean work.} Irving's \lean{interval}
+library~\cite{irvinginterval} provides conservative interval arithmetic in
+Lean~4 on a software 64+64-bit floating-point type, with proofs of
+conservativity.
+
+\section{Limitations}\label{sec:limits}
+
+We list the main limitations; a complete, current list is maintained in the
+repository.
+\begin{itemize}[nosep]
+\item \emph{Shape of goals.} Domains are boxes with numeral endpoints, so
+  $[0,\pi/2]$ must be replaced by a rational sub-interval or handled by a
+  separate argument. Optimization certificates are first order, and argmin
+  localization is one-dimensional. \lean{integral\_bound} handles
+  one-dimensional integrals (a two-dimensional Taylor quadrature exists at
+  the library level).
+\item \emph{Dimension and dependency.} Like all interval methods, the cost
+  of bisection grows quickly with the number of variables and with
+  cancellation in the expression. Derivative, centred-form and touching
+  certificates reduce the number of boxes greatly, but goals in more than a
+  handful of variables need problem-specific structure.
+\item \emph{Kernel cost.} A kernel-checked elementary function evaluation
+  costs roughly 0.1\,s for $\log$ and 0.5\,s for $\sin$ or $\cos$, so tight
+  trigonometric bounds needing many boxes can be slow or exceed heartbeat
+  limits; a few such examples in the repository use native mode. Very large
+  certificates (millions of operations) are beyond kernel checking and need
+  \lean{trust := native}; see \cref{sec:bench}.
+\item \emph{Touching points.} A bound attained \emph{exactly} at an
+  irrational point, such as $(x^2-2)^2\ge0$ at $\sqrt2$, cannot be proved by
+  interval evaluation at all, because every enclosure of $f$ near $\sqrt2$
+  contains negative numbers; such goals need a symbolic step
+  (\lean{nlinarith} suffices here). Degenerate minima such as $(x-1)^4$ are
+  rejected, \lean{touch := auto} only finds interior non-degenerate minima
+  (up to six variables), and touching certificates are binary64 only.
+\item \emph{Precision 128.} Some functions ($\arctan$, $\tan$, $\arcsin$,
+  $\arccos$, registered functions) are still evaluated with binary64
+  accuracy inside the 128-bit mode, and the 128-bit Krawczyk preconditioner
+  is a binary64 inverse.
+\item \emph{Function coverage.} Compared with Arb, the set of functions is
+  small; there are no special functions beyond $\operatorname{erf}$ and the
+  registered examples, and no complex interval arithmetic.
+\item \emph{Toolchain.} The library is pinned to Lean and Mathlib
+  \lean{v4.36.0}. On x86-64 the default backend needs AVX-512F and gcc;
+  other machines use the portable backend.
+\item \emph{Native mode.} In native mode the C runtime is trusted on the
+  strength of testing, not proof.
+\end{itemize}
+
+
+\section{Availability and conclusion}
+
+\realfp{} is available at \url{https://github.com/schlafly1/realfp} under
+the Apache-2.0 license. A project uses it by adding
+\begin{lstlisting}
+require realfp_mathlib from git
+  "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"
+\end{lstlisting}
+to its lakefile and using the same Lean and Mathlib versions
+(\lean{v4.36.0}). The repository contains a tutorial in which every snippet
+is compiled, a reference manual, the soundness notes summarized in
+\cref{cor:trust}, the benchmark scripts and logs behind \cref{sec:bench},
+and a list of known limitations.
+
+The design principle is simple: specifications in Lean, speed in C,
+checking in the kernel. Floating-point arithmetic is precisely specified by
+IEEE~754, so it can be modelled exactly in a proof assistant; directed
+rounding makes it rigorous; and the search/check split lets the fast,
+unverified part do the hard work of finding certificates while only a small
+verified checker has to be trusted. For a mathematician with a numerical
+lemma inside a formal proof, the result is a tactic that is usually one
+line, usually takes seconds, and produces a theorem with the same axioms as
+the rest of Mathlib.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}
