@@ -177,7 +177,8 @@ open Interval128 in
 #eval (Interval128.sqrt 2).widthRat              -- some (1 / 40564819207303340847894502572032)
 ```
 
-Interval128 has `+ - * /`, `sqrt` and conversions; the tactics use Interval64 only. Its type is
+Interval128 has `+ - * /`, `sqrt` and conversions. The tactics do not use it: their
+`(precision := 128)` option uses 128-bit dyadic intervals (§5). Its type is
 `Interval128.Interval128` (write `Interval128` after `open Interval128`); dot notation works
 there too.
 
@@ -382,15 +383,37 @@ example : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
 ```
 
 `arctan`, `tan`, `arcsin`, `arccos`, `atan2` and registered functions are accepted but
-evaluated with Interval64 precision, and a failure message says so. The search uses
-bisection at dyadic midpoints, monotonicity and centred forms (as at precision 64, one variable
-at a time); the kernel check costs about 10–30 ms per box for arithmetic and 0.2–0.7 s per
-elementary-function evaluation. The same `trust` options apply. `≠` goals, `root_exists` / `root_unique`
-(systems by Krawczyk), `sInf` / `sSup` bounds, witnesses and argmin localisation also accept
-`(precision := 128)`, and `#realfp_min (precision := 128) (x ∈ Set.Icc a b), f` reports a
-128-bit enclosure of the minimum; `pos_def (precision := 128)` is an exact rational check;
-integrals reject it for now. More
-examples: `RealFPMathlib/Examples/Precision128.lean`.
+evaluated with Interval64 precision, and a failure message says so. The search is the same as
+at precision 64 (bisection at dyadic points, monotonicity, centred forms, one variable at a
+time). The kernel check costs about 10–30 ms per box for arithmetic and 0.2–0.7 s per
+elementary-function evaluation. The same `trust` options apply.
+
+Every other backend accepts `(precision := 128)` too:
+
+- `≠` goals;
+- `root_exists` / `root_unique`, with systems by Krawczyk;
+- `sInf` / `sSup` bounds, witnesses and argmin/argmax localisation;
+- `#realfp_min` / `#realfp_max`, which report a 128-bit enclosure;
+- `integral_bound`, through fixed-point Taylor models: the kernel checks every Taylor-model
+  product once, so 18 digits of `∫₀¹ e^{-x²}` take about 3 s;
+- `pos_def`, as an exact rational check.
+
+```lean
+example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
+  interval (precision := 128)
+example : ∃! x : ℝ, x ∈ Set.Icc (1.4142135623730950488 : ℝ) 1.4142135623730950489 ∧ x ^ 2 = 2 := by
+  root_unique (precision := 128)
+example : ∃ x ∈ Set.Icc (0.6299605249474365 : ℝ) 0.6299605249474366,
+    ∀ y ∈ Set.Icc (0 : ℝ) 1, x ^ 4 - x ≤ y ^ 4 - y := by
+  realfp (precision := 128)
+example : (0.746824132812427025 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by
+  integral_bound (precision := 128)
+```
+
+The minimiser box above is `10⁻¹⁶` wide. At precision 64 the value gap is far below binary64
+resolution. More examples, with timings, are in `RealFPMathlib/Examples/Precision128.lean`,
+and the full description is in
+[REFERENCE.md § Precision 128](REFERENCE.md#precision-128-precision--128).
 
 ### `integral_bound`: definite integrals
 
@@ -761,7 +784,9 @@ example : (∫ x in (1 : ℝ)..2, sinc x) ∈ Set.Icc (0.655 : ℝ) 0.663 := by 
 - `erf`, `sinc`, `artanh`, `arsinh` are registered functions (no C tape: slower searches).
   `sinc` has no derivative information on boxes containing `0` (zeroth-order bounds only
   there); `artanh` only works on boxes strictly inside `(-1, 1)`.
-- Interval128 is not used by the tactics.
+- At `(precision := 128)`: `arctan`, `tan`, `arcsin`, `arccos`, `atan2` and registered
+  functions are still evaluated at binary64 precision; integrals need `+ - * / ^`, `exp`,
+  `sin`, `cos`, `log`, `π` only (see [LIMITATIONS.md](LIMITATIONS.md)).
 
 **Where next**
 

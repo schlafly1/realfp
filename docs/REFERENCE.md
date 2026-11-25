@@ -677,10 +677,10 @@ upper bound (`x ∈ Set.Icc a b`, or `a ≤ x` and `x ≤ b`, any order); equati
 **Options** (any order): `(trust := kernel|native)`, `(depth := n)`, `(maxBoxes := n)`,
 `(order := n)`, `(deriv := false)`, `(chunk := n)` for `interval`, the root backends and
 optimisation. `(precision := 64|128)` (default 64) selects Interval64 or 128-bit dyadic
-endpoints; 128 is implemented for `interval` goals only so far (see
-[Precision 128](#precision-128-in-interval-interval128dyadiclean-realfpmathlibi128dyadiclean)),
-and other backends reject it. `integral_bound` takes `trust`, `(order := n)` (fix the Taylor order: 2, 4, 6 or
-8) and `(maxBoxes := n)` (maximum cells, default 512). `pos_def` takes only `trust`. The same
+endpoints for every backend (see [Precision 128](#precision-128-precision--128)).
+`integral_bound` takes `trust`, `(order := n)` (fix the Taylor order: 2, 4, 6 or 8 at
+precision 64, 8–30 at 128), `(maxBoxes := n)` (maximum cells, default 512; 64 at 128) and
+`precision`. `pos_def` takes `trust` and `precision`. The same
 options work through `realfp`; an option the chosen backend cannot use is an error
 (`pos_def: option `depth` does not apply …`).
 
@@ -875,163 +875,168 @@ example (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x^3/6 ≤ Real.sin x := by
   Per test 2.5–3.7 s including ~2 s Lean startup (before: up to 12.6 s).
 * Tests: `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`.
 
-### Precision 128 in `interval` (`Interval128/Dyadic.lean`, `RealFPMathlib/I128Dyadic.lean`)
+## Precision 128 (`(precision := 128)`)
 
-`interval (precision := 128)` (also `realfp (precision := 128)` on interval goals) evaluates
-the reified `IExpr` with 128-bit dyadic endpoints instead of Interval64:
+Interval64 endpoints are binary64 numbers, so no bound is tighter than about `1e-16` relative.
+With `(precision := 128)` the bound, `≠`, root and optimisation backends evaluate with
+**128-bit dyadic endpoints** `m · 2^e` instead, which gives about 38 significant digits, rounded
+outward after every operation. `integral_bound` uses fixed-point Taylor models with the same
+dyadic numbers, and `pos_def` uses an exact rational check. The
+option works with `realfp` and with each backend by name; `(precision := 64)` is the default.
+When a precision-64 attempt fails with a margin at binary64 resolution, its error message
+suggests `(precision := 128)`.
 
 ```lean
-example : Real.sqrt 2 - 1.4142135623730950488 < 1.7e-21 := by interval (precision := 128)
 example : Real.pi < 3.14159265358979323846264338327951 := by interval (precision := 128)
 example : Real.exp 1 < 2.7182818284590452353602874713527 := by interval (precision := 128)
 example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
-  interval (precision := 128) (depth := 110)
+  interval (precision := 128)
+example : ∃! x : ℝ, x ∈ Set.Icc (1.4142135623730950488 : ℝ) 1.4142135623730950489 ∧ x ^ 2 = 2 := by
+  root_unique (precision := 128)
+example : (0.746824132812427025 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by
+  integral_bound (precision := 128)
 ```
 
-* **Numbers** (`Interval128/Dyadic.lean`, namespace `Interval128.Dy`, core, Mathlib-free).
-  `Dy = ⟨m e : Int⟩` is `m · 2^e`; `rdn` / `rup` round to `prec = 128` significant bits
-  (floor / ceiling division by a power of two), `addX` / `mulX` are exact, `ofRatDn` /
-  `ofRatUp` round a rational, `invDnPos` / `invUpPos` bound `1 / (m · 2^e)`, `sqrtDn` /
-  `sqrtUp` bound `√(m · 2^e)` from a Newton guess that the definition itself checks
-  (`r * r ≤ n`, `n ≤ r * r`). Everything is `Nat`/`Int` arithmetic, which the kernel runs
-  with GMP, and the same definitions are compiled for the search and `native_decide`.
-* **Intervals** `DI = ⟨lo hi : Option Dy⟩` (`none` = unbounded). `evalQ`: `+ - *` (corner
-  products), `/` and `⁻¹` (when the divisor's endpoints have one strict sign, else the whole
-  line), `√`, `|·|`, `^ n` (even powers from `|X|`), rational constants, `π` from
-  `[3.1415926535897932384626433832795028841971, …972]` (`RealFP.pi_gt_d40` / `pi_lt_d40` in
-  `RealFPMathlib/PiBounds.lean`: Mathlib's `pi_lower_bound` / `pi_upper_bound` with 70 square
-  roots, witnesses from `scripts/pigen.py 40 70`, standard axioms).
-* **Elementary functions at 128 bits** (`Interval128/Dyadic.lean`, soundness in
-  `RealFPMathlib/I128DyTransc.lean`):
-  * `exp`: `expPt d` halves `d` `s = halvings d` times (to `|y| ≤ 2⁻⁸`), evaluates the Taylor
-    polynomial of degree 13 (`horner` with point products `DI.mulPt`) plus `± remT`
-    (`Real.exp_bound`), and squares `s` times (`sqIter`). `DI.exp` takes both endpoints
-    (monotone).
-  * `sin`, `cos`: the same halving, Taylor polynomials with coefficients `Re/Im (I^m) / m!`,
-    remainder from `Complex.exp_bound` at `y·I`, then `s` double-angle steps
-    (`sin 2t = 2 S C`, `cos 2t = C² - S²`, `dblIter`). An interval is the value at a dyadic
-    centre `± radius` (`|sin x - sin c| ≤ |x - c|`), clamped to `[-1, 1]`.
-  * `log`: `j = roots d` square roots (`sqrtIter`, `log x = 2^j log (√…√x)`) bring `x` to
-    `|1 - w| ≤ 1/64`, then the series `-∑ u^k / k` (23 terms) plus `± 2·64⁻²⁴`
-    (`Real.abs_log_sub_add_sum_range_le`). `DI.log?` returns `none` unless the lower endpoint is
-    positive; `evalQ` then falls back to `lift1`.
-  * `logb 2`, `logb 10`: `log X / DI.logConst q` (`Real.log_div_log`).
-  * `sinh`: odd Taylor series for `|d| ≤ 2⁻⁸` (no cancellation), else `(E - 1/E) / 2`;
-    `cosh = (E + 1/E) / 2` (from `|X|`); `tanh`: `sinh / cosh` for `|d| ≤ 2⁻⁸`, else
-    `1 - 2 / (exp (2d) + 1)`, clamped. All monotone in the endpoints.
-  * Accuracy (`interval128_tests`, 117 points against 50-digit `mpmath` values from
-    `scripts/dytransc_ref.py`): width / `|f x|` at most `2.6e5 · 2⁻¹²⁸ ≈ 8e-34` for `exp`,
-    `sinh`, `cosh`, `5e-36` for `log`, `logb`, `5e-35` for `tanh`, `3e-31` for `sin`/`cos`
-    (worst at `x ≈ -1764`).
-  * Kernel cost per point: `exp` about 0.5 s at `x = 1` (fewer halvings for small `x`), `log`
-    about 0.2 s, `sin`/`cos` about 0.7 s.
+All of these are in `RealFPMathlib/Examples/Precision128.lean`, and most there are pinned
+with `fail_if_success` at precision 64.
 
-  **Still through Interval64** (`lift1` / `lift2`: `KI.ofRatInterval` of the endpoints, the
-  Interval64 kernel evaluator `evalK`, and the exact rational value of the result bits,
-  `decLo` / `decHi`): `atan`, `atan2`, `tan`, `arcsin`, `arccos`, registered functions, and
-  `log`/`logb` on intervals not known to be positive. Those results are only as tight as
-  Interval64; the failure message lists them (`Interval128.Dy.lifted`).
-* **Goal predicates** `gLe c` / `gLt c` / `gGe c` / `gGt c` compare the exact rational value of
-  an endpoint (`toRat`) with `c`.
-* **Certificates** `Interval128.Dy.Cert`: bisection trees whose split points are dyadics (the
-  rounded midpoint, strictly inside the box). The tactic emits a split point as
-  `Interval128.Dy.ofLimbs neg limbs e` with base-`2^62` limbs: the kernel is much slower on
-  terms that contain `Nat` literals of `2^63` or more (60 boxes: about 40 s with plain
-  literals, under 1 s with limbs). `checkQ` walks the tree; `search` (compiled, untrusted)
-  splits the widest variable (plain bisection; `checkQ_sound`).
-* **Derivative certificates** `Interval128.Dy.DCert` / `checkDQ e g upper` (what the tactic
-  uses; mirror of Interval64's `DCert` / `checkD`): `leaf`, `split i d l r`, `mono i inc dc c`
-  (`domOKQ` holds on the box, `∂ᵢe ≥ 0` or `≤ 0` is proved by the nested certificate `dc` on
-  `e.deriv i`, and `c` checks `e` with variable `i` fixed at the relevant endpoint), and
-  `center i d` (`centerQ`: `f(…d…) + f'(box) · (xᵢ - d)` intersected with the plain enclosure,
-  `DI.meet`). `searchDQ` (compiled, untrusted) tries the plain enclosure, monotonicity with a
-  visible sign, the centred form at the midpoint, monotonicity with the sign proved by higher
-  derivatives (up to `order`), then bisection. `deriv := false` gives plain bisection.
-  Soundness: `RealFPMathlib/I128Deriv.lean` (`domOKQ_sound`, `checkDQ_sound`, `proveD_le` /
-  `_lt` / `_ge` / `_gt`, `checkDQ_split_of`), reusing `RealFP.Dom` / `hasDerivAt_denote` and
-  the mean value theorem from `IntervalDeriv.lean`. Example: `x² - x/3 ≤ 10/3 + 10⁻³⁰` on
-  `[1, 2]` is one monotonicity step (0.5 s, was 100 boxes / 1.6 s by bisection and 31 s in the
-  double-double path); `exp x - x ≤ 1.7182818284590452353602874713527` on `[0, 1]` is one split
-  plus one monotonicity step (about 1 s).
-* **Soundness** (`RealFPMathlib/I128Dyadic.lean`, namespace `RealFP.I128Q`, no `sorry`,
-  standard axioms): `val d = m · 2^e`, `val_rdn` / `val_rup` / `val_ofRatDn` / `val_ofRatUp` /
-  `val_invDnPos` / `val_sqrtDn` …, `mem_add` / `mem_mul` / `mem_inv` / `mem_sqrt` /
-  `mem_abs` / `mem_pow` / `mem_pi` / `mem_lift1` / `mem_lift2` (`I128DyBase.lean`), `mem_exp` /
-  `mem_log?` / `mem_sin` / `mem_cos` / `mem_sinh` / `mem_cosh` / `mem_tanh` / `mem_logConst`
-  (`I128DyTransc.lean`), `evalQ_sound`,
-  `checkQ_sound`, `checkQ_split_of`, `prove_le` / `prove_lt` / `prove_ge` / `prove_gt`.
-* **Checking.** `trust := kernel` closes `checkQ … = true` with `decide +kernel`, `chunk`
-  boxes per call; `trust := native` uses `native_decide`. Kernel cost is about 10–30 ms per
-  box (`RealFPMathlib/Examples/Precision128.lean` has the timings; before this path, with the
-  double-double `Float` specification, a box cost 0.1–0.3 s per operation).
-* The double-double path (`Interval128.Refl.checkD`, `RealFPMathlib/I128Sound.lean`) is still
-  in the library and proved, but the tactic no longer uses it.
-* **`≠` and roots at 128** (`RealFPMathlib/I128Roots.lean`): `f ≠ c` by bisection until every
-  box excludes `0` (`Interval128.Dy.nzQ`, `prove_neQ`); one-variable `root_exists` by a sign
-  change at the endpoints of `[a, b]` or of a cell of a 512-point rational grid (`ivtCheckQ`,
-  `ivt_existsQ` / `ivt_exists_inQ`, continuity from `domOKQ`), `root_unique` by a sign change
-  plus a strict sign of `f'` proved by a `DCert` (`derivSignQ`, `unique_oneQ`). Example:
-  `∃! x ∈ [1.4142135623730950488, 1.4142135623730950489], x² = 2` (fails at 64).
-* **`sInf` / `sSup` and witnesses at 128**: `realfp (precision := 128)` reduces `sInf`/`sSup`
-  goals as at 64 (`reduceInfSup`); the `∀` bounds go to `interval (precision := 128)`, the
-  existential witnesses are checked with `evalQ` (`RealFP.Opt.findWitnessQ`, `atomHoldsAtQ`) and
-  closed with `interval (precision := 128)`; in one variable `refineQ` bisects on the sign of
-  `f'` at dyadic points (110 steps) to put the witness within about `10⁻³⁰` of a stationary
-  point. Example: `sInf ((x ↦ x⁴ - x) '' [0, 1]) ∈ [-0.4724703937105774368, -…4367]`.
-* **Systems at 128** (`RealFPMathlib/I128Kraw.lean`): `root_exists` / `root_unique
-  (precision := 128)` with `n` equations use the Krawczyk test of `Krawczyk.lean` (same
-  expressions `kE` / `tE` / `nE`, layout and algebra) evaluated with `evalQ`:
-  `krawCheckQ Fs bs ⟨m, Y, Z, q⟩` recomputes `F(m)` and the interval Jacobian at 128 bits
-  (`bEnvQ`, `jEnvQ`) and checks inclusion, `‖I - Y J(X)‖∞ ≤ q < 1` and `‖I - Z Y‖∞ ≤ q`;
-  `kraw_existsUniqueQ`, `kraw_exists_inQ` (sub-box around the Newton point for `∃`). The search
-  takes `Y ≈ F'(m)⁻¹` from binary64 Gaussian elimination and refines the centre `m` by
-  simplified Newton `m ← m - Y F(m)` with 128-bit evaluations (rounded to multiples of
-  `2⁻¹⁶⁰`). In one variable Krawczyk is the fallback when the derivative-sign certificate
-  fails. Example: `x² + y² = 4, x y = 1` on a box of width `10⁻²⁸` (about 1.2 s).
-* **Argmin / argmax localisation at 128** (`RealFP.Opt.proveArgCore` with
-  `(precision := 128)`): `∃ x ∈ [a', b'], ∀ y ∈ [a, b], f x ≤ f y` (one variable). The witness
-  `q` is the stationary point from `refineStatQ` (bisection on the sign of `f'` at 128 bits),
-  rounded to a short decimal while `f(q)` stays within a quarter of the gap; the level `M` is a
-  short decimal between the 128-bit value `f(q)` and the 128-bit values of `f` at the outer
-  pieces' endpoints and binary64 minimisers. Side goals (`f q ≤ M`, `M < f` on `[a, a']` and
-  `[b', b]`) go to `interval (precision := 128)`. Since the value gap is quadratic in the
-  distance, `[a', b']` can be about `10⁻¹⁶` wide (about `10⁻⁸` at 64).
-* **`#realfp_min (precision := 128)` / `#realfp_max (precision := 128)`**: branch and bound with
-  128-bit enclosures (`RealFP.Opt.bnbMinQ`: the better of the natural enclosure and the centred
-  form `f(m) + ∑ⱼ ∂ⱼf(X)(Xⱼ - mⱼ)`, best-first, bisection of the widest coordinate, stop at a
-  relative gap of `10⁻³²` or 20000 boxes); prints the enclosure to 36 digits, the point and two
-  statements for `realfp (precision := 128)`. Untrusted (nothing is proved).
-* **`pos_def (precision := 128)`** (`RealFPMathlib/PosDefQ.lean`): exact, no rounding. The
-  search computes an exact rational `LDLᵀ` (no pivoting; a pivot `≤ 0` means "not positive
-  definite") and `X = L⁻¹`; the kernel computes `B = X A Xᵀ` in `ℚ` (`RealFP.PDQ.bq`) and checks
-  strict diagonal dominance (`congrCheckQ`); `posDef_of_congrQ` then uses
-  `RealFP.Mat.posDef_of_diagDom` and `posDef_of_posDef_congr`. Works for any condition number;
-  the cost is the size of the rationals (Hilbert 10×10: 1.3 s kernel) and matching the entries
-  (`ext; fin_cases; simp`, which dominates beyond about 10×10).
-* **`integral_bound (precision := 128)`** (`RealFPMathlib/I128TMF.lean`): fixed-point
-  Taylor-model quadrature with a step-by-step certificate. A cell `[l, h]` has centre
-  `m = (l+h)/2`, order `N`, precision `K` bits and half-width bound `hn / 2^K`. A model
-  `⟨c, r⟩` (integers `cₖ`, natural `r`) stands for `Σ (cₖ/2^K)(x-m)^k` with
-  `|f x - p (x - m)| ≤ r / 2^K` on the cell (`FMok`). All arithmetic is `Int`/`Nat` (GMP in the
-  kernel). `FM.mul` rounds the kept coefficients down and adds four terms to the remainder:
-  the rounding, the dropped degrees ≥ `N`, the cross terms and the product of remainders. Each
-  term is bounded with `adot` (`Σ |lᵢ| ρ^(k+i)`, with `ρ^k` rounded up). `exp`, `sin`, `cos`,
-  `1/·`, `log` split off the centre value and compose with their series (`Real.exp_bound`,
-  `cos_taylor_bound`/`sin_taylor_bound`, geometric series, `Real.abs_log_sub_add_sum_range_le`),
-  using the 128-bit point `exp`/`sin`/`cos`/`inv`/`log` for the centre constant. **Certificate:**
-  every product goes through an oracle `mo`. The tactic runs `moGen` natively to record all
-  products (`witnesses`). The checker `moChk` accepts the next listed product only if it
-  equals `FM.mul C A B`, so the kernel checks each product once on literal inputs and later
-  steps reuse the literal. The cell integral is exact in `ℚ` (`intQ`) `± r/2^K·(h-l)`.
-  `quadBoundF N K e a b ds ql qh ws` checks everything, and `integral_bounds_of_quadBoundF`
-  turns it into `ql ≤ ∫ ∧ ∫ ≤ qh`; it is proved for any oracle returning true products
-  (`MoOK`). The search tries orders 8–30 and `K ∈ {96, 160, 224}` with adaptive bisection
-  (≤ 64 cells, or `maxBoxes`), and keeps the certificate with the fewest products.
-  `(order := N)` fixes the order. The earlier interval-coefficient version
-  (`I128TM.lean`, `quadBoundQ`) remains in the library.
-* Every backend accepts `(precision := 128)`; `(precision := 64)` is accepted everywhere.
-* When a precision-64 attempt fails with a margin at binary64 resolution, its message suggests
-  `(precision := 128)`.
+### Backends
+
+| Goal | Backend at 128 | Certificate |
+|---|---|---|
+| `f ≤ c`, `f < c`, `≥`, `>`, `∈ Icc`, `∧`, boxes | `interval` | `Interval128.Dy.DCert`: bisection at dyadic points, monotonicity (sign of `∂ᵢf` proved recursively up to `order`), centred form; `checkDQ_sound` |
+| `f ≠ c` | `interval` | bisection until every box excludes `0` (`nzQ`, `prove_neQ`) |
+| `∃ x ∈ [a, b], f x = 0`, `∃!` (one variable) | `root_exists` / `root_unique` | sign change at the endpoints or at a grid cell (`ivtCheckQ`); `∃!` adds a strict sign of `f'` by a `DCert` (`unique_oneQ`); Krawczyk is the fallback |
+| systems of `n` equations | `root_exists` / `root_unique` | Krawczyk at 128 bits (`I128Kraw.lean`, `krawCheckQ`, `kraw_existsUniqueQ`, `kraw_exists_inQ`) |
+| `sInf` / `sSup` bounds, witnesses `∃ x ∈ S, f x ≤ c` | `realfp` | `∀` side by `interval`; witnesses checked at 128 bits (`findWitnessQ`); in one variable refined by bisection on the sign of `f'` |
+| argmin / argmax localisation (one variable) | `realfp` | `proveArgCore`: stationary point refined at 128 bits, level `M` between `f(q)` and the outer values; side goals by `interval` |
+| `#realfp_min` / `#realfp_max` | command | branch and bound with 128-bit enclosures (`bnbMinQ`); prints 36 digits; untrusted report |
+| `∫ x in a..b, f x` bounds | `integral_bound` | fixed-point Taylor models with a per-product certificate (`I128TMF.lean`, below) |
+| `M.PosDef` | `pos_def` | exact rational `LDLᵀ` congruence, no rounding (`PosDefQ.lean`, `posDef_of_congrQ`) |
+
+Options are as at 64 (`trust`, `depth`, `maxBoxes`, `order`, `deriv`, `chunk`), with these
+differences. For `integral_bound`, `order` is the Taylor order (8–30, default: search) and
+`maxBoxes` the number of cells (default 64). `pos_def` takes only `trust` and `precision`.
+
+### Functions and accuracy
+
+These are computed at 128 bits (`Interval128/Dyadic.lean`; soundness in
+`RealFPMathlib/I128DyBase.lean` and `I128DyTransc.lean`):
+
+| Operation | Method | Point accuracy (width / `\|f x\|`) |
+|---|---|---|
+| `+ - *`, `/`, `⁻¹`, `√`, `\|·\|`, `^ n`, rational constants | `Nat`/`Int` arithmetic rounded to 128 bits; `√` from a Newton guess the definition checks | about `3e-39` per operation |
+| `π` | `[3.1415926535897932384626433832795028841971, …972]`: `RealFP.pi_gt_d40` / `pi_lt_d40` (`PiBounds.lean`, Mathlib's `pi_lower_bound` / `pi_upper_bound` with 70 square roots) | about `1e-40` |
+| `exp` | `s` halvings to `\|y\| ≤ 2⁻⁸`, degree-13 Taylor + `Real.exp_bound`, `s` squarings | `8e-34` |
+| `sin`, `cos` | same reduction, `Complex.exp_bound` at `y·I`, double-angle steps; an interval is centre `±` radius | `3e-31` worst (at `x ≈ -1764`), better near 0 |
+| `log`, `logb 2`, `logb 10` | square roots to `\|1 - w\| ≤ 1/64`, 23-term series + `Real.abs_log_sub_add_sum_range_le` | `5e-36` |
+| `sinh`, `cosh`, `tanh` | odd series near 0, else from `exp` | `8e-34` (`tanh` `5e-35`) |
+
+These figures come from 117 points against 50-digit `mpmath` values (`interval128_tests`,
+`scripts/dytransc_ref.py`). `arctan`, `atan2`, `tan`, `arcsin`, `arccos`, registered functions,
+and `log` / `logb` on intervals not known to be positive are still accepted, but they go
+through Interval64 (`lift1` / `lift2`, about `1e-16` relative). The failure message names
+them (`Interval128.Dy.lifted`).
+
+### Kernel and native
+
+`trust := kernel` (the default) closes each check by kernel evaluation of the same `Nat`/`Int`
+definitions that the search runs compiled. Large checks use `eagerReduce` with no heartbeat
+limit. `trust := native` uses `native_decide` on the same check.
+
+Kernel and compiled evaluation agree: `Tests/KernelNativeAgree.lean` pins a quadrature check
+that is true in both at the enclosure end and false in both one `10⁻⁴⁰` below it. Kernel
+costs:
+
+* about 10–30 ms per box for arithmetic;
+* about 0.1–0.7 s per `exp`/`log`/`sin`/`cos` point evaluation;
+* about 0.1–0.2 s per Taylor-model product in an integral certificate.
+
+### Timings
+
+Wall time of the whole declaration on the dev box (8 CPUs), kernel trust unless noted.
+"64" is the precision-64 attempt.
+
+| Example (`Examples/Precision128.lean`) | 64 | 128 |
+|---|---|---|
+| `√2 - 1.4142135623730950488 < 1.7e-21`, `π < 3.1415926535897932385` | fails | under 0.5 s |
+| `π`, `π²` to 34 digits | fails | under 0.5 s |
+| `exp 1`, `log 2`, `sin 1`, `cos 1` to 31 digits | fails | 0.2–0.9 s |
+| `x² - x/3 ≤ 10/3 + 10⁻³⁰` on `[1, 2]` (one monotonicity step) | fails | under 0.2 s |
+| `∃! x, x² = 2` in a box of width `10⁻¹⁹` | fails | under 1 s |
+| `x² + y² = 4, x y = 1` (Krawczyk, width `10⁻²⁸`) | fails | about 1.2 s |
+| transcendental 2×2 system (width `10⁻²⁸`) | fails | about 3.4 s |
+| argmin of `x⁴ - x` (width `10⁻¹⁶`) | fails | about 0.7 s |
+| argmax of `sin x + cos x` (width `10⁻¹⁶`) | fails | about 3.8 s |
+| 10×10 Hilbert `PosDef` | about 23 s | about 10 s (1.3 s kernel) |
+| `∫₀¹ e^{-x²}`, 18 digits | fails | about 3 s (75 s with the earlier interval-coefficient models) |
+| `∫₀¹ e^{-x²}`, 31 digits, both sides | fails | about 20 s (native: about 1 s) |
+| `∫₀¹ 4/(1+x²) = π`, 30 digits | fails | about 9 s (native: about 1 s) |
+
+### Design
+
+* **Numbers** (`Interval128/Dyadic.lean`, namespace `Interval128.Dy`, core, Mathlib-free).
+  `Dy = ⟨m e : Int⟩` is `m · 2^e`. `rdn` / `rup` round to 128 significant bits, `addX` /
+  `mulX` are exact, `ofRatDn` / `ofRatUp` round a rational, `invDnPos` / `invUpPos` bound
+  `1 / (m · 2^e)`, and `sqrtDn` / `sqrtUp` check `r * r ≤ n` / `n ≤ r * r`. Everything is
+  `Nat`/`Int` arithmetic, so the kernel runs it with GMP. The same definitions are compiled
+  for the search and for `native_decide`.
+* **Intervals** `DI = ⟨lo hi : Option Dy⟩`, where `none` means unbounded. `evalQ` evaluates an
+  `IExpr`:
+  * `/` and `⁻¹` need a divisor of strict sign, otherwise the result is the whole line;
+  * even powers are computed from `|X|`;
+  * the goal predicates `gLe` / `gLt` / `gGe` / `gGt` compare exact rational endpoints.
+
+  Soundness: `RealFPMathlib/I128Dyadic.lean` (namespace `RealFP.I128Q`): `mem_add`,
+  `mem_mul`, …, `evalQ_sound`, `checkQ_sound`, `prove_le` / `_lt` / `_ge` / `_gt`.
+* **Derivative certificates** (`Interval128.Dy.DCert`, `checkDQ`; soundness
+  `RealFPMathlib/I128Deriv.lean`) mirror Interval64's one-variable-at-a-time `DCert`:
+  * `leaf`;
+  * `split i d l r`;
+  * `mono i inc dc c`: the sign of `∂ᵢe` is proved by the nested `dc`, and `c` checks the
+    relevant face;
+  * `center i d`.
+
+  Split points are emitted as base-`2^62` limbs (`ofLimbs`), because the kernel is much slower
+  on `Nat` literals of `2^63` or more. `searchDQ` (compiled, untrusted) finds the certificate.
+* **Krawczyk at 128** (`I128Kraw.lean`). The search refines the centre `m` by simplified
+  Newton with 128-bit evaluations, and takes `Y ≈ F'(m)⁻¹` from binary64 elimination. The
+  kernel recomputes `F(m)` and the interval Jacobian at 128 bits, then checks:
+  * the inclusion;
+  * `‖I - Y J(X)‖∞ ≤ q < 1`;
+  * `‖I - Z Y‖∞ ≤ q`.
+* **Integrals: fixed-point Taylor models with a product certificate** (`I128TMF.lean`).
+  * **Model.** A cell `[l, h]` has centre `m = (l+h)/2`, order `N`, precision `K` bits and a
+    half-width bound `hn / 2^K`. A model `⟨c, r⟩` (integers `cₖ`, natural `r`) is
+    `Σ (cₖ/2^K)(x-m)^k` with `|f x - p (x - m)| ≤ r / 2^K` on the cell (`FMok`).
+  * **Products.** `FM.mul` rounds the kept coefficients down. It adds four terms to `r`, each
+    bounded with `adot` (`Σ |lᵢ| ρ^(k+i)`, with `ρ^k` rounded up): the rounding, the degrees
+    ≥ `N`, the cross terms and the product of remainders.
+  * **Functions.** `exp`, `sin`, `cos`, `1/·` and `log` split off the centre value and compose
+    with their series. The remainders are `Real.exp_bound`, `cos_taylor_bound` /
+    `sin_taylor_bound`, the geometric series and `Real.abs_log_sub_add_sum_range_le`. The
+    centre constants come from the 128-bit point functions.
+  * **Certificate.** Every product goes through an oracle `mo`. The tactic runs `moGen`
+    natively to record the products (`witnesses`). The checker `moChk` accepts the next
+    listed product only if it equals `FM.mul C A B`. So the kernel checks each product once
+    on literal inputs, and later steps reuse the literal instead of re-evaluating shared
+    subterms.
+  * **Integration.** The cell integral is exact in `ℚ` (`intQ`) `± r/2^K·(h-l)`.
+    `quadBoundF N K e a b ds ql qh ws` checks the whole certificate, and
+    `RealFP.TMF.integral_bounds_of_quadBoundF` gives `ql ≤ ∫ ∧ ∫ ≤ qh`. It is proved for any
+    oracle that returns true products (`MoOK`).
+  * **Search.** The search tries orders 8–30 and `K ∈ {96, 160, 224}` with adaptive
+    bisection, and keeps the certificate with the fewest products.
+  * **Native mode.** `trust := native` uses `quadBoundD` (`moDir`, no product list).
+  * **Earlier version.** The interval-coefficient models (`I128TM.lean`, `quadBoundQ`) remain
+    in the library.
+* **`pos_def`** (`PosDefQ.lean`). The search computes an exact rational `LDLᵀ` and
+  `X = L⁻¹`. The kernel computes `B = X A Xᵀ` in `ℚ` and checks strict diagonal dominance
+  (`congrCheckQ`). This works for any condition number; the cost is the size of the
+  rationals.
+* **The double-double type** (`Interval128.Interval128`, described below) and its proved
+  checker (`Interval128.Refl`, `I128Sound.lean`) remain in the library. The tactics do not
+  use it.
 
 ## Representability, `ofRat`, and tightness
 
@@ -1140,7 +1145,8 @@ upstreamed; facts small enough for `decide +kernel` avoid the extra axiom.
 ## Computer-assisted-proof toolkit: PD matrices, polynomials, quadrature
 
 Aimed at proofs like Alpöge–Buckmaster (Navier–Stokes), which reduce to checking many matrix
-positivity, polynomial-sign, and integral bounds. Interval64 only. The Lean definitions are the
+positivity, polynomial-sign, and integral bounds. This section is the Interval64 toolkit (for 128-bit
+`pos_def` and `integral_bound`, see [Precision 128](#precision-128-precision--128)). The Lean definitions are the
 specification. The PD kernel also has a C runtime (`@[implemented_by]`, bit-identical to the spec
 and tested). Soundness theorems over `ℝ` are in the Mathlib layer.
 
@@ -1384,7 +1390,8 @@ Benchmarks (`interval64_bench`, x86-64 box, one call each):
 It proves `c ≤ ∫ x in a..b, f x`, `∫ … ≤ c`, `<`, conjunctions, and `∈ Set.Icc`.
 
 - Options: `(trust := kernel|native)`, `(order := n)` (only that Taylor order, 2/4/6/8),
-  `(maxBoxes := n)` (cell limit, default 512); anything else is an error.
+  `(maxBoxes := n)` (cell limit, default 512), `(precision := 128)` (fixed-point Taylor models,
+  see [Precision 128](#precision-128-precision--128)); anything else is an error.
 - `a`, `b`, `c` must be rational numerals, with `a` and `b` exact floats. `f` may use the
   `interval` tactic's operations.
 - **Search (native, C kernels).** For each `K ∈ {2,4,6,8}` it bisects the cells with the widest
@@ -1466,7 +1473,7 @@ For larger instances, the same checks can run compiled through `native_decide`. 
 ## Interval128: double-double intervals (`Interval128/`, `RealFPMathlib/I128*.lean`)
 
 The tactics use it through `(precision := 128)`; see
-[Precision 128 in `interval`](#precision-128-in-interval-interval128dyadiclean-realfpmathlibi128dyadiclean).
+[Precision 128](#precision-128-precision--128).
 
 `Interval128` has endpoints that are double-doubles: `[lh + ll, uh + ul]`,
 about 106 bits (relative width ≈ 2^-104 on point inputs). It uses the same

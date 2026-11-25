@@ -40,7 +40,30 @@ A completed head-to-head timing of Interval64 against FloatLib’s software inte
 
 [LeanCert](https://docs.leancert.io/) is broader in goal shapes (roots, Krawczyk systems, optimisation, sums, eventual bounds, exact polynomial integrals), precision (rationals, adjustable dyadics, affine arithmetic), and tooling (extension registry, docs, Python SDK). realfp is faster and closes more of the shared bound and integral goals, including in kernel mode. Both default their high-level tactics to kernel checking now (`realfp` does; LeanCert’s `leancert` still offers a native default in the reviewed revision, with an explicit kernel switch).
 
-Sources: `/workspace/leancert-bench/COMPARISON.md`, `problems/final.res`, `problems/final_realfp.res`, `problems/opt/{lc,realfp}.res`. LeanCert times are from the first complete run (realfp then called `interval` / `integral_bound`). realfp times below are the later rerun through the unified `realfp` tactic (realfp `4d58d43` and later). Baseline imports: LeanCert 3.48 s; realfp 3.43 s in the rerun.
+Sources (local benchmark logs, since removed from the box): `/workspace/leancert-bench/COMPARISON.md`, `problems/final.res`, `problems/final_realfp.res`, `problems/opt/{lc,realfp}.res`. LeanCert times are from the first complete run (realfp then called `interval` / `integral_bound`). realfp times below are the later rerun through the unified `realfp` tactic (realfp `4d58d43` and later). Baseline imports: LeanCert 3.48 s; realfp 3.43 s in the rerun.
+
+**Precision.** The timings in this section are for realfp at precision 64 (binary64
+endpoints). realfp has since added `(precision := 128)`, which uses 128-bit dyadic intervals in
+every backend:
+
+- `interval` / `realfp` bounds: `exp`, `log`, hyperbolic functions to about `1e-33` relative, and
+  `π` to about `1e-40`;
+- roots, including Krawczyk systems;
+- optimisation;
+- `integral_bound` through kernel-checked fixed-point Taylor models;
+- exact `pos_def`.
+
+Measured times for `(precision := 128)` in `RealFPMathlib/Examples/Precision128.lean` (kernel
+mode):
+
+| Example | Time |
+|---|---|
+| ∫₀¹ e^(−x²) to 18 digits | about 3 s |
+| The same integral to 31 digits | about 20 s |
+| A 30-digit π integral | about 9 s |
+| A Krawczyk circle–hyperbola system | 1.2 s |
+
+LeanCert was not timed at comparable precision, so no head-to-head figures are given for 128.
 
 ### 21 shared goals
 
@@ -154,7 +177,7 @@ lean4body itself was not timed on these machines. Its published cost is 7.6 CPU-
 
 ## Sources
 
-- LeanCert vs realfp: `/workspace/leancert-bench/COMPARISON.md` and `problems/*.res` (21 goals and o01–o10).
+- LeanCert vs realfp: `/workspace/leancert-bench/COMPARISON.md` and `problems/*.res` (21 goals and o01–o10; local logs, since removed).
 - 8-point timings and axioms: `em8-realfp` README (branch `kernel-only`) and `NOTES-kernel.md`; Spark log notes in `/workspace/showcase/NOTES.md`.
 - Four-body native timings: `/workspace/showcase/NOTES.md`, `/workspace/showcase/fourbody/NOTES.md`; kernel estimates in `em8-realfp` README / `NOTES-kernel.md` and `/workspace/kernel-notes/PROGRESS.md`.
 - FloatLib characterisation and the 0.159 s kernel dot-product figure: `/workspace/floatlib/COMPARE.md` (review of FloatLib docs and source). realfp `addDown` micro-benchmark: this repo’s README.

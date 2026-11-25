@@ -9,7 +9,9 @@ kernel and depend only on Lean's standard axioms (`propext`, `Classical.choice`,
 `Quot.sound`).
 
 Typical uses are inequalities over a box, existence or uniqueness of roots,
-integral bounds, positive definiteness, and minima or maxima. The core library
+integral bounds, positive definiteness, and minima or maxima. When binary64's
+16 digits are not enough, `(precision := 128)` switches the tactics to 128-bit
+dyadic arithmetic (about 38 digits, still kernel-checked). The core library
 (`interval64`) has no Mathlib dependency. The Mathlib layer (`realfp_mathlib`)
 supplies theorems about `ℝ` and the tactics.
 
@@ -78,6 +80,9 @@ example : ∀ x ∈ Set.Icc (0 : ℝ) 1, Real.sin x ≤ x + 1/1000 := by realfp
 
 example : ∃! x ∈ Set.Icc (1 : ℝ) 2, x ^ 2 = 2 := by realfp
 
+-- 128-bit dyadic intervals, for bounds below binary64 resolution:
+example : Real.pi < 3.14159265358979323846264338327951 := by realfp (precision := 128)
+
 -- Faster on large certificates, but the proof then trusts the Lean
 -- compiler and the C kernels:
 --   example : … := by realfp (trust := native)
@@ -89,7 +94,7 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 ## Documentation
 
 - [Tutorial](docs/TUTORIAL.md) — hands-on guide; every snippet is compiled
-- [Reference](docs/REFERENCE.md) — operations, theorems, kernels, and tactics
+- [Reference](docs/REFERENCE.md) — operations, theorems, kernels, tactics, and precision 128
 - [Comparisons](docs/COMPARISONS.md) — FloatLib, LeanCert, and two research showcases
 - [Limitations](docs/LIMITATIONS.md) — known gaps
 - [Philosophy](docs/PHILOSOPHY.md) — design rationale

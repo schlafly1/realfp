@@ -185,6 +185,16 @@ example : 0.6931471805599453094172321214581 < Real.log 2 := by interval (precisi
 example : Real.exp (1 / 10 ^ 10) - 1 - 1 / 10 ^ 10 < 5.000001e-21 := by
   fail_if_success interval      -- binary64: exp (1e-10) is only known to about 2e-16
   interval (precision := 128)
+-- precision 128 in the other backends: a box bound, a root, a minimiser, an integral
+example (x : ℝ) (h0 : 1 ≤ x) (h1 : x ≤ 2) : x ^ 2 - x / 3 ≤ 10 / 3 + 1e-30 := by
+  interval (precision := 128)
+example : ∃! x : ℝ, x ∈ Set.Icc (1.4142135623730950488 : ℝ) 1.4142135623730950489 ∧ x ^ 2 = 2 := by
+  root_unique (precision := 128)
+example : ∃ x ∈ Set.Icc (0.6299605249474365 : ℝ) 0.6299605249474366,
+    ∀ y ∈ Set.Icc (0 : ℝ) 1, x ^ 4 - x ≤ y ^ 4 - y := by
+  realfp (precision := 128)
+example : (0.746824132812427025 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by
+  integral_bound (precision := 128)
 
 -- integrals
 example : (0.7468 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by realfp

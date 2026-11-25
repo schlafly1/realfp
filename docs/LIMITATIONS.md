@@ -23,57 +23,39 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 - Example files for the new functions take 37–104 s each to build.
 
 ## Precision 128 (`(precision := 128)`)
-- Supported at 128: `interval` goals (`f ≤ c`, `f < c`, `f ∈ Icc a b`, `∧`, `f ≠ c`),
-  `root_exists` / `root_unique` (one variable: sign change, for `∃!` a strict derivative sign;
-  systems and fallback: Krawczyk with 128-bit interval arithmetic; the preconditioner `Y` is a
-  binary64 inverse, so very ill-conditioned Jacobians, condition number near `10¹⁶`, fail),
-  `sInf` / `sSup` bounds and witnesses `∃ x ∈ S, f x ≤ c` (128-bit checks; in one variable the
-  witness is refined at 128 bits by bisection on the sign of `f'`), argmin/argmax
-  localisation in one variable (box width down to about `10⁻¹⁶`, limited by the quadratic value
-  gap) and `#realfp_min` / `#realfp_max (precision := 128)` (an untrusted report).
-  `pos_def (precision := 128)` is an exact rational check (no 128-bit arithmetic involved).
-  `integral_bound (precision := 128)` uses Taylor models (below).
-- `integral_bound (precision := 128)`: one-variable fixed-point Taylor models of order 8–30
-  for `+ - * / ^n`, rationals, `π`, `exp`, `sin`, `cos` and `log`. Other functions make the
-  search fail, and `1/·` and `log` need the argument away from 0 on each cell. The kernel checks
-  a step-by-step certificate: every Taylor-model product is supplied and checked once on
-  literal inputs, at about 0.1–0.2 s per product. For `∫₀¹ e^{-x²}`, 18 digits take about
-  3 s (it was 75 s with the interval-coefficient `quadBoundQ`) and 31 digits about 20 s
-  (4 cells, order 30). Cost grows with the number of cells × order, so wide intervals, or
-  integrands needing many cells (for example `log` near 0), are slower.
-  Kernel and compiled evaluation of the `quadBoundQ` check agree (`Tests/KernelNativeAgree.lean` pins a
-  bound exactly at the enclosure end, true in both, and one `10⁻⁴⁰` below it, false in both).
-  An earlier 30-digit run that seemed kernel-accepted while native rejected it had been killed
-  by the out-of-memory killer without output. Run to completion, the kernel rejects it too
-  (about 7 min, about 11 GB).
-- `≠` at 128 is plain bisection (no derivative certificates for exclusion).
-- 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
-  enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,
-  `logb 2`, `logb 10` (point enclosures about `1e-33` relative; `sin`/`cos` of arguments around
-  `10³` about `3e-31`, since the double-angle steps amplify the error). `arctan`, `atan2`, `tan`,
-  `arcsin`, `arccos`, registered functions, and `log` / `logb` on intervals not known to be
-  positive are evaluated with Interval64 precision (about `1e-16` relative); the failure message
-  lists them.
-- Kernel cost of the elementary functions: about 0.1–0.4 s per point evaluation (`exp`, `log`,
-  `sinh`, …; `sin`/`cos` together about 0.4–0.7 s), and an interval needs two (`exp`, `log`,
-  hyperbolic: both endpoints) or one (`sin`/`cos`: centre plus a Lipschitz radius, so wide
-  intervals are coarse).
-- Derivative certificates at 128 (`Interval128.Dy.DCert`: bisection, monotonicity with the sign
-  of `∂ᵢf` proved recursively up to `order`, centred form at the midpoint) mirror Interval64's
-  one-variable-at-a-time `DCert`; the multivariate centred forms (`MCert`), Taylor and
-  Bernstein certificates of precision 64 are not available at 128. Registered (extension)
-  functions are never differentiated at 128.
-- Kernel cost of transcendental boxes: a monotonicity step on `sin x + cos x` costs about 1.1 s
-  (derivative and endpoint values), so a tight bound at an interior maximum (30 splits, 36
-  monotonicity steps for a `1e-16` margin) takes about 36–55 s in the kernel; with
-  `(trust := native)` the same proof takes about 0.9 s (`interval (precision := 128)
-  (trust := native) (depth := 60) (order := 2)`), so native mode is not the slow part. Most of
-  the kernel time is one chunk (about 22 s) re-evaluating the transcendental enclosures;
-  `eagerReduce` does not help there.
-- Kernel cost: about 10–30 ms per box with the dyadic `Nat`/`Int` path (a one-variable bound
-  with 60–100 boxes takes about 1 s). Boxes are still plain bisection, so wide boxes with tight
-  margins need many of them. The double-double `Interval128` type and its proved checker
-  (`Interval128.Refl`) remain in the library, but the tactic no longer uses them.
+- **Functions.** `arctan`, `atan2`, `tan`, `arcsin`, `arccos`, registered functions, and
+  `log` / `logb` on intervals not known to be positive are evaluated with Interval64 precision
+  (about `1e-16` relative), and the failure message lists them.
+- **`sin`/`cos` accuracy.** It degrades for large arguments: about `3e-31` relative near
+  `x ≈ 10³`, because the double-angle steps amplify the error. An interval `sin`/`cos` is
+  centre `±` radius, so wide intervals are coarse.
+- **Certificates.** Derivative certificates are the one-variable-at-a-time `DCert`
+  (bisection, monotonicity, centred form). The multivariate centred forms (`MCert`) and the
+  Taylor and Bernstein certificates of precision 64 do not exist at 128. Registered functions
+  are never differentiated at 128, and `≠` is plain bisection.
+- **Kernel cost.**
+  - Arithmetic: about 10–30 ms per box.
+  - Elementary functions: about 0.1–0.7 s per point evaluation, with two per interval for
+    `exp`/`log`/hyperbolic.
+  - A tight bound at an interior maximum of `sin x + cos x` (`1e-16` margin: 30 splits and
+    36 monotonicity steps) takes 36–55 s in the kernel and about 0.9 s with
+    `(trust := native)`.
+- **Krawczyk.** The preconditioner `Y` is a binary64 inverse, so Jacobians with condition
+  number near `10¹⁶` fail. `∃!` needs contraction on the whole given box.
+- **Optimisation.** Argmin/argmax localisation is one-variable only, and the box width is
+  limited to about `10⁻¹⁶` by the quadratic value gap. `#realfp_min` / `#realfp_max` at 128 are
+  untrusted reports.
+- **Integrals (`integral_bound`).**
+  - One variable only.
+  - Supported: `+ - * / ^n`, rationals, `π`, `exp`, `sin`, `cos`, `log`. Other functions
+    make the search fail.
+  - `1/·` and `log` need the argument away from 0 on each cell.
+  - At most 64 cells by default, and orders 8–30.
+  - Kernel time is about 0.15 s per Taylor-model product, so it grows with cells × order.
+    Integrands that need many cells are slow in the kernel: a certificate of 640 products
+    (order 16, 32 cells) takes about 2 min.
+- **`pos_def`.** It is exact (`ℚ`), so its cost is the size of the rationals. Matching the
+  matrix entries (`ext; fin_cases; simp`) dominates beyond about 10×10.
 
 ## Optimization tactics
 - First-order bounds only, over boxes only; localisation (argmin) is 1D only.
@@ -84,7 +66,8 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 ## Tooling and API
 - Plain `lake env lean` needs `--load-dynlib` and `--plugin` flags for the C runtime; without them
   tactics give a clear error, but `#eval` gives Lean's own error.
-- The `Interval128` type name is unchanged (`Interval128.Interval128`).
+- The double-double type keeps the name `Interval128.Interval128`; the 128-bit tactics use the
+  dyadic `Interval128.Dy` path instead.
 - `X.width` is still a `Float`.
 - CI on GitHub Actions builds the portable RN+err C backend (runners may lack AVX-512);
   the default local x86_64 build is still AVX-512. The slow Examples and the full axiom
