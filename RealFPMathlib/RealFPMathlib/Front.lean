@@ -23,7 +23,7 @@ standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom),
 `interval`/root/optimisation goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`,
 `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)` (128: 128-bit dyadic
 endpoints). Integrals take `order` (Taylor order 2/4/6/8; at precision 128 the Taylor-model
-order 8–30), `maxBoxes` (cells) and `precision` (128: Taylor models, `I128TM.lean`); `pos_def` takes `trust` and `precision` (128: exact rational check). An option a backend cannot use is an error.
+order 8–30), `maxBoxes` (cells) and `precision` (128: fixed-point Taylor models with a per-product certificate, `I128TMF.lean`); `pos_def` takes `trust` and `precision` (128: exact rational check). An option a backend cannot use is an error.
 -/
 import RealFPMathlib.IntervalTactic
 import RealFPMathlib.IntegralTactic

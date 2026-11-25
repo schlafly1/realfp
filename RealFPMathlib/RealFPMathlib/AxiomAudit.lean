@@ -72,6 +72,7 @@ import RealFPMathlib.Poly
 import RealFPMathlib.PosDefTactic
 import RealFPMathlib.PosDefQ
 import RealFPMathlib.I128TM
+import RealFPMathlib.I128TMF
 import RealFPMathlib.Pow
 import RealFPMathlib.Quad
 import RealFPMathlib.Quad2

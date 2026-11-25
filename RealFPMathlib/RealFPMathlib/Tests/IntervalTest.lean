@@ -161,6 +161,12 @@ theorem p19 : Real.exp 1 ≠ 2.71828182845904523536028747135 := by interval (pre
 theorem p24 : (∫ x in (0 : ℝ)..1, (x ^ 3 - x + 1 / 3)) ≤ 0.0833333333333333333333334 := by
   realfp (precision := 128)
 
+-- precision 128, fixed-point Taylor models with sin, cos, log, exp (certificate checked in the kernel)
+theorem p25 : ∫ x in (0 : ℝ)..1, (Real.sin x + Real.log (1 + x)) ≤ 0.84599205525176 := by
+  integral_bound (precision := 128)
+theorem p26 : (0.84147098480789650665250232163 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.cos x := by
+  integral_bound (precision := 128)
+
 /-- error: interval: (precision := _) must be 64 (default, Interval64) or 128 (128-bit dyadic endpoints) -/
 #guard_msgs in
 example : (1 : ℝ) ≤ 2 := by interval (precision := 32)

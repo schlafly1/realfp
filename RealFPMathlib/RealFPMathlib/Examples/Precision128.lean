@@ -320,16 +320,27 @@ theorem hilbert10_posDef :
     (Matrix.of fun i j : Fin 10 => (1 : ℝ) / ((i : ℝ) + j + 1)).PosDef := by
   pos_def (precision := 128)
 
-/-! ### `integral_bound` at 128 (Taylor models)
+/-! ### `integral_bound` at 128 (fixed-point Taylor models)
 
-`integral_bound (precision := 128)` encloses the integrand on each cell by a Taylor model of
-order `N` (interval coefficients in `x - m` plus a remainder interval; `exp`, `sin`, `cos`,
-`log`, `1/·` composed through their series at the centre value with Mathlib's remainder
-bounds) and integrates the polynomial exactly (`RealFPMathlib/I128TM.lean`,
-`RealFP.TMQ.integral_bounds_of_quadBoundQ`). The kernel check is slow (about 75 s here: an
-order-20 model on two cells); with `(trust := native)` the same certificates take about 1 s.
+`integral_bound (precision := 128)` encloses the integrand on each cell with an order-`N`
+fixed-point Taylor model. Coefficients in `x - m` are integers scaled by `2^K`, and the
+remainder is an explicit bound. `exp`, `sin`, `cos`, `log` and `1/·` are composed through their
+series at the centre value with Mathlib's remainder bounds. The polynomial is integrated
+exactly (`RealFPMathlib/I128TMF.lean`, `RealFP.TMF.integral_bounds_of_quadBoundF`). The
+certificate lists every Taylor-model product, and the kernel checks each one once on literal
+inputs: 18 digits take about 3 s (75 s before the certificate), 31 digits about 20 s.
 Precision 64 stops near `1e-15`. -/
 theorem gauss_18_digits : (0.746824132812427025 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) := by
+  integral_bound (precision := 128)
+
+/-- `∫₀¹ e^{-x²}` to 31 digits, kernel-checked (about 20 s). -/
+theorem gauss_31_digits :
+    (0.7468241328124270253994674361318 : ℝ) ≤ ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) ∧
+      ∫ x in (0 : ℝ)..1, Real.exp (-x ^ 2) ≤ 0.7468241328124270253994674361319 := by
+  integral_bound (precision := 128)
+
+/-- `π` to 30 digits as `∫₀¹ 4 / (1 + x²)`, kernel-checked (about 9 s). -/
+theorem pi_integral_30 : (3.14159265358979323846264338327 : ℝ) ≤ ∫ x in (0 : ℝ)..1, 4 / (1 + x ^ 2) := by
   integral_bound (precision := 128)
 
 /-- `π` to 30 digits as `∫₀¹ 4 / (1 + x²)` (native, about 1 s). -/

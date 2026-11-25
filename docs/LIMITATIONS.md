@@ -33,15 +33,15 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   gap) and `#realfp_min` / `#realfp_max (precision := 128)` (an untrusted report).
   `pos_def (precision := 128)` is an exact rational check (no 128-bit arithmetic involved).
   `integral_bound (precision := 128)` uses Taylor models (below).
-- `integral_bound (precision := 128)`: one-variable Taylor models of order 8–30 with interval
-  coefficients, for `+ - * / ^n`, rationals, `π`, `exp`, `sin`, `cos`, `log` (other functions
-  give an unbounded model, so the search fails; `1/·` and `log` need the argument away from 0
-  on each cell). The kernel check is slow: the kernel re-evaluates shared intermediate
-  results of the long Taylor-model computations (`eagerReduce` helps about 2×), so 18 digits
-  of `∫₀¹ e^{-x²}` take about 75 s (order 20, two cells) and 30 digits take many minutes.
-  With `(trust := native)` 30-digit integrals take about 1 s. A witness-per-step kernel
-  certificate (as the 64-bit `quadBoundW`) would remove the re-evaluation; not done yet.
-  Kernel and compiled evaluation of the check agree (`Tests/KernelNativeAgree.lean` pins a
+- `integral_bound (precision := 128)`: one-variable fixed-point Taylor models of order 8–30
+  for `+ - * / ^n`, rationals, `π`, `exp`, `sin`, `cos` and `log`. Other functions make the
+  search fail, and `1/·` and `log` need the argument away from 0 on each cell. The kernel checks
+  a step-by-step certificate: every Taylor-model product is supplied and checked once on
+  literal inputs, at about 0.1–0.2 s per product. For `∫₀¹ e^{-x²}`, 18 digits take about
+  3 s (it was 75 s with the interval-coefficient `quadBoundQ`) and 31 digits about 20 s
+  (4 cells, order 30). Cost grows with the number of cells × order, so wide intervals, or
+  integrands needing many cells (for example `log` near 0), are slower.
+  Kernel and compiled evaluation of the `quadBoundQ` check agree (`Tests/KernelNativeAgree.lean` pins a
   bound exactly at the enclosure end, true in both, and one `10⁻⁴⁰` below it, false in both).
   An earlier 30-digit run that seemed kernel-accepted while native rejected it had been killed
   by the out-of-memory killer without output. Run to completion, the kernel rejects it too

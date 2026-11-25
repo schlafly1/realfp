@@ -17,7 +17,7 @@ example : (0.7468 : ℝ) ≤ ∫ x in (0:ℝ)..1, Real.exp (-x^2) := by integral
 import RealFPMathlib.KQuad
 import RealFPMathlib.KQuadShare
 import RealFPMathlib.IntervalTactic
-import RealFPMathlib.I128TM
+import RealFPMathlib.I128TMF
 
 open Lean Meta Elab Tactic
 open Interval64 Interval64.KF Interval64.KF.KQ RealFP.IntervalTactic
@@ -200,7 +200,7 @@ def addBound (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {}) 
   let (_, g) ← g.intro1P
   replaceMainGoal [g]
 
-/-! ### Precision 128: Taylor models (`RealFPMathlib/I128TM.lean`) -/
+/-! ### Precision 128: fixed-point Taylor models with a product certificate (`RealFPMathlib/I128TMF.lean`) -/
 
 /-- A rational strictly between `a < b` with a short decimal expansion. -/
 def between (a b : ℚ) : ℚ := Id.run do
@@ -212,15 +212,19 @@ def between (a b : ℚ) : ℚ := Id.run do
 
 def dyRat? (d : Option Interval128.Dy.Dy) : Option ℚ := d.map Interval128.Dy.toRat
 
-/-- Adaptive cells for order `N` (bisect the widest cells until the bounds hold). -/
-def adaptQ (e : IExpr) (N : Nat) (qa qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
+/-- Enclosure of one cell by the fixed-point Taylor model (order `N`, precision `K`). -/
+def cellBnd (N K : Nat) (e : IExpr) (l h : ℚ) : Option (ℚ × ℚ) :=
+  (Interval128.F.cellF Interval128.F.moDir N K e l h []).map (·.1)
+
+/-- Adaptive cells for order `N`, precision `K` (bisect the widest cells until the bounds hold). -/
+def adaptF (e : IExpr) (N K : Nat) (qa qb : ℚ) (lower upper : Option (ℚ × Bool)) (maxCells : Nat) :
     Option (List ℚ × ℚ × ℚ) := Id.run do
   let mut cs : List (ℚ × ℚ) := [(qa, qb)]
   for _ in List.range 64 do
-    let ivs := cs.map fun (l, h) => Interval128.Dy.cellQ N e l h
-    let tot := ivs.foldr Interval128.Dy.DI.add Interval128.Dy.DI.zero
-    match dyRat? tot.lo, dyRat? tot.hi with
-    | some l, some h =>
+    let ivs := cs.map fun (l, h) => cellBnd N K e l h
+    if ivs.all Option.isSome then
+      let l := (ivs.map fun I => (I.getD (0, 0)).1).sum
+      let h := (ivs.map fun I => (I.getD (0, 0)).2).sum
       let okL := match lower with
         | some (c, true) => decide (c < l) | some (c, false) => decide (c ≤ l) | none => true
       let okU := match upper with
@@ -229,20 +233,26 @@ def adaptQ (e : IExpr) (N : Nat) (qa qb : ℚ) (lower upper : Option (ℚ × Boo
         if cs.all fun (l, h) => Interval128.Dy.domOKQ (Interval128.Dy.boxes [(l, h)]) e then
           return some (cs.map (·.2), l, h)
         else return none
-    | _, _ => pure ()
     if cs.length ≥ maxCells then return none
-    let ws : List ℚ := ivs.map fun I => (match dyRat? I.lo, dyRat? I.hi with
-      | some l, some h => h - l
-      | _, _ => (1000000 : ℚ))
+    let ws : List ℚ := ivs.map fun I => (match I with
+      | some (l, h) => h - l
+      | none => (1000000 : ℚ))
     let wmax := ws.foldl max 0
     cs := (cs.zip ws).flatMap fun ((l, h), w) =>
       if w * 4 ≥ wmax then [(l, (l + h) / 2), ((l + h) / 2, h)] else [(l, h)]
   return none
 
+/-- Precisions (bits) tried at 128 for the fixed-point Taylor models. -/
+def precs128 : List Nat := [96, 160, 224]
+
+def fmToExpr (W : Interval128.F.FM) : Expr :=
+  mkApp2 (mkConst ``Interval128.F.FM.mk) (toExpr W.c) (toExpr W.r)
+
 /-- Orders tried at precision 128 (kernel cost grows quickly with the order). -/
 def orders128 : List Nat := [8, 12, 16, 20, 24, 30]
 
-/-- `ql ≤ ∫ ∧ ∫ ≤ qh` by a Taylor-model certificate (`integral_bounds_of_quadBoundQ`). -/
+/-- `ql ≤ ∫ ∧ ∫ ≤ qh` by a fixed-point Taylor-model certificate with every product supplied
+(`integral_bounds_of_quadBoundF`). -/
 def addBound128 (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {}) : TacticM Unit := do
   let some (f, aE, bE) ← (do
       let (fn, as) := I.getAppFnArgs
@@ -257,14 +267,17 @@ def addBound128 (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {
     reify xs body
   let orders : List Nat := if cfg.orders == [2, 4, 6, 8] then orders128 else cfg.orders
   let maxCells := if cfg.maxCells == 512 then 64 else cfg.maxCells
-  let mut found : Option (Nat × List ℚ × ℚ × ℚ) := none
+  let mut found : Option (Nat × Nat × List ℚ × ℚ × ℚ) := none
   let mut bestCost := 0
   for N in orders do
-    if let some (ds, l, h) := adaptQ e N qa qb lower upper maxCells then
-      let cost := ds.length * N ^ 3
-      if found.isNone || cost < bestCost then
-        found := some (N, ds, l, h); bestCost := cost
-  let some (N, ds, l, h) := found |
+    for K in precs128 do
+      if let some (ds, l, h) := adaptF e N K qa qb lower upper maxCells then
+        -- kernel time is about proportional to the number of checked products (≈ 0.15 s each)
+        let cost := (Interval128.F.witnesses N K e qa ds).length * (K + 64)
+        if found.isNone || cost < bestCost then
+          found := some (N, K, ds, l, h); bestCost := cost
+        break
+  let some (N, K, ds, l, h) := found |
     throwError "integral_bound (precision := 128): no Taylor-model certificate with order in \
       {orders} and ≤ {maxCells} cells (supported: + - * / ^, exp, log, sin, cos, π; \
       log and 1/· need the argument bounded away from 0 on each cell); loosen the bound"
@@ -272,15 +285,24 @@ def addBound128 (I : Expr) (lower upper : Option (ℚ × Bool)) (cfg : ICfg := {
     | some (c, false) => c | some (c, true) => between c l | none => ((l.floor : ℤ) : ℚ) - 1
   let qh := match upper with
     | some (c, false) => c | some (c, true) => -between (-c) (-h) | none => ((h.ceil : ℤ) : ℚ) + 1
-  let args := #[toExpr N, iexprToExpr e, toExpr qa, toExpr qb, toExpr ds, toExpr ql, toExpr qh]
+  -- native mode: no certificate (a long literal list is a burden for `native_decide`)
+  let native := realfp.native.get (← getOptions)
+  let base := #[toExpr N, toExpr K, iexprToExpr e, toExpr qa, toExpr qb, toExpr ds, toExpr ql,
+    toExpr qh]
+  let args ← if native then pure base else do
+    let ws := Interval128.F.witnesses N K e qa ds
+    pure (base.push (← mkListLit (mkConst ``Interval128.F.FM) (ws.map fmToExpr)))
+  let chk := if native then ``Interval128.F.quadBoundD else ``Interval128.F.quadBoundF
+  let thm := if native then ``RealFP.TMF.integral_bounds_of_quadBoundD
+    else ``RealFP.TMF.integral_bounds_of_quadBoundF
   let ty := mkApp3 (mkConst ``Eq [Level.one]) (mkConst ``Bool)
-    (mkAppN ((← mkC ``Interval128.Dy.quadBoundQ)) args) (mkConst ``Bool.true)
+    (mkAppN ((← mkC chk)) args) (mkConst ``Bool.true)
   let pm ← mkFreshExprMVar ty
   let saved ← getGoals
   setGoals [pm.mvarId!]
   RealFP.closeCheckEager
   setGoals saved
-  let pf := mkAppN ((← mkC ``RealFP.TMQ.integral_bounds_of_quadBoundQ)) (args.push pm)
+  let pf := mkAppN ((← mkC thm)) (args.push pm)
   let goal ← getMainGoal
   let g ← goal.assert `hI (← inferType pf) pf
   let (_, g) ← g.intro1P
