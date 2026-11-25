@@ -72,6 +72,7 @@ theorem acc_step {x y lo hi : Float} {got : Bool} (hinv : AccInv (lo, hi, got))
       exact ⟨rfl, by rw [e1]; exact le_trans (min_le_left _ _) hd,
         by rw [e2]; exact le_trans hu (le_max_left _ _)⟩
 
+/-- The whole line contains every real. -/
 theorem mem_toSet_whole (x : ℝ) : x ∈ whole.toSet := by
   refine ⟨?_, ?_⟩
   · rw [show bitsToEVal whole.lo.toBits = some .negInf by decide +kernel]; trivial

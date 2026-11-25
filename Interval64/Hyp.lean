@@ -161,15 +161,25 @@ def log10UpSpec (a : Float) : Float := Float.ofBits (Hyp.log10UpBits a.toBits)
 @[extern "iv64_dir_log10_down"] opaque log10DownImpl (a : Float) : Float
 @[extern "iv64_dir_log10_up"] opaque log10UpImpl (a : Float) : Float
 
+/-- `sinh` rounded toward `-∞`. Lean specification; C kernel at runtime. -/
 @[implemented_by sinhDownImpl] def sinhDown (a : Float) : Float := sinhDownSpec a
+/-- `sinh` rounded toward `+∞`. -/
 @[implemented_by sinhUpImpl] def sinhUp (a : Float) : Float := sinhUpSpec a
+/-- `cosh` rounded toward `-∞`. -/
 @[implemented_by coshDownImpl] def coshDown (a : Float) : Float := coshDownSpec a
+/-- `cosh` rounded toward `+∞`. -/
 @[implemented_by coshUpImpl] def coshUp (a : Float) : Float := coshUpSpec a
+/-- `tanh` rounded toward `-∞`. -/
 @[implemented_by tanhDownImpl] def tanhDown (a : Float) : Float := tanhDownSpec a
+/-- `tanh` rounded toward `+∞`. -/
 @[implemented_by tanhUpImpl] def tanhUp (a : Float) : Float := tanhUpSpec a
+/-- `log2` rounded toward `-∞`. -/
 @[implemented_by log2DownImpl] def log2Down (a : Float) : Float := log2DownSpec a
+/-- `log2` rounded toward `+∞`. -/
 @[implemented_by log2UpImpl] def log2Up (a : Float) : Float := log2UpSpec a
+/-- `log10` rounded toward `-∞`. -/
 @[implemented_by log10DownImpl] def log10Down (a : Float) : Float := log10DownSpec a
+/-- `log10` rounded toward `+∞`. -/
 @[implemented_by log10UpImpl] def log10Up (a : Float) : Float := log10UpSpec a
 
 end Interval64.Directed
@@ -178,9 +188,11 @@ namespace Interval64
 
 open Interval64.Directed
 
+/-- Interval `sinh` (increasing): `[sinhDown lo, sinhUp hi]`; invalid if an endpoint is NaN. -/
 def sinh (a : Interval64) : Interval64 :=
   if a.lo.isNaN || a.hi.isNaN then invalid else ⟨sinhDown a.lo, sinhUp a.hi⟩
 
+/-- Interval `tanh` (increasing): `[tanhDown lo, tanhUp hi]`; invalid if an endpoint is NaN. -/
 def tanh (a : Interval64) : Interval64 :=
   if a.lo.isNaN || a.hi.isNaN then invalid else ⟨tanhDown a.lo, tanhUp a.hi⟩
 
@@ -209,7 +221,9 @@ def logB (ten : Bool) (a : Interval64) : Interval64 :=
     | .infinity .positive => ⟨logBLo ten a.lo, Float.ofBits Spec.posInf⟩
     | _ => invalid
 
+/-- Interval `log2`, with the same domain policy as `log`. -/
 def log2 (a : Interval64) : Interval64 := logB false a
+/-- Interval `log10`, with the same domain policy as `log`. -/
 def log10 (a : Interval64) : Interval64 := logB true a
 
 end Interval64

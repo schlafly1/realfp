@@ -201,9 +201,13 @@ namespace Interval64.Directed
 
 /-! ## Float-level directed exp / log -/
 
+/-- Software specification of `exp` rounded toward `-∞`. -/
 def expDownSpec (a : Float) : Float := Float.ofBits (Transc.expDownBits a.toBits)
+/-- Software specification of `exp` rounded toward `+∞`. -/
 def expUpSpec   (a : Float) : Float := Float.ofBits (Transc.expUpBits a.toBits)
+/-- Software specification of `log` rounded toward `-∞`. -/
 def logDownSpec (a : Float) : Float := Float.ofBits (Transc.logDownBits a.toBits)
+/-- Software specification of `log` rounded toward `+∞`. -/
 def logUpSpec   (a : Float) : Float := Float.ofBits (Transc.logUpBits a.toBits)
 
 @[extern "iv64_dir_exp_down"] opaque expDownImpl (a : Float) : Float
@@ -213,8 +217,11 @@ def logUpSpec   (a : Float) : Float := Float.ofBits (Transc.logUpBits a.toBits)
 
 /-- Correctly rounded `exp` toward `-∞` (C: CORE-MATH under RD). -/
 @[implemented_by expDownImpl] def expDown (a : Float) : Float := expDownSpec a
+/-- Correctly rounded `exp` toward `+∞` (C: CORE-MATH under RU). -/
 @[implemented_by expUpImpl]   def expUp   (a : Float) : Float := expUpSpec a
+/-- Correctly rounded natural `log` toward `-∞` (C: CORE-MATH under RD). -/
 @[implemented_by logDownImpl] def logDown (a : Float) : Float := logDownSpec a
+/-- Correctly rounded natural `log` toward `+∞` (C: CORE-MATH under RU). -/
 @[implemented_by logUpImpl]   def logUp   (a : Float) : Float := logUpSpec a
 
 /-- Round-to-nearest CORE-MATH (benchmark reference only; not a model). -/

@@ -101,7 +101,18 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 - [Soundness](docs/SOUNDNESS.md) — what kernel and native mode trust, and how it is checked
 - [Philosophy](docs/PHILOSOPHY.md) — design rationale
 
-An index of these files is in [docs/](docs/README.md).
+An index of these files is in [docs/](docs/README.md). A browsable API
+reference can be generated locally with doc-gen4:
+
+```bash
+cd docbuild
+MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4   # first time, or after a Lean/Mathlib bump
+lake build Interval64:docs Interval128:docs Interval64Proofs:docs RealFPMathlib:docs
+```
+
+The site root is `docbuild/.lake/build/doc/index.html`. Serve that directory
+with `python3 -m http.server` (opening the files directly in a browser is
+only partly functional). Details are in [docs/README.md](docs/README.md#api-reference-doc-gen4).
 
 ## License
 

@@ -126,13 +126,19 @@ structure DI where
   hi : Option Dy
   deriving Repr, Inhabited
 
+/-- The whole line (both ends unbounded). -/
 def DI.whole : DI := ⟨none, none⟩
+/-- The point interval `[0, 0]`. -/
 def DI.zero : DI := ⟨some Dy.zero, some Dy.zero⟩
+/-- Tight dyadic enclosure of a rational, at the working precision. -/
 def DI.ofRat (q : Rat) : DI := ⟨some (ofRatDn q), some (ofRatUp q)⟩
+/-- Enclosure of the rational interval `[a, b]`. -/
 def DI.ofRatI (a b : Rat) : DI := ⟨some (ofRatDn a), some (ofRatUp b)⟩
 
+/-- Exact negation. -/
 def DI.neg (X : DI) : DI := ⟨X.hi.map Dy.neg, X.lo.map Dy.neg⟩
 
+/-- Outward-rounded addition of dyadic intervals. -/
 def DI.add (X Y : DI) : DI :=
   ⟨match X.lo, Y.lo with
     | some a, some b => some (let s := addX a b; rdn s.m s.e)
@@ -141,8 +147,10 @@ def DI.add (X Y : DI) : DI :=
     | some a, some b => some (let s := addX a b; rup s.m s.e)
     | _, _ => none⟩
 
+/-- Outward-rounded subtraction. -/
 def DI.sub (X Y : DI) : DI := DI.add X (DI.neg Y)
 
+/-- Outward-rounded multiplication (four-corner rule; whole line if an end is unbounded). -/
 def DI.mul (X Y : DI) : DI :=
   match X.lo, X.hi, Y.lo, Y.hi with
   | some a, some b, some c, some d =>
@@ -165,6 +173,7 @@ def DI.inv (X : DI) : DI :=
     else DI.whole
   | _, _ => DI.whole
 
+/-- Outward-rounded division (`X * 1/Y`). -/
 def DI.div (X Y : DI) : DI := DI.mul X (DI.inv Y)
 
 /-- `√X` (with `√x = 0` for `x < 0`, as `Real.sqrt`). -/
@@ -176,6 +185,7 @@ def DI.sqrt (X : DI) : DI :=
     | some b => some (if 0 < b.m then sqrtUp b.m.toNat b.e else Dy.zero)
     | none => none⟩
 
+/-- Interval absolute value. -/
 def DI.abs (X : DI) : DI :=
   match X.lo, X.hi with
   | some a, some b =>
@@ -188,11 +198,13 @@ def DI.mulPow (X : DI) : Nat → DI
   | 0 => DI.ofRat 1
   | n + 1 => DI.mul (DI.mulPow X n) X
 
+/-- Natural-number power (`X ^ n`); even powers go through `abs`. -/
 def DI.pow (X : DI) (n : Nat) : DI :=
   if n % 2 = 0 then DI.mulPow (DI.abs X) n else DI.mulPow X n
 
 /-- `π` from the 40-digit bounds `RealFP.pi_gt_d40` / `pi_lt_d40`. -/
 def piLo : Rat := 31415926535897932384626433832795028841971 / 10 ^ 40
+/-- Strict 40-digit upper bound used in `DI.pi`. -/
 def piHi : Rat := 31415926535897932384626433832795028841972 / 10 ^ 40
 def DI.pi : DI := DI.ofRatI piLo piHi
 
@@ -202,6 +214,7 @@ Point enclosures from Taylor polynomials (Horner in interval arithmetic) with Ma
 remainder bounds, after exact argument halving (`exp`, `sin`, `cos`) or square roots (`log`).
 Soundness: `RealFPMathlib/I128DyTransc.lean`. -/
 
+/-- The point interval `[d, d]`. -/
 def DI.pt (d : Dy) : DI := ⟨some d, some d⟩
 
 /-- `[-r, r]` for a rational `r ≥ 0`. -/

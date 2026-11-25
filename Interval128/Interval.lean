@@ -1,4 +1,6 @@
-/-
+import Interval128.DD
+
+/-!
 `Interval128`: intervals whose endpoints are double-doubles.
 
 The lower endpoint is `lh + ll` (rounded down), the upper `uh + ul` (rounded
@@ -18,7 +20,6 @@ hulls (`toInterval64`), which handles infinities, NaN and overflow.
 * `sqrt`: an interval whose upper endpoint is negative gives the invalid
   (empty) interval; a negative lower endpoint is clipped to 0.
 -/
-import Interval128.DD
 
 namespace Interval128
 
@@ -37,9 +38,12 @@ structure _root_.Interval128 where
 /- The type used to be `Interval128.Interval128`; keep that name as an alias for older code. -/
 export _root_ (Interval128)
 
+/-- Lower endpoint as a double-double (`lh + ll`). -/
 def lo (X : Interval128) : DD := ⟨X.lh, X.ll⟩
+/-- Upper endpoint as a double-double (`uh + ul`). -/
 def hi (X : Interval128) : DD := ⟨X.uh, X.ul⟩
 
+/-- Build an interval from two double-double endpoints. -/
 def ofDD (l u : DD) : Interval128 := ⟨l.hi, l.lo, u.hi, u.lo⟩
 
 /-- Outward binary64 hull: `[RD(lh + ll), RU(uh + ul)]`. -/
@@ -48,7 +52,9 @@ def toInterval64 (X : Interval128) : Interval64 := ⟨addDown X.lh X.ll, addUp X
 /-- Exact embedding of a binary64 interval. -/
 def ofInterval64 (J : Interval64) : Interval128 := ⟨J.lo, 0, J.hi, 0⟩
 
+/-- The empty / invalid interval (NaN endpoints). -/
 def invalid : Interval128 := ofInterval64 Interval64.invalid
+/-- The whole line `[-∞, +∞]`. -/
 def whole : Interval128 := ofInterval64 Interval64.whole
 
 /-- All four words finite. -/
@@ -67,10 +73,12 @@ def neg (X : Interval128) : Interval128 := ⟨-X.uh, -X.ul, -X.lh, -X.ll⟩
 
 /-! ### Specifications -/
 
+/-- Lean specification of outward-rounded addition. -/
 def addSpec (X Y : Interval128) : Interval128 :=
   pick (DD.addLo X.lh X.ll Y.lh Y.ll) (DD.addHi X.uh X.ul Y.uh Y.ul)
     (fun _ => toInterval64 X + toInterval64 Y)
 
+/-- Lean specification of outward-rounded subtraction. -/
 def subSpec (X Y : Interval128) : Interval128 :=
   pick (DD.addLo X.lh X.ll (-Y.uh) (-Y.ul)) (DD.addHi X.uh X.ul (-Y.lh) (-Y.ll))
     (fun _ => toInterval64 X - toInterval64 Y)
@@ -95,6 +103,7 @@ def mulHiF (X Y : Interval128) : DD :=
   else if DD.nonpos X.uh X.ul then DD.mulHi X.lh X.ll Y.lh Y.ll
   else DD.maxHi (DD.mulHi X.lh X.ll Y.lh Y.ll) (DD.mulHi X.uh X.ul Y.uh Y.ul)
 
+/-- Lean specification of outward-rounded multiplication. -/
 def mulSpec (X Y : Interval128) : Interval128 :=
   if X.isFin && Y.isFin then
     pick (mulLoF X Y) (mulHiF X Y) (fun _ => toInterval64 X * toInterval64 Y)
@@ -107,6 +116,7 @@ def divPos (X Y : Interval128) : Interval128 :=
     (if DD.nonneg X.uh X.ul then DD.divHi X.uh X.ul Y.lh Y.ll else DD.divHi X.uh X.ul Y.uh Y.ul)
     (fun _ => toInterval64 X / toInterval64 Y)
 
+/-- Lean specification of outward-rounded division (whole line if the divisor contains 0). -/
 def divSpec (X Y : Interval128) : Interval128 :=
   if X.isFin && Y.isFin then
     if DD.pos Y.lh Y.ll then divPos X Y
@@ -114,6 +124,7 @@ def divSpec (X Y : Interval128) : Interval128 :=
     else whole
   else ofInterval64 (toInterval64 X / toInterval64 Y)
 
+/-- Lean specification of outward-rounded square root. -/
 def sqrtSpec (X : Interval128) : Interval128 :=
   if X.isFin then
     if DD.neg X.uh X.ul then invalid
@@ -130,10 +141,15 @@ def sqrtSpec (X : Interval128) : Interval128 :=
 @[extern "i128_div"] opaque divImpl (X Y : @& Interval128) : Interval128
 @[extern "i128_sqrt"] opaque sqrtImpl (X : @& Interval128) : Interval128
 
+/-- Outward-rounded addition. Lean specification `addSpec`; C kernel at runtime. -/
 @[implemented_by addImpl] def add (X Y : @& Interval128) : Interval128 := addSpec X Y
+/-- Outward-rounded subtraction. -/
 @[implemented_by subImpl] def sub (X Y : @& Interval128) : Interval128 := subSpec X Y
+/-- Outward-rounded multiplication. -/
 @[implemented_by mulImpl] def mul (X Y : @& Interval128) : Interval128 := mulSpec X Y
+/-- Outward-rounded division. If the divisor contains 0, the result is the whole line. -/
 @[implemented_by divImpl] def div (X Y : @& Interval128) : Interval128 := divSpec X Y
+/-- Outward-rounded square root. Invalid if the upper endpoint is negative. -/
 @[implemented_by sqrtImpl] def sqrt (X : @& Interval128) : Interval128 := sqrtSpec X
 
 instance : Add Interval128 := ⟨add⟩
@@ -164,7 +180,9 @@ def ddOfRatUp (q : Rat) : DD :=
 /-- Tight (about `2^-106` relative) enclosure of a rational. -/
 @[coe] def ofRat (q : Rat) : Interval128 := ofDD (ddOfRatDown q) (ddOfRatUp q)
 
+/-- Exact enclosure of a natural number. -/
 @[coe] def ofNat (n : Nat) : Interval128 := ofRat n
+/-- Exact enclosure of an integer. -/
 @[coe] def ofInt (n : Int) : Interval128 := ofRat n
 
 /-- Enclosure of the exact decimal `m · 10^(±e)`. -/

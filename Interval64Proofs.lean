@@ -15,3 +15,11 @@ import Interval64Proofs.KernelFloat
 import Interval64Proofs.KernelInterval
 import Interval64Proofs.KernelReflect
 import Interval64Proofs.KernelDemo
+
+/-!
+Enclosure theorems for the Interval64 specification (no Mathlib):
+addition, subtraction, multiplication, division, square root, exactness
+when the result is representable, and equality of the `Nat` kernel
+mirrors with the specification.
+-/
+

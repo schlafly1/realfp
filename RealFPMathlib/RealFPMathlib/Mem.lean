@@ -1,4 +1,6 @@
-/-
+import RealFPMathlib.Basic
+
+/-!
 Real membership (enclosure) for `Interval64` `+ - * / sqrt`.
 
 `add` / `sub` hold with no finiteness assumption (infinite endpoints are
@@ -11,7 +13,6 @@ Proof idea: a real `x ∈ X.toSet` is bracketed by rational points of `X`
 theorems put the corresponding rational results into the computed interval,
 and `toSet` is convex.
 -/
-import RealFPMathlib.Basic
 
 open Interval64 Interval64.Spec
 open Interval64Proofs.Value Interval64Proofs.AddBits Interval64Proofs.FloatBits
@@ -20,6 +21,7 @@ open Interval64Proofs.TightIv Interval64Proofs.TightSqrt
 
 namespace RealFP
 
+/-- `x + y ∈ X + Y` for every `x ∈ X`, `y ∈ Y` (infinite endpoints allowed). -/
 theorem add_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
     x + y ∈ (X + Y).toSet := by
   obtain ⟨p₁, hp₁, h₁⟩ := exists_rat_le_of_mem hx
@@ -29,6 +31,7 @@ theorem add_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : 
   exact mem_toSet_of_rat_bounds (add_mem_iv hp₁ hp₂) (add_mem_iv hq₁ hq₂)
     (by push_cast; linarith) (by push_cast; linarith)
 
+/-- `x - y ∈ X - Y` for every `x ∈ X`, `y ∈ Y` (infinite endpoints allowed). -/
 theorem sub_mem_toSet {X Y : Interval64} {x y : ℝ} (hx : x ∈ X.toSet) (hy : y ∈ Y.toSet) :
     x - y ∈ (X - Y).toSet := by
   obtain ⟨p₁, hp₁, h₁⟩ := exists_rat_le_of_mem hx
@@ -49,6 +52,7 @@ theorem memIv_endpoints {X : Interval64} {a b : ℚ} {x : ℝ}
   · exact ⟨le_rfl, hab⟩
   · exact ⟨hab, le_rfl⟩
 
+/-- Some corner of `[a, b] × [c, d]` is `≤ x * y`. -/
 theorem exists_corner_le {a b c d : ℝ} {x y : ℝ} (hx1 : a ≤ x) (hx2 : x ≤ b)
     (hy1 : c ≤ y) (hy2 : y ≤ d) :
     a * c ≤ x * y ∨ a * d ≤ x * y ∨ b * c ≤ x * y ∨ b * d ≤ x * y := by
@@ -64,6 +68,7 @@ theorem exists_corner_le {a b c d : ℝ} {x y : ℝ} (hx1 : a ≤ x) (hx2 : x �
       nlinarith [mul_nonneg (sub_nonneg.2 hx2) (neg_nonneg.2 hy),
         mul_nonneg (neg_nonneg.2 hb) (sub_nonneg.2 hy2)]
 
+/-- Some corner of `[a, b] × [c, d]` is `≥ x * y`. -/
 theorem exists_corner_ge {a b c d : ℝ} {x y : ℝ} (hx1 : a ≤ x) (hx2 : x ≤ b)
     (hy1 : c ≤ y) (hy2 : y ≤ d) :
     x * y ≤ a * c ∨ x * y ≤ a * d ∨ x * y ≤ b * c ∨ x * y ≤ b * d := by

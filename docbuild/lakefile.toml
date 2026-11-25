@@ -1,0 +1,24 @@
+name = "docbuild"
+reservoir = false
+version = "0.1.0"
+# Share Mathlib (and other deps) with the RealFPMathlib package so we do not
+# clone or rebuild it. doc-gen4 itself is added here on `lake update`.
+packagesDir = "../RealFPMathlib/.lake/packages"
+
+[[require]]
+scope = "leanprover"
+name = "doc-gen4"
+# Pin to the same Lean version as lean-toolchain / Mathlib (v4.36.0).
+rev = "v4.36.0"
+
+# The Mathlib layer; it requires the core `interval64` package from `../`.
+[[require]]
+name = "realfp_mathlib"
+path = "../RealFPMathlib"
+
+# Also require the core package directly so Interval64 / Interval128 /
+# Interval64Proofs docs facets are visible even without going through
+# RealFPMathlib.
+[[require]]
+name = "interval64"
+path = ".."

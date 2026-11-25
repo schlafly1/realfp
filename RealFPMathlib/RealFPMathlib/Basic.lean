@@ -71,6 +71,7 @@ def Interval64.toSet (I : Interval64) : Set ℝ :=
 
 namespace RealFP
 
+/-- Membership in `I.toSet` is the extended-real reading of the two endpoints. -/
 theorem mem_toSet {I : Interval64} {x : ℝ} :
     x ∈ I.toSet ↔ loR (bitsToEVal I.lo.toBits) x ∧ hiR (bitsToEVal I.hi.toBits) x := Iff.rfl
 

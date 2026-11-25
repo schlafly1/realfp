@@ -1248,8 +1248,11 @@ partial def intervalCore (cfg : Cfg) : TacticM Unit := do
   | _ => throwError "interval: unsupported goal {t}; expected `f ≤ g`, `f < g`, `f ≠ g`, \
       `f ∈ Set.Icc a b` or a conjunction of these (over ℝ, variables bounded in context)"
 
+/-- Option for `interval`, `realfp` and the related tactics, e.g. `(depth := 8)` or `(trust := native)`. -/
 declare_syntax_cat intervalOpt
+/-- Numeric tactic option: `(depth := n)`, `(maxBoxes := n)`, `(chunk := n)`, `(order := n)`, `(precision := 64|128)`. -/
 syntax "(" ident " := " num ")" : intervalOpt
+/-- Identifier tactic option: `(trust := kernel|native)`, `(deriv := false)`. -/
 syntax "(" ident " := " ident ")" : intervalOpt
 /-- `interval` with options in any order: `(depth := n)`, `(maxBoxes := n)`, `(chunk := n)`,
     `(deriv := false)`, `(order := n)`, `(trust := kernel|native)`, `(precision := 64|128)`. -/

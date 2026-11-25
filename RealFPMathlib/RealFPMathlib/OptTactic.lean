@@ -855,6 +855,7 @@ def proveArgCore (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := do
 /-- `proveArgCore` with the registered functions of the goal. -/
 def proveArg (opts : Array (TSyntax `intervalOpt)) : TacticM Unit := withRegistered (proveArgCore opts)
 
+/-- Binder for `#realfp_min` / `#realfp_max`, written `(x ∈ Set.Icc a b)`. -/
 declare_syntax_cat realfpBinder
 syntax "(" ident " ∈ " term ")" : realfpBinder
 

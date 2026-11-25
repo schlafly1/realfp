@@ -6,10 +6,16 @@ between minor versions.
 
 ## Unreleased
 
+- doc-gen4 setup in `docbuild/` (pinned to Lean/Mathlib `v4.36.0`) for a
+  browsable API reference of `Interval64`, `Interval128`, `Interval64Proofs`
+  and `RealFPMathlib`. See [docs/README.md](docs/README.md#api-reference-doc-gen4).
 - Polished, self-contained examples of famous inequalities and constants
   (`RealFPMathlib/Examples/{Constants,ExpPi,Gaussian,Jordan,LogIneq}.lean`),
   documented in `docs/EXAMPLES.md`. Each is kernel-checked (standard axioms
   only) and elaborates in well under 30 s.
+- Additional docstrings on the user-facing Interval64/Interval128 operations,
+  directed scalar rounding, dyadic (`DI`) constructors, tactic options, and
+  the main `toSet` enclosure theorems.
 
 ## [0.1.0] — 2026-11-24
 

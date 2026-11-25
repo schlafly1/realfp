@@ -1,4 +1,10 @@
-/-
+import RealFPMathlib.IntervalTactic
+import RealFPMathlib.IntegralTactic
+import RealFPMathlib.RootTactic
+import RealFPMathlib.PosDefTactic
+import RealFPMathlib.OptTactic
+
+/-!
 `realfp`: one front-door tactic for realfp's kernel-checked numerics.
 
 It looks at the goal and routes to the matching backend:
@@ -25,11 +31,6 @@ standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom),
 endpoints). Integrals take `order` (Taylor order 2/4/6/8; at precision 128 the Taylor-model
 order 8–30), `maxBoxes` (cells) and `precision` (128: fixed-point Taylor models with a per-product certificate, `I128TMF.lean`); `pos_def` takes `trust` and `precision` (128: exact rational check). An option a backend cannot use is an error.
 -/
-import RealFPMathlib.IntervalTactic
-import RealFPMathlib.IntegralTactic
-import RealFPMathlib.RootTactic
-import RealFPMathlib.PosDefTactic
-import RealFPMathlib.OptTactic
 
 open Lean Meta Elab Tactic
 
@@ -39,9 +40,11 @@ namespace RealFP.Front
 `(order := n)`, `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)`. -/
 syntax (name := realfpTac) "realfp" (ppSpace intervalOpt)* : tactic
 
+/-- Which backend `realfp` should call for the current goal. -/
 inductive Route | conj | unique | exists | witness | discover | argmin | infsup | posDef | integral
   | interval
 
+/-- Short name of a route, used in error messages (`interval`, `root_unique`, …). -/
 def Route.name : Route → String
   | .conj => "∧" | .unique => "root_unique" | .exists => "root_exists" | .witness => "witness"
   | .discover => "discovery" | .argmin => "argmin" | .infsup => "sInf/sSup"

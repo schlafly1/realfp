@@ -1,4 +1,7 @@
-/-
+import Interval64.Directed
+import Interval64.Widen
+
+/-!
 Binary64 intervals with outward directed rounding.
 
 Policy (documented, not IEEE 1788 decorations):
@@ -14,8 +17,6 @@ Policy (documented, not IEEE 1788 decorations):
   corner is never the extreme one (the finite-numerator corners give the limit).
   Before this fix `[1, ∞] / [1, ∞]` returned `invalid` (an empty enclosure).
 -/
-import Interval64.Directed
-import Interval64.Widen
 
 namespace Interval64
 
@@ -34,14 +35,20 @@ export _root_ (Interval64)
 instance : BEq Interval64 where
   beq a b := sameBitsOrNaN a.lo b.lo && sameBitsOrNaN a.hi b.hi
 
+/-- The empty / invalid interval `[NaN, NaN]`. -/
 def invalid : Interval64 := ⟨Float.nan, Float.nan⟩
+/-- The whole line `[-∞, +∞]`. -/
 def whole    : Interval64 := ⟨-Float.inf, Float.inf⟩
+/-- The point interval `[0, 0]`. -/
 def zero     : Interval64 := ⟨0.0, 0.0⟩
 
+/-- True if either endpoint is NaN. -/
 def isInvalid (i : Interval64) : Bool := i.lo.isNaN || i.hi.isNaN
+/-- True if `i` is exactly `[-∞, +∞]`. -/
 def isWhole (i : Interval64) : Bool :=
   i.lo.isInf && i.hi.isInf && decide (i.lo < 0) && decide (i.hi > 0)
 
+/-- True if `0` lies in `[lo, hi]` (and the interval is not invalid). -/
 def containsZero (i : Interval64) : Bool :=
   !isInvalid i && decide (i.lo ≤ 0) && decide (0 ≤ i.hi)
 
@@ -51,9 +58,12 @@ def ofBounds (lo hi : Float) : Interval64 :=
   else if decide (hi < lo) then ⟨hi, lo⟩
   else ⟨lo, hi⟩
 
+/-- Minimum of two floats (`y` if they compare equal or `x < y` is false). -/
 def fmin (x y : Float) : Float := if decide (x < y) then x else y
+/-- Maximum of two floats. -/
 def fmax (x y : Float) : Float := if decide (x > y) then x else y
 
+/-- True if any of the four endpoints of `a` and `b` is NaN. -/
 def anyNan (a b : Interval64) : Bool :=
   a.lo.isNaN || a.hi.isNaN || b.lo.isNaN || b.hi.isNaN
 
@@ -62,10 +72,12 @@ def add (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
   else ⟨addDown a.lo b.lo, addUp a.hi b.hi⟩
 
+/-- Outward-rounded interval subtraction. -/
 def sub (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
   else ⟨subDown a.lo b.hi, subUp a.hi b.lo⟩
 
+/-- Accumulate one multiplication corner into `[lo, hi]`, skipping `0 * ∞` and NaN. -/
 def accCorner (x y : Float) (lo hi : Float) (got : Bool) : Float × Float × Bool :=
   if (x == 0 && y.isInf) || (y == 0 && x.isInf) then
     (lo, hi, got)
@@ -76,6 +88,7 @@ def accCorner (x y : Float) (lo hi : Float) (got : Bool) : Float × Float × Boo
     else if !got then (d, u, true)
     else (if decide (d < lo) then d else lo, if decide (u > hi) then u else hi, true)
 
+/-- Outward-rounded interval multiplication (four-corner rule; see the module doc). -/
 def mul (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
   else
@@ -114,6 +127,7 @@ def div (a b : Interval64) : Interval64 :=
     let hi := fmax u0 (fmax u1 (fmax u2 u3))
     if lo.isNaN || hi.isNaN then divNaNCorners d0 d1 d2 d3 u0 u1 u2 u3 else ⟨lo, hi⟩
 
+/-- Outward-rounded interval square root. Invalid if `hi < 0`; a negative `lo` is clipped to `+0`. -/
 def sqrt (a : Interval64) : Interval64 :=
   if a.lo.isNaN || a.hi.isNaN then invalid
   else if decide (a.hi < 0) then invalid
@@ -125,9 +139,11 @@ def sqrt (a : Interval64) : Interval64 :=
 def feAdd (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid else ⟨feAddDown a.lo b.lo, feAddUp a.hi b.hi⟩
 
+/-- fesetround-backed interval subtraction (same policies as `sub`). -/
 def feSub (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid else ⟨feSubDown a.lo b.hi, feSubUp a.hi b.lo⟩
 
+/-- fesetround-backed interval multiplication (same policies as `mul`). -/
 def feMul (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
   else
@@ -145,6 +161,7 @@ def feMul (a b : Interval64) : Interval64 :=
     let (lo, hi, got) := acc a.hi b.hi lo hi got
     if !got then whole else ⟨lo, hi⟩
 
+/-- fesetround-backed interval division (same policies as `div`). -/
 def feDiv (a b : Interval64) : Interval64 :=
   if anyNan a b then invalid
   else if containsZero b then whole
@@ -161,6 +178,7 @@ def feDiv (a b : Interval64) : Interval64 :=
     let hi := fmax u0 (fmax u1 (fmax u2 u3))
     if lo.isNaN || hi.isNaN then divNaNCorners d0 d1 d2 d3 u0 u1 u2 u3 else ⟨lo, hi⟩
 
+/-- fesetround-backed interval square root (same policies as `sqrt`). -/
 def feSqrt (a : Interval64) : Interval64 :=
   if a.lo.isNaN || a.hi.isNaN then invalid
   else if decide (a.hi < 0) then invalid

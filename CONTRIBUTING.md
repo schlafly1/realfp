@@ -38,6 +38,17 @@ quicker loop use `lake build RealFPMathlib.AxiomAuditCore` (the library, tests,
 and the short showcase examples in `docs/EXAMPLES.md`, but not the slower
 feature examples), which is what CI runs on every push.
 
+To generate the browsable API reference (doc-gen4):
+
+```bash
+cd docbuild
+MATHLIB_NO_CACHE_ON_UPDATE=1 lake update doc-gen4   # first time, or after a Lean/Mathlib bump
+lake build Interval64:docs Interval128:docs Interval64Proofs:docs RealFPMathlib:docs
+```
+
+The HTML is written to `docbuild/.lake/build/doc/` (gitignored). Serve it with
+`python3 -m http.server` from that directory; see [docs/README.md](docs/README.md).
+
 ## Rules for changes
 
 - **No `sorry`, no new axioms.** The default build runs the axiom audit and

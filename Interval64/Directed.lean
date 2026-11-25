@@ -19,6 +19,7 @@ namespace Interval64.Directed
 @[extern "iv64_has_avx512f_unit"]
 opaque hasAvx512f (u : Unit) : Bool
 
+/-- True if this CPU reports AVX-512F (from `hasAvx512f`). -/
 def avx512fAvailable : Bool := hasAvx512f ()
 
 /-- Compiled C backend: 0 = AVX-512 embedded rounding, 1 = RN + exact error term. -/
@@ -30,12 +31,15 @@ opaque backendId (u : Unit) : UInt8
 @[extern "iv64_backend_ok_unit"]
 opaque backendOk (u : Unit) : Bool
 
+/-- Human-readable name of the compiled C backend (`avx512` or `rn+err`). -/
 def backendName : String :=
   if backendId () == 0 then "avx512 (embedded rounding)" else "rn+err (round-to-nearest + exact error term)"
 
+/-- Next representable binary64 strictly above `x` (IEEE `nextUp`). -/
 @[extern "iv64_next_up"]
 opaque nextUp (x : Float) : Float
 
+/-- Next representable binary64 strictly below `x` (IEEE `nextDown`). -/
 @[extern "iv64_next_down"]
 opaque nextDown (x : Float) : Float
 
@@ -49,15 +53,25 @@ opaque debugCount (token : UInt64) : UInt64
 
 /-! # Specifications (kernel-visible, software IEEE directed rounding) -/
 
+/-- Software IEEE addition rounded toward `-∞` (the kernel-visible specification). -/
 def addDownSpec (a b : Float) : Float := Float.ofBits (Spec.addDown a.toBits b.toBits)
+/-- Software IEEE addition rounded toward `+∞`. -/
 def addUpSpec   (a b : Float) : Float := Float.ofBits (Spec.addUp   a.toBits b.toBits)
+/-- Software IEEE subtraction rounded toward `-∞`. -/
 def subDownSpec (a b : Float) : Float := Float.ofBits (Spec.subDown a.toBits b.toBits)
+/-- Software IEEE subtraction rounded toward `+∞`. -/
 def subUpSpec   (a b : Float) : Float := Float.ofBits (Spec.subUp   a.toBits b.toBits)
+/-- Software IEEE multiplication rounded toward `-∞`. -/
 def mulDownSpec (a b : Float) : Float := Float.ofBits (Spec.mulDown a.toBits b.toBits)
+/-- Software IEEE multiplication rounded toward `+∞`. -/
 def mulUpSpec   (a b : Float) : Float := Float.ofBits (Spec.mulUp   a.toBits b.toBits)
+/-- Software IEEE division rounded toward `-∞`. -/
 def divDownSpec (a b : Float) : Float := Float.ofBits (Spec.divDown a.toBits b.toBits)
+/-- Software IEEE division rounded toward `+∞`. -/
 def divUpSpec   (a b : Float) : Float := Float.ofBits (Spec.divUp   a.toBits b.toBits)
+/-- Software IEEE square root rounded toward `-∞`. -/
 def sqrtDownSpec (a : Float) : Float := Float.ofBits (Spec.sqrtDown a.toBits)
+/-- Software IEEE square root rounded toward `+∞`. -/
 def sqrtUpSpec   (a : Float) : Float := Float.ofBits (Spec.sqrtUp   a.toBits)
 
 /-! # Compiled implementations (backend C kernels: AVX-512 or RN + exact error; no debug counter) -/
@@ -75,24 +89,34 @@ def sqrtUpSpec   (a : Float) : Float := Float.ofBits (Spec.sqrtUp   a.toBits)
 
 /-! # Public operators: spec for the kernel, backend C at runtime -/
 
+/-- Addition rounded toward `-∞`. Lean specification `addDownSpec`; C kernel at runtime. -/
 @[implemented_by addDownImpl]
 def addDown (a b : Float) : Float := addDownSpec a b
+/-- Addition rounded toward `+∞`. -/
 @[implemented_by addUpImpl]
 def addUp (a b : Float) : Float := addUpSpec a b
+/-- Subtraction rounded toward `-∞`. -/
 @[implemented_by subDownImpl]
 def subDown (a b : Float) : Float := subDownSpec a b
+/-- Subtraction rounded toward `+∞`. -/
 @[implemented_by subUpImpl]
 def subUp (a b : Float) : Float := subUpSpec a b
+/-- Multiplication rounded toward `-∞`. -/
 @[implemented_by mulDownImpl]
 def mulDown (a b : Float) : Float := mulDownSpec a b
+/-- Multiplication rounded toward `+∞`. -/
 @[implemented_by mulUpImpl]
 def mulUp (a b : Float) : Float := mulUpSpec a b
+/-- Division rounded toward `-∞`. -/
 @[implemented_by divDownImpl]
 def divDown (a b : Float) : Float := divDownSpec a b
+/-- Division rounded toward `+∞`. -/
 @[implemented_by divUpImpl]
 def divUp (a b : Float) : Float := divUpSpec a b
+/-- Square root rounded toward `-∞`. -/
 @[implemented_by sqrtDownImpl]
 def sqrtDown (a : Float) : Float := sqrtDownSpec a
+/-- Square root rounded toward `+∞`. -/
 @[implemented_by sqrtUpImpl]
 def sqrtUp (a : Float) : Float := sqrtUpSpec a
 
