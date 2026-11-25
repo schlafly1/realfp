@@ -1,0 +1,28 @@
+import Interval64
+import Harness
+open FloatLibBenchmarks.KernelReduction
+set_option maxRecDepth 1000000
+#kernel_bench "binary64 normal noop-additive" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true normal additive 8))
+#kernel_bench "binary64 normal add" 3 (run id id (fun x y _ => Interval64.KF.add x y false) (operandTable% 11 52 1023 true true normal additive 8))
+#kernel_bench "binary64 normal sub" 3 (run id id (fun x y _ => Interval64.KF.sub x y false) (operandTable% 11 52 1023 true true normal additive 8))
+#kernel_bench "binary64 normal noop-root" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true normal root 8))
+#kernel_bench "binary64 normal sqrt" 3 (run id id (fun x _ _ => Interval64.KF.sqrt x false) (operandTable% 11 52 1023 true true normal root 8))
+#kernel_bench "binary64 normal noop-multiplicative" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true normal multiplicative 8))
+#kernel_bench "binary64 normal mul" 3 (run id id (fun x y _ => Interval64.KF.mul x y false) (operandTable% 11 52 1023 true true normal multiplicative 8))
+#kernel_bench "binary64 normal div" 3 (run id id (fun x y _ => Interval64.KF.div x y false) (operandTable% 11 52 1023 true true normal multiplicative 8))
+#kernel_bench "binary64 subnormal noop-additive" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true subnormal additive 8))
+#kernel_bench "binary64 subnormal add" 3 (run id id (fun x y _ => Interval64.KF.add x y false) (operandTable% 11 52 1023 true true subnormal additive 8))
+#kernel_bench "binary64 subnormal sub" 3 (run id id (fun x y _ => Interval64.KF.sub x y false) (operandTable% 11 52 1023 true true subnormal additive 8))
+#kernel_bench "binary64 subnormal noop-root" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true subnormal root 8))
+#kernel_bench "binary64 subnormal sqrt" 3 (run id id (fun x _ _ => Interval64.KF.sqrt x false) (operandTable% 11 52 1023 true true subnormal root 8))
+#kernel_bench "binary64 subnormal noop-multiplicative" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true subnormal multiplicative 8))
+#kernel_bench "binary64 subnormal mul" 3 (run id id (fun x y _ => Interval64.KF.mul x y false) (operandTable% 11 52 1023 true true subnormal multiplicative 8))
+#kernel_bench "binary64 subnormal div" 3 (run id id (fun x y _ => Interval64.KF.div x y false) (operandTable% 11 52 1023 true true subnormal multiplicative 8))
+#kernel_bench "binary64 special noop-additive" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true special additive 8))
+#kernel_bench "binary64 special add" 3 (run id id (fun x y _ => Interval64.KF.add x y false) (operandTable% 11 52 1023 true true special additive 8))
+#kernel_bench "binary64 special sub" 3 (run id id (fun x y _ => Interval64.KF.sub x y false) (operandTable% 11 52 1023 true true special additive 8))
+#kernel_bench "binary64 special noop-root" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true special root 8))
+#kernel_bench "binary64 special sqrt" 3 (run id id (fun x _ _ => Interval64.KF.sqrt x false) (operandTable% 11 52 1023 true true special root 8))
+#kernel_bench "binary64 special noop-multiplicative" 3 (run id id (fun x _ _ => x) (operandTable% 11 52 1023 true true special multiplicative 8))
+#kernel_bench "binary64 special mul" 3 (run id id (fun x y _ => Interval64.KF.mul x y false) (operandTable% 11 52 1023 true true special multiplicative 8))
+#kernel_bench "binary64 special div" 3 (run id id (fun x y _ => Interval64.KF.div x y false) (operandTable% 11 52 1023 true true special multiplicative 8))

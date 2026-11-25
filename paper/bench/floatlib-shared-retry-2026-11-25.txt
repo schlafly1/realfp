@@ -1,0 +1,11 @@
+base rc=0 err=0 median=2.74 samples=11.97 2.74 2.64 | 
+p02_log2_tight rc=1 err=1 median=2.85 samples=2.85 | depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+p03_pi rc=0 err=0 median=2.58 samples=2.57 2.58 2.78 | depends on axioms: [propext, Classical.choice, Quot.sound]
+p04_exp1_tight rc=0 err=0 median=2.70 samples=2.59 2.70 2.71 | depends on axioms: [propext, Classical.choice, Quot.sound]
+p06_poly_tight rc=0 err=0 median=2.77 samples=2.74 2.89 2.77 | depends on axioms: [propext, Classical.choice, Quot.sound]
+p07_sin_tight rc=0 err=0 median=4.74 samples=4.91 4.51 4.74 | depends on axioms: [propext, Classical.choice, Quot.sound]
+p08_exp_touch rc=1 err=1 median=2.60 samples=2.60 | depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+p09_sin_touch rc=1 err=1 median=2.54 samples=2.54 | depends on axioms: [propext, sorryAx, Classical.choice, Quot.sound]
+p11_mv2_poly rc=0 err=0 median=8.29 samples=8.11 8.29 8.40 | depends on axioms: [propext, Classical.choice, Quot.sound]
+p13_mv2_transc rc=0 err=0 median=5.01 samples=5.24 4.84 5.01 | depends on axioms: [propext, Classical.choice, Quot.sound]
+p20_mv2_quad_near rc=0 err=0 median=3.06 samples=3.34 3.06 3.01 | depends on axioms: [propext, Classical.choice, Quot.sound]

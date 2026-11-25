@@ -1,0 +1,93 @@
+Interval64 benches
+C backend: avx512 (embedded rounding)  AVX-512F available: true
+----- C kernels (pinned by the caller if using taskset) -----
+C kernel (COMPARE.md style): interval dot3 + square + compare
+  n=3000 pairs, reps=2000, 8 timed runs, median ns/kernel, one loop in-process
+  AVX-512 embedded:       129.08 ns
+  RN + exact error:       150.52 ns
+  fesetround per op:      536.51 ns
+  RN + 1-ulp widen:       163.01 ns
+  FE_UPWARD batch:         87.74 ns
+Scalar dependent add_up chain, 20000000 ops:
+  AVX-512 add_up:           1.16 ns
+  RN+err add_up:            5.32 ns
+  fesetround add_up:       14.29 ns
+  RN+ulp add_up:            4.59 ns
+sink=225896460
+C bench returned sink=225896460
+Lean Interval64 (AVX externs, allocated structs): 782.189471 ns/kernel  sink=200113
+----- exp / log / sin / cos (Lean extern call, CORE-MATH) -----
+  cr_exp  (RN, reference): 10.072172 ns/call  (sink=10604353213611.078125)
+  expDown (RD): 18.556096 ns/call  (sink=10604353213611.078125)
+  expUp   (RU): 18.304348 ns/call  (sink=10604353213611.078125)
+  cr_log  (RN, reference): 10.749207 ns/call  (sink=-285533.423239)
+  logDown (RD): 16.664132 ns/call  (sink=-285533.423239)
+  logUp   (RU): 16.583558 ns/call  (sink=-285533.423239)
+  Float.exp (libm RN): 12.678281 ns/call  (sink=10604353213611.078125)
+  Float.log (libm RN): 11.960691 ns/call  (sink=-285533.423239)
+  cr_sin  (RN, reference): 12.430880 ns/call  (sink=-14720.167982)
+  sinDown (RD): 20.224346 ns/call  (sink=-14720.167982)
+  sinUp   (RU): 21.484520 ns/call  (sink=-14720.167982)
+  cr_cos  (RN, reference): 12.588003 ns/call  (sink=-6808.562701)
+  cosDown (RD): 20.891129 ns/call  (sink=-6808.562701)
+  cosUp   (RU): 19.660818 ns/call  (sink=-6808.562701)
+  Float.sin (libm RN): 22.886627 ns/call  (sink=-14720.167982)
+  Float.cos (libm RN): 23.127267 ns/call  (sink=-6808.562701)
+----- PD certificate (n×n KMS interval matrix) -----
+  n=50: approxX (Lean, untrusted) 0.329978 ms; pdMargins C 0.655543 ms; Lean spec 21.244230 ms (sink 100); PD=true
+  n=100: approxX (Lean, untrusted) 2.135038 ms; pdMargins C 6.172038 ms; Lean spec 170.011673 ms (sink 200); PD=true
+  n=200: approxX (Lean, untrusted) 14.695003 ms; pdMargins C 48.669015 ms; Lean spec skipped; PD=true
+  n=400: approxX (Lean, untrusted) 101.093133 ms; pdMargins C 396.979280 ms; Lean spec skipped; PD=true
+----- polynomials (degree 10) -----
+  Horner eval: 146.492465 ns/call (sink 165262.594188)
+  mean-value eval: 286.701800 ns/call (sink 330528.816468)
+  range on [0,1], bisection depth 4: [0.722087, 1.000000] in 0.097415 ms
+  range on [0,1], bisection depth 8: [0.727067, 1.000000] in 0.141975 ms
+  range on [0,1], bisection depth 12: [0.727081, 1.000000] in 1.057698 ms
+  Bernstein range on [0,1], degree 10, 1 boxes: [0.710198, 1.000000] in 0.007049 ms
+  Bernstein range on [0,1], degree 20, 1 boxes: [0.721970, 1.000000] in 0.011727 ms
+  Bernstein range on [0,1], degree 10, 16 boxes: [0.726977, 1.000000] in 0.052592 ms
+----- quadrature ∫₀¹ e^(-x²) -----
+  cell1, 2^6 cells: width 0.000137 in 0.078920 ms
+  cell1, 2^10 cells: width 0.000001 in 0.318379 ms
+  cell1, 2^14 cells: width 0.000000 in 5.621749 ms
+  cell0, 2^10 cells: width 0.000617 in 0.184084 ms
+  cell0, 2^14 cells: width 0.000039 in 1.993910 ms
+  Taylor K=4 (kernel KF path, run natively), 8 cells: width 0.000001 in 104.813479 ms
+  Taylor K=4 (kernel KF path, run natively), 16 cells: width 0.000000 in 230.163676 ms
+  Taylor K=6 (kernel KF path, run natively), 8 cells: width 0.000000 in 628.357547 ms
+  Taylor K=8 (kernel KF path, run natively), 4 cells: width 0.000000 in 2443.541832 ms
+  Taylor K=8 (kernel KF path, run natively), 16 cells: width 0.000000 in 10379.110502 ms
+----- 2D quadrature ∫∫_{[0,1]²} e^(-x²-y²) -----
+  E0, 2^4×2^4 cells: width 0.058991 in 0.074479 ms
+  E1 (inner 2nd order), 2^4×2^4 cells: width 0.031542 in 0.200934 ms
+  E0, 2^6×2^6 cells: width 0.014752 in 0.994024 ms
+  E1 (inner 2nd order), 2^6×2^6 cells: width 0.007503 in 3.255791 ms
+  E0, 2^8×2^8 cells: width 0.003688 in 16.204887 ms
+  E1 (inner 2nd order), 2^8×2^8 cells: width 0.001852 in 49.985658 ms
+  taylor2 K=2, 4×4 cells (C): width 0.005714 in 0.074733 ms
+  taylor2 K=2, 16×16 cells (C): width 0.000088 in 0.200508 ms
+  taylor2 K=4, 2×2 cells (C): width 0.001747 in 1.436057 ms
+  taylor2 K=4, 4×4 cells (C): width 0.000049 in 1.523879 ms
+  taylor2 K=4, 8×8 cells (C): width 0.000001 in 1.528223 ms
+  taylor2 K=6, 2×2 cells (C): width 0.000045 in 55.619087 ms
+  taylor2 K=6, 4×4 cells (C): width 0.000000 in 54.896554 ms
+  taylor2 K=8, 2×2 cells (C): width 0.000001 in 4166.115766 ms
+----- C kernels vs Lean-compiled specification (same results; per call) -----
+  eval (deg 20): C 0.229982 µs, Lean-compiled spec 4.630214 µs, speedup ×20.132908 (sinks true)
+  evalMV (deg 20): C 0.666919 µs, Lean-compiled spec 12.469961 µs, speedup ×18.697861 (sinks true)
+  range, 2^8 boxes: C 0.279355 ms, Lean-compiled spec 3.243186 ms, speedup ×11.609547 (sinks true)
+  checkGt e4 > 0 on [0,4], fuel 12: C 32.660680 µs, Lean-compiled spec 65.333280 µs, speedup ×2.000365 (sinks true)
+  bernRange deg 20, 16 boxes: C 0.337443 ms, Lean-compiled spec 8631.360320 ms, speedup ×25578.720910 (sinks true)
+  checkGtB e4, deg 6, fuel 4: C 0.000952 ms, Lean-compiled spec 0.241899 ms, speedup ×253.988786 (sinks true)
+  bern2On (3×3, deg 6): C 0.005113 ms, Lean-compiled spec 2.390600 ms, speedup ×467.523806 (sinks true)
+  checkGt2B, fuel 3: C 0.002950 ms, Lean-compiled spec 0.963212 ms, speedup ×326.484891 (sinks true)
+  integrateE0 ∫₀¹e^(-x²), 2^10 cells: C 0.108834 ms, Lean-compiled spec 0.965030 ms, speedup ×8.867005 (sinks true)
+  integrateE1 ∫₀¹e^(-x²), 2^10 cells: C 0.341142 ms, Lean-compiled spec 37.311302 ms, speedup ×109.371635 (sinks true)
+  integrate2E1 ∫∫e^(-x²-y²), 2^6×2^6: C 3.001876 ms, Lean-compiled spec 322.463350 ms, speedup ×107.420610 (sinks true)
+  taylor2 ∫∫e^(-x²-y²) K=4, 8×8 cells: C 1.557962 ms, Lean-compiled spec 107.050491 ms, speedup ×68.711876 (sinks true)
+  Taylor quadF K=4, 16 cells: C 0.139445 ms, Lean-compiled spec 2.650299 ms, speedup ×19.006053 (sinks true)
+    (same rule on the kernel KF/KI Nat path, run natively: 214.649365 ms)
+  Taylor quadF K=8, 16 cells: C 10.241798 ms, Lean-compiled spec 156.566210 ms, speedup ×15.286985 (sinks true)
+    (same rule on the kernel KF/KI Nat path, run natively: 10261.183934 ms)
+  Taylor quadF ∫₀³ sin(x²), K=8, 64 cells: C 15.156444 ms, Lean-compiled spec 1837.693206 ms, speedup ×121.248309 (sinks true)
