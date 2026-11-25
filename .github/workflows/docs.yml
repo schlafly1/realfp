@@ -1,0 +1,97 @@
+# GitHub Actions workflow: build the doc-gen4 API reference and deploy it to
+# GitHub Pages.
+#
+# For now it runs only on manual dispatch (Actions tab -> Docs -> Run workflow),
+# because Pages on a private repository needs a paid plan and a full docs build
+# takes ~20 min. Once the repo is public and Settings -> Pages -> Source is set
+# to "GitHub Actions", add a `push: branches: [main]` trigger below.
+
+name: Docs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # GitHub-hosted x86 runners may lack AVX-512; same portable backend as ci.yml.
+      IV64_BACKEND: rnerr
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache elan
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain') }}
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache core Lake build
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-
+
+      - name: Cache RealFPMathlib packages and build
+        uses: actions/cache@v4
+        with:
+          # docbuild/lakefile.toml shares this packagesDir with RealFPMathlib
+          path: |
+            RealFPMathlib/.lake
+            docbuild/.lake
+          key: lake-docs-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json', 'docbuild/lakefile.toml', 'docbuild/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-docs-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json', 'docbuild/lakefile.toml', 'docbuild/lake-manifest.json') }}-
+
+      - name: Build core library
+        run: lake -R -Kbackend=rnerr build Interval64 Interval128 Interval64Proofs
+
+      - name: Get Mathlib cache
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr exe cache get
+
+      - name: Build RealFPMathlib
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr build RealFPMathlib
+
+      - name: Generate API documentation
+        working-directory: docbuild
+        run: |
+          MATHLIB_NO_CACHE_ON_UPDATE=1 lake -R -Kbackend=rnerr update doc-gen4
+          lake -R -Kbackend=rnerr build Interval64:docs Interval128:docs Interval64Proofs:docs RealFPMathlib:docs
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docbuild/.lake/build/doc
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
