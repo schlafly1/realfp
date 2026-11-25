@@ -48,8 +48,8 @@ Comparisons with [FloatLib](https://github.com/lean-dojo/FloatLib),
 - **RN + 1-ulp widening**, for speed comparison.
 - A **batched `FE_UPWARD`** interval kernel using `-up(-x)` for lower bounds.
 
-The C file is compiled with **gcc** (`cc`). The Lean 4.36 bundled clang on
-this box is missing `immintrin.h`. Lake packages the object as
+The C file is compiled with **gcc** (`cc`). The Lean 4.36 bundled clang is
+missing `immintrin.h`. Lake packages the object as
 `extern_lib libleaninterval64` so downstream projects and
 `precompileModules` / `#eval` see the C symbols.
 
@@ -59,8 +59,8 @@ this box is missing `immintrin.h`. Lake packages the object as
 export PATH="$HOME/.elan/bin:$PATH"
 lake build
 lake exe interval64_tests
-lake exe interval64_native
-taskset -c 0 nice -n 19 lake exe interval64_bench
+lake exe interval64_native                        # experimental/: native_decide demo
+taskset -c 0 nice -n 19 lake exe interval64_bench  # experimental/: micro-benchmarks
 ```
 
 **Plain `lean`.** `#eval` and the tactics need the compiled code, which Lake loads for the
@@ -149,7 +149,7 @@ under qemu. `scripts/test_arm64.sh` step 8 builds the Mathlib layer, runs its
 axiom check and `Examples.lean` (`SKIP_MATHLIB=1` skips it; the first Mathlib
 build downloads the cache).
 
-**On a real arm64 box (Jetson Orin, DGX Spark, …):**
+**On a real arm64 machine (Jetson Orin, DGX Spark, …):**
 
 ```bash
 sudo apt install -y build-essential git curl
@@ -178,7 +178,7 @@ are correctly rounded in whatever hardware rounding mode is active.
 `_mm_setcsr`; aarch64: FPCR.RMode via `msr fpcr`; otherwise `fesetround`) and
 restores the caller's mode. Each CORE-MATH file is its own translation unit,
 compiled with `-O2 -frounding-math -ffp-contract=off -fno-math-errno` (+`-mfma`
-on x86_64). Cost of the mode switch (x86_64, this box, direct C calls):
+on x86_64). Cost of the mode switch (x86_64 test machine, direct C calls):
 exp RN 4.9 ns vs RD/RU 11–12 ns; log RN 6.9 ns vs RD/RU 9.6–9.8 ns. Through
 the Lean extern: exp RD/RU ≈ 18 ns, log ≈ 16 ns (RN CORE-MATH ≈ 10.6 ns, libm
 `Float.exp` ≈ 11.6 ns). sin/cos: see below.
@@ -1034,7 +1034,7 @@ Wall time of the whole declaration on the dev box (8 CPUs), kernel trust unless 
   `X = L⁻¹`. The kernel computes `B = X A Xᵀ` in `ℚ` and checks strict diagonal dominance
   (`congrCheckQ`). This works for any condition number; the cost is the size of the
   rationals.
-* **The double-double type** (`Interval128.Interval128`, described below) and its proved
+* **The double-double type** (`Interval128`, described below; the old name `Interval128.Interval128` is an alias) and its proved
   checker (`Interval128.Refl`, `I128Sound.lean`) remain in the library. The tactics do not
   use it.
 
@@ -1085,7 +1085,7 @@ Use it from your own Mathlib project (same Lean and Mathlib versions) with
 `require realfp_mathlib from "path/to/realfp/RealFPMathlib"` and
 `import RealFPMathlib` (theorems, the tactics from `RealFPMathlib.Front`, and the short kernel
 names from `RealFPMathlib.Kernel`). (A git requirement with subdirectory,
-`... from git "https://github.com/schlafly1/realfp" @ "main" / "RealFPMathlib"`,
+`... from git "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"`,
 should also work but has not been tested.)
 
 **What it provides** (namespace `RealFP`; files in `RealFPMathlib/RealFPMathlib/`):
@@ -1170,7 +1170,7 @@ PD as well. The check is fast and sound: no validity checks are added to the bas
 | `isGt M N`, `gtCheck M N X` | `posDef_sub_of_isGt`, `posDef_sub_of_gtCheck` : `(A − B).PosDef` (Loewner `A > B`) |
 
 The C kernel `iv64_pd_margins` costs `O(n³)`. On a KMS interval matrix
-(`interval64_bench`, x86-64 box) it takes:
+(`interval64_bench`, x86-64 machine) it takes:
 
 | n | 50 | 100 | 200 | 400 |
 |---|---|---|---|---|
@@ -1563,7 +1563,7 @@ failures. Tightness, in units of 2^-106 relative to the result magnitude:
 As with Interval64, the compiled C kernels are a trust assumption. They are
 checked differentially against the spec that the theorems are about.
 
-**Benchmark.** Run `bench/i128/run.sh`. It reports C-level throughput in
+**Benchmark.** Run `experimental/bench/i128/run.sh`. It reports C-level throughput in
 ns/op for independent random intervals. The machine is an x86 Xeon with
 AVX-512. Arb is FLINT 3.1.3.
 

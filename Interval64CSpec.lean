@@ -1,6 +1,6 @@
 /-
 Lean-only reference copies of the specifications that run in C at runtime, for the differential
-tests (`Interval64Test.lean`) and benchmarks (`Interval64Bench.lean`).
+tests (`Interval64Test.lean`) and benchmarks (`experimental/Interval64Bench.lean`).
 -/
 import Interval64
 

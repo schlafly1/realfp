@@ -14,11 +14,11 @@ import Interval128
 
 namespace Interval128Tests
 
-open Interval64 Interval64.Directed Interval128 Interval128.Interval128
+open Interval64 Interval64.Directed Interval128
 
 def sameF (a b : Float) : Bool := (a.isNaN && b.isNaN) || a.toBits == b.toBits
 
-def sameI (a b : Interval128.Interval128) : Bool :=
+def sameI (a b : Interval128) : Bool :=
   sameF a.lh b.lh && sameF a.ll b.ll && sameF a.uh b.uh && sameF a.ul b.ul
 
 def hex64 (x : Float) : String :=
@@ -31,7 +31,7 @@ def hex64 (x : Float) : String :=
       go (v / 16) (k-1) (String.singleton ch ++ acc)
   "0x" ++ go n 16 ""
 
-def showI (a : Interval128.Interval128) : String :=
+def showI (a : Interval128) : String :=
   s!"[{hex64 a.lh} {hex64 a.ll} , {hex64 a.uh} {hex64 a.ul}]"
 
 def mix (s : UInt64) : UInt64 :=
@@ -81,12 +81,12 @@ def ddVal? (h l : Float) : Option Rat :=
   | _, _ => none
 
 /-- Build an interval from two random double-doubles, ordered (`rev` keeps the given order). -/
-def mkI (h1 l1 h2 l2 : Float) (rev : Bool) : Interval128.Interval128 :=
+def mkI (h1 l1 h2 l2 : Float) (rev : Bool) : Interval128 :=
   match ddVal? h1 l1, ddVal? h2 l2 with
   | some a, some b => if (b < a) != rev then ⟨h2, l2, h1, l1⟩ else ⟨h1, l1, h2, l2⟩
   | _, _ => ⟨h1, l1, h2, l2⟩
 
-def randI (g : Rng) (elo ehi : Int) : Interval128.Interval128 × Rng :=
+def randI (g : Rng) (elo ehi : Int) : Interval128 × Rng :=
   let (h1, l1, g) := randDD g elo ehi
   let (k, g) := g.next
   -- narrow (same exponent region) or wide
@@ -99,13 +99,13 @@ def randI (g : Rng) (elo ehi : Int) : Interval128.Interval128 × Rng :=
     else randDD g elo ehi
   (mkI h1 l1 h2 l2 (k % 97 == 5), g)
 
-def specialI (g : Rng) : Interval128.Interval128 × Rng :=
+def specialI (g : Rng) : Interval128 × Rng :=
   let (a, g) := g.next
   let pickS (x : UInt64) : Float := Float.ofBits (specialBits[(x.toNat % specialBits.size)]!)
   let (h1, l1, g) := randDD g (-30) 30
   let (h2, l2, g) := randDD g (-30) 30
   let k := (a >>> 4).toNat % 6
-  let x : Interval128.Interval128 :=
+  let x : Interval128 :=
     if k == 0 then ⟨pickS a, 0, pickS (a >>> 20), 0⟩
     else if k == 1 then ⟨pickS a, pickS (a >>> 12), pickS (a >>> 20), pickS (a >>> 28)⟩
     else if k == 2 then ⟨h1, l1, pickS (a >>> 20), 0⟩
@@ -126,7 +126,7 @@ def hiOK (h l : Float) (x : Rat) : Bool :=
   | none => h == Float.inf && !l.isNaN && !(l == -Float.inf)
 
 /-- Rational sample points of a finite-endpoint interval. -/
-def points (X : Interval128.Interval128) : Array Rat :=
+def points (X : Interval128) : Array Rat :=
   match ddVal? X.lh X.ll, ddVal? X.uh X.ul with
   | some a, some b => if a ≤ b then #[a, b, (a + b) / 2] else #[]
   | _, _ => #[]
@@ -139,8 +139,8 @@ structure Stats where
   firstDiff : String := ""
   firstEncl : String := ""
 
-def bin (name : String) (impl spec : Interval128.Interval128 → Interval128.Interval128 → Interval128.Interval128)
-    (exact : Rat → Rat → Option Rat) (X Y : Interval128.Interval128) (st : Stats) : Stats := Id.run do
+def bin (name : String) (impl spec : Interval128 → Interval128 → Interval128)
+    (exact : Rat → Rat → Option Rat) (X Y : Interval128) (st : Stats) : Stats := Id.run do
   let r := impl X Y
   let s := spec X Y
   let mut st := { st with checked := st.checked + 1 }
@@ -160,8 +160,8 @@ def bin (name : String) (impl spec : Interval128.Interval128 → Interval128.Int
                             s!"{name} X={showI X} Y={showI Y} R={showI r}" else st.firstEncl }
   return st
 
-def unSqrt (X : Interval128.Interval128) (st : Stats) : Stats := Id.run do
-  let r := Interval128.Interval128.sqrt X
+def unSqrt (X : Interval128) (st : Stats) : Stats := Id.run do
+  let r := Interval128.sqrt X
   let s := sqrtSpec X
   let mut st := { st with checked := st.checked + 1 }
   if !sameI r s then
@@ -190,7 +190,7 @@ structure Tight where
   sum : Float := 0
   max : Float := 0
 
-def relWidth (r : Interval128.Interval128) (z : Rat) : Option Float :=
+def relWidth (r : Interval128) (z : Rat) : Option Float :=
   match ddVal? r.lh r.ll, ddVal? r.uh r.ul with
   | some a, some b =>
     if z == 0 then none
@@ -271,18 +271,18 @@ def run (nRand : Nat := 20000) : IO Nat := do
     let b1 := h2 + l2
     let x1 := (h1 - a1) + l1
     let y1 := (h2 - b1) + l2
-    let X : Interval128.Interval128 := ⟨a1, x1, a1, x1⟩
-    let Y : Interval128.Interval128 := ⟨b1, y1, b1, y1⟩
+    let X : Interval128 := ⟨a1, x1, a1, x1⟩
+    let Y : Interval128 := ⟨b1, y1, b1, y1⟩
     match ddVal? a1 x1, ddVal? b1 y1 with
     | some x, some y =>
       -- same-sign addition (no cancellation) for the add statistic
-      let Ya : Interval128.Interval128 := if (x < 0) == (y < 0) then Y else Interval128.Interval128.neg Y
+      let Ya : Interval128 := if (x < 0) == (y < 0) then Y else Interval128.neg Y
       let ya := if (x < 0) == (y < 0) then y else -y
       ta := ta.add (relWidth (X + Ya) (x + ya))
       tm := tm.add (relWidth (X * Y) (x * y))
       if y != 0 then td := td.add (relWidth (X / Y) (x / y))
       if x > 0 then
-        let r := Interval128.Interval128.sqrt X
+        let r := Interval128.sqrt X
         match ddVal? r.uh r.ul with
         | some v => tq := tq.add (relWidth r v)
         | none => pure ()

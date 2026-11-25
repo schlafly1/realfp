@@ -26,9 +26,9 @@ def hiIn (h l : Float) (x : ℝ) : Prop :=
   (∃ a b, Fv h a ∧ Fv l b ∧ x ≤ a + b) ∨ (Fv l 0 ∧ h.isNaN = false ∧ (x : EReal) ≤ h.toE)
 
 /-- The set of reals enclosed by an `Interval128`. -/
-def toSet (X : Interval128.Interval128) : Set ℝ := {x | loIn X.lh X.ll x ∧ hiIn X.uh X.ul x}
+def toSet (X : Interval128) : Set ℝ := {x | loIn X.lh X.ll x ∧ hiIn X.uh X.ul x}
 
-theorem mem_toSet_iff {X : Interval128.Interval128} {x : ℝ} :
+theorem mem_toSet_iff {X : Interval128} {x : ℝ} :
     x ∈ toSet X ↔ loIn X.lh X.ll x ∧ hiIn X.uh X.ul x := Iff.rfl
 
 theorem loIn_val {h l : Float} {x a b : ℝ} (hx : loIn h l x) (ha : Fv h a) (hb : Fv l b) :
@@ -116,7 +116,7 @@ theorem hull_hi {h l : Float} {x : ℝ} (hx : hiIn h l x) : hiR (bitsToEVal (add
           rw [this] at hle; exact EReal.coe_ne_bot x (le_bot_iff.1 hle)
 
 /-- The outward binary64 hull contains the interval. -/
-theorem mem_toInterval64 {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) :
+theorem mem_toInterval64 {X : Interval128} {x : ℝ} (hx : x ∈ toSet X) :
     x ∈ (Interval128.toInterval64 X).toSet :=
   mem_toSet.2 ⟨hull_lo hx.1, hull_hi hx.2⟩
 
@@ -147,7 +147,7 @@ theorem mem_pick {l u : DD} {slow : Unit → Interval64} {z : ℝ}
 
 /-! ### Addition, subtraction, negation -/
 
-theorem mem_add {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
+theorem mem_add {X Y : Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
     x + y ∈ toSet (X + Y) := by
   show x + y ∈ toSet (Interval128.addSpec X Y)
   apply mem_pick
@@ -159,7 +159,7 @@ theorem mem_add {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X)
     have := hiIn_val hx.2 ha1 ha2; have := hiIn_val hy.2 hb1 hb2; linarith
   · exact add_mem_toSet (mem_toInterval64 hx) (mem_toInterval64 hy)
 
-theorem mem_sub {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
+theorem mem_sub {X Y : Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
     x - y ∈ toSet (X - Y) := by
   show x - y ∈ toSet (Interval128.subSpec X Y)
   apply mem_pick
@@ -175,7 +175,7 @@ theorem mem_sub {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X)
 
 theorem fv_neg_zero {l : Float} (h : Fv l 0) : Fv (-l) 0 := by simpa using fv_neg h
 
-theorem mem_neg {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) :
+theorem mem_neg {X : Interval128} {x : ℝ} (hx : x ∈ toSet X) :
     -x ∈ toSet (-X) := by
   show -x ∈ toSet (Interval128.neg X)
   constructor
@@ -192,7 +192,7 @@ theorem mem_neg {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) :
 
 /-! ### Multiplication -/
 
-theorem isFin_vals {X : Interval128.Interval128} (h : X.isFin = true) :
+theorem isFin_vals {X : Interval128} (h : X.isFin = true) :
     ∃ a1 a2 a3 a4, Fv X.lh a1 ∧ Fv X.ll a2 ∧ Fv X.uh a3 ∧ Fv X.ul a4 := by
   simp only [Interval128.isFin, Bool.and_eq_true] at h
   obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
@@ -236,7 +236,7 @@ theorem mixed_hi {xl xh yl yh x y : ℝ} (h1 : xl ≤ x) (h2 : x ≤ xh) (h3 : y
   · left; nlinarith
 
 section mul
-variable {X Y : Interval128.Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 : ℝ}
+variable {X Y : Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 : ℝ}
   (fa1 : Fv X.lh a1) (fa2 : Fv X.ll a2) (fa3 : Fv X.uh a3) (fa4 : Fv X.ul a4)
   (fb1 : Fv Y.lh b1) (fb2 : Fv Y.ll b2) (fb3 : Fv Y.uh b3) (fb4 : Fv Y.ul b4)
   (hx1 : a1 + a2 ≤ x) (hx2 : x ≤ a3 + a4) (hy1 : b1 + b2 ≤ y) (hy2 : y ≤ b3 + b4)
@@ -287,7 +287,7 @@ theorem mulHiF_ge : ∀ H L, Fv (Interval128.mulHiF X Y).hi H → Fv (Interval12
 
 end mul
 
-theorem mem_mul {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
+theorem mem_mul {X Y : Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y) :
     x * y ∈ toSet (X * Y) := by
   show x * y ∈ toSet (Interval128.mulSpec X Y)
   have hs := mem_toSet_mul (mem_toInterval64 hx) (mem_toInterval64 hy)
@@ -331,7 +331,7 @@ theorem divLo_le' {ah al bh bl : Float} {a1 a2 b1 b2 H L : ℝ} (ha1 : Fv ah a1)
     Fv (divLo ah al bh bl).hi H → Fv (divLo ah al bh bl).lo L → H + L ≤ (a1 + a2) / (b1 + b2) :=
   divLo_le ha1 ha2 hb1 hb2 hB
 
-theorem mem_divPos {X Y : Interval128.Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 : ℝ}
+theorem mem_divPos {X Y : Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 : ℝ}
     (fa1 : Fv X.lh a1) (fa2 : Fv X.ll a2) (fa3 : Fv X.uh a3) (fa4 : Fv X.ul a4)
     (fb1 : Fv Y.lh b1) (fb2 : Fv Y.ll b2) (fb3 : Fv Y.uh b3) (fb4 : Fv Y.ul b4)
     (hx1 : a1 + a2 ≤ x) (hx2 : x ≤ a3 + a4) (hy1 : b1 + b2 ≤ y) (hy2 : y ≤ b3 + b4)
@@ -358,7 +358,7 @@ theorem mem_divPos {X Y : Interval128.Interval128} {x y a1 a2 a3 a4 b1 b2 b3 b4 
       exact le_trans (u2 (fun h => c ((nonneg_iff fa3 fa4).2 h)))
         (divHi_ge fa3 fa4 fb3 fb4 hyh hH hL)
 
-theorem mem_div {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y)
+theorem mem_div {X Y : Interval128} {x y : ℝ} (hx : x ∈ toSet X) (hy : y ∈ toSet Y)
     (hy0 : y ≠ 0) : x / y ∈ toSet (X / Y) := by
   show x / y ∈ toSet (Interval128.divSpec X Y)
   have hs := mem_toSet_div (mem_toInterval64 hx) (mem_toInterval64 hy) hy0
@@ -389,7 +389,7 @@ theorem mem_div {X Y : Interval128.Interval128} {x y : ℝ} (hx : x ∈ toSet X)
 
 /-! ### Square root -/
 
-theorem mem_sqrt {X : Interval128.Interval128} {x : ℝ} (hx : x ∈ toSet X) (hx0 : 0 ≤ x) :
+theorem mem_sqrt {X : Interval128} {x : ℝ} (hx : x ∈ toSet X) (hx0 : 0 ≤ x) :
     Real.sqrt x ∈ toSet (Interval128.sqrt X) := by
   show Real.sqrt x ∈ toSet (Interval128.sqrtSpec X)
   have hs := mem_toSet_sqrt (mem_toInterval64 hx) hx0

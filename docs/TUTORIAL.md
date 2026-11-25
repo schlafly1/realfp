@@ -48,7 +48,7 @@ package «my_project»
 
 -- Brings the core and Mathlib (v4.36.0) with it.
 require realfp_mathlib from git
-  "https://github.com/schlafly1/realfp" @ "main" / "RealFPMathlib"
+  "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"
 
 @[default_target]
 lean_lib MyProject
@@ -179,8 +179,8 @@ open Interval128 in
 
 Interval128 has `+ - * /`, `sqrt` and conversions. The tactics do not use it: their
 `(precision := 128)` option uses 128-bit dyadic intervals (§5). Its type is
-`Interval128.Interval128` (write `Interval128` after `open Interval128`); dot notation works
-there too.
+the root-level `Interval128` (the old name `Interval128.Interval128` is kept as an alias);
+dot notation works as for `Interval64`.
 
 ## 3. First proofs with `realfp`
 

@@ -18,8 +18,8 @@ Two machines, both on 2026-11-23, Pacific (America/Los_Angeles):
 
 | Machine | Used for | Notes |
 |---|---|---|
-| Linux box, 8 CPUs, 15 GiB RAM | LeanCert vs realfp tactics (bounds, integrals, roots, optimisation) | Shared with other jobs; some samples are outliers. Timings are the wall time of one `lean` process, including startup and imports (~3–3.5 s). The 21 shared goals are the median of 3 isolated sequential runs. |
-| DGX Spark (`spark-2251`, aarch64, 20 cores, 121 GB) | 8-point Coulomb and four-body clean builds | `/usr/bin/time -v` after wiping `.lake/build`. Mathlib and realfp were prebuilt and not timed. “Max RSS” is the largest single `lean` process. Summed RSS of concurrent processes overcounts shared mappings. |
+| Linux x86-64, 8 CPUs, 15 GiB RAM | LeanCert vs realfp tactics (bounds, integrals, roots, optimisation) | Shared with other jobs; some samples are outliers. Timings are the wall time of one `lean` process, including startup and imports (~3–3.5 s). The 21 shared goals are the median of 3 isolated sequential runs. |
+| NVIDIA DGX Spark (aarch64, 20 cores, 121 GB) | 8-point Coulomb and four-body clean builds | `/usr/bin/time -v` after wiping `.lake/build`. Mathlib and realfp were prebuilt and not timed. “Max RSS” is the largest single `lean` process. Summed RSS of concurrent processes overcounts shared mappings. |
 
 **Trust modes.**
 
@@ -34,13 +34,13 @@ realfp is Lean/Mathlib 4.36.0. LeanCert was [alerad/leancert](https://github.com
 
 realfp is a native-compute alternative: binary64 interval endpoints, hardware directed rounding (AVX-512 embedded rounding on x86_64, RN plus an exact error term on arm64), and C kernels attached with `@[implemented_by]`. The core has no Mathlib or FloatLib dependency. Enclosure theorems are proved from the Lean spec; compiled code, `#eval`, and `native_decide` use the C kernels.
 
-A completed head-to-head timing of Interval64 against FloatLib’s software intervals was not found in the notes on disk, so no such speed ratio is reported here. For scale, realfp’s own micro-benchmarks (`interval64_bench`, x86-64 box) give a runtime `addDown` of about 1.7 ns/op versus about 2.9 µs/op for the software Lean spec `addDownSpec`. FloatLib’s own published kernel figure, recorded in an earlier review of the library, is a 1,000-term binary64 dot product in 0.159 s (about 160 µs per multiply-add).
+A completed head-to-head timing of Interval64 against FloatLib’s software intervals was not found in the notes on disk, so no such speed ratio is reported here. For scale, realfp’s own micro-benchmarks (`interval64_bench`, x86-64 machine) give a runtime `addDown` of about 1.7 ns/op versus about 2.9 µs/op for the software Lean spec `addDownSpec`. FloatLib’s own published kernel figure, recorded in an earlier review of the library, is a 1,000-term binary64 dot product in 0.159 s (about 160 µs per multiply-add).
 
 ## LeanCert
 
 [LeanCert](https://docs.leancert.io/) is broader in goal shapes (roots, Krawczyk systems, optimisation, sums, eventual bounds, exact polynomial integrals), precision (rationals, adjustable dyadics, affine arithmetic), and tooling (extension registry, docs, Python SDK). realfp is faster and closes more of the shared bound and integral goals, including in kernel mode. Both default their high-level tactics to kernel checking now (`realfp` does; LeanCert’s `leancert` still offers a native default in the reviewed revision, with an explicit kernel switch).
 
-Sources (local benchmark logs, since removed from the box): `/workspace/leancert-bench/COMPARISON.md`, `problems/final.res`, `problems/final_realfp.res`, `problems/opt/{lc,realfp}.res`. LeanCert times are from the first complete run (realfp then called `interval` / `integral_bound`). realfp times below are the later rerun through the unified `realfp` tactic (realfp `4d58d43` and later). Baseline imports: LeanCert 3.48 s; realfp 3.43 s in the rerun.
+Sources: the goal files and a rerun script are in [`experimental/bench/leancert/`](../experimental/bench/leancert/); the original benchmark logs were local and are not in this repository. LeanCert times are from the first complete run (realfp then called `interval` / `integral_bound`). realfp times below are the later rerun through the unified `realfp` tactic (realfp `4d58d43` and later). Baseline imports: LeanCert 3.48 s; realfp 3.43 s in the rerun.
 
 **Precision.** The timings in this section are for realfp at precision 64 (binary64
 endpoints). realfp has since added `(precision := 128)`, which uses 128-bit dyadic intervals in
@@ -177,7 +177,7 @@ lean4body itself was not timed on these machines. Its published cost is 7.6 CPU-
 
 ## Sources
 
-- LeanCert vs realfp: `/workspace/leancert-bench/COMPARISON.md` and `problems/*.res` (21 goals and o01–o10; local logs, since removed).
-- 8-point timings and axioms: `em8-realfp` README (branch `kernel-only`) and `NOTES-kernel.md`; Spark log notes in `/workspace/showcase/NOTES.md`.
-- Four-body native timings: `/workspace/showcase/NOTES.md`, `/workspace/showcase/fourbody/NOTES.md`; kernel estimates in `em8-realfp` README / `NOTES-kernel.md` and `/workspace/kernel-notes/PROGRESS.md`.
-- FloatLib characterisation and the 0.159 s kernel dot-product figure: `/workspace/floatlib/COMPARE.md` (review of FloatLib docs and source). realfp `addDown` micro-benchmark: this repo’s README.
+- LeanCert vs realfp: goal files and rerun script in [`experimental/bench/leancert/`](../experimental/bench/leancert/) (21 goals plus roots); the optimisation problems o01–o10 and the original logs were local notes, not in this repository.
+- 8-point timings and axioms: `em8-realfp` README (branch `kernel-only`) and `NOTES-kernel.md`, plus local build-log notes.
+- Four-body native timings: local build-log notes; kernel estimates in `em8-realfp` README / `NOTES-kernel.md`.
+- FloatLib characterisation and the 0.159 s kernel dot-product figure: a local review of FloatLib's docs and source. realfp `addDown` micro-benchmark: this repo’s README.

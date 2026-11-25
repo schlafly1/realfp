@@ -11,6 +11,10 @@ Mathlib must be built for exactly the same Lean version as the core
 `leanprover/lean4:v4.36.0`. Upgrade both together. -/
 
 package «realfp_mathlib» where
+  version := v!"0.1.0"
+  description := "realfp: kernel-checked real-number bounds in Lean 4 + Mathlib via interval arithmetic"
+  license := "Apache-2.0"
+  homepage := "https://github.com/schlafly1/realfp"
   moreLeanArgs := #["-DautoImplicit=false"]
   -- No `precompileModules` here: that would compile Mathlib to native code.
   -- The core package precompiles its own modules, so importing `Interval64`

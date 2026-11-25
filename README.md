@@ -32,7 +32,7 @@ package «my_project»
 
 -- Brings the core and Mathlib (v4.36.0) with it.
 require realfp_mathlib from git
-  "https://github.com/schlafly1/realfp" @ "main" / "RealFPMathlib"
+  "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"
 
 @[default_target]
 lean_lib MyProject
@@ -97,6 +97,14 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 - [Reference](docs/REFERENCE.md) — operations, theorems, kernels, tactics, and precision 128
 - [Comparisons](docs/COMPARISONS.md) — FloatLib, LeanCert, and two research showcases
 - [Limitations](docs/LIMITATIONS.md) — known gaps
+- [Soundness](docs/SOUNDNESS.md) — what kernel and native mode trust, and how it is checked
 - [Philosophy](docs/PHILOSOPHY.md) — design rationale
 
 An index of these files is in [docs/](docs/README.md).
+
+## License
+
+realfp is licensed under the [Apache License 2.0](LICENSE). It includes
+MIT-licensed code from CORE-MATH and FloatLib; see [NOTICE](NOTICE).
+Changes are listed in the [CHANGELOG](CHANGELOG.md), and
+[CONTRIBUTING](CONTRIBUTING.md) explains how to report bugs and contribute.

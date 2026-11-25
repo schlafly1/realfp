@@ -33,7 +33,7 @@ Backends:
 * **GPU fp32 (contrast only, not Interval64):** the same code with `__fadd_rd`, etc.,
   on binary32 endpoints. It is checked against a CPU fp32 `fesetround` reference.
 
-## Results: DGX Spark `spark-2251`, measured 2026-11-21
+## Results: NVIDIA DGX Spark (GB10), measured 2026-11-21
 
 NVIDIA GB10 (48 SMs, compute capability 12.1, CUDA 13.0, driver 580), CPU
 10× Cortex-X925 + 10× Cortex-A725 (20 threads), 121 GB unified LPDDR5X, gcc 13.3.

@@ -24,15 +24,18 @@ namespace Interval128
 
 open Interval64 Interval64.Directed
 
-/-- `[lh + ll, uh + ul]`. Flat (four scalar fields) so the runtime allocates one object. -/
-structure Interval128 where
+/-- `[lh + ll, uh + ul]`. Flat (four scalar fields) so the runtime allocates one object.
+Declared at the root (like `Interval64`), so the operations in namespace `Interval128` work
+with dot notation (`X.width`, `X.sqrt`, `X.widthRat`). -/
+structure _root_.Interval128 where
   lh : Float
   ll : Float
   uh : Float
   ul : Float
   deriving Repr, Inhabited
 
-namespace Interval128
+/- The type used to be `Interval128.Interval128`; keep that name as an alias for older code. -/
+export _root_ (Interval128)
 
 def lo (X : Interval128) : DD := ⟨X.lh, X.ll⟩
 def hi (X : Interval128) : DD := ⟨X.uh, X.ul⟩
@@ -180,7 +183,6 @@ instance : Coe Interval64 Interval128 := ⟨ofInterval64⟩
 def width (X : Interval128) : Float :=
   addUp (addUp (subUp X.uh X.lh) X.ul) (-X.ll)
 
-end Interval128
 end Interval128
 
 namespace Interval128

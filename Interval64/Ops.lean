@@ -112,7 +112,8 @@ def mid (a : Interval64) : Float :=
   if a.lo.isNaN || a.hi.isNaN then Float.nan
   else fmin (fmax (midRaw a) a.lo) a.hi
 
-/-- Width `hi - lo`, rounded up. -/
+/-- Width `hi - lo`, rounded up (an upper bound, used by search heuristics). The exact width is
+`X.widthRat : Option Rat` (`Interval64.Display`). -/
 def width (a : Interval64) : Float := subUp a.hi a.lo
 
 /-- Magnitude `max {|x| : x ∈ X} = max (-lo) hi` (exact). -/

@@ -37,9 +37,9 @@ theorem hiIn_mono {h l : Float} {x y : ℝ} (hy : hiIn h l y) (hxy : x ≤ y) : 
 theorem fv_of_bits {f : Float} {q : ℚ} (h : bitsToRat? f.toBits = some q) : Fv f (q : ℝ) :=
   toReal?_of_bitsToRat? h
 
-theorem ddRat_vals {h l : Float} {u : ℚ} (hu : Interval128.Interval128.ddRat? h l = some u) :
+theorem ddRat_vals {h l : Float} {u : ℚ} (hu : Interval128.ddRat? h l = some u) :
     ∃ a b : ℚ, Fv h (a : ℝ) ∧ Fv l (b : ℝ) ∧ u = a + b := by
-  unfold Interval128.Interval128.ddRat? at hu
+  unfold Interval128.ddRat? at hu
   split at hu
   · rename_i a b ha hb
     simp only [Option.some.injEq] at hu
@@ -57,8 +57,8 @@ theorem hull64_mem {X : I} {x : ℝ} {K : KI} (h : hull64 X = some K) (hx : x �
   subst h
   simp only [Bool.or_eq_true, not_or, Bool.not_eq_true] at hn
   refine ⟨?_, ofI_wf _⟩
-  have hset : (toI (ofI (Interval128.Interval128.toInterval64 X))).toSet =
-      (Interval128.Interval128.toInterval64 X).toSet := by
+  have hset : (toI (ofI (Interval128.toInterval64 X))).toSet =
+      (Interval128.toInterval64 X).toSet := by
     simp only [Interval64.toSet, toI, ofI, toBits_toF_toBits hn.1, toBits_toF_toBits hn.2]
   rw [hset]; exact mem_toInterval64 hx
 

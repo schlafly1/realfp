@@ -6,7 +6,6 @@ import Interval128.Interval
 import Interval64.Display
 
 namespace Interval128
-namespace Interval128
 
 /-- Exact value of a double-double endpoint `h + l` (`none` if a word is infinite or NaN). -/
 def ddRat? (h l : Float) : Option Rat :=
@@ -35,5 +34,4 @@ protected def toString (X : Interval128) : String :=
 instance (priority := high) : Repr Interval128 := ⟨fun X _ => .text X.toString⟩
 instance : ToString Interval128 := ⟨Interval128.toString⟩
 
-end Interval128
 end Interval128

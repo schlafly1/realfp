@@ -23,14 +23,14 @@ namespace Interval128.Refl
 open Interval64 Interval64.KF
 
 
-abbrev I := Interval128.Interval128
+abbrev I := _root_.Interval128
 
 def zeroD : I := ⟨0, 0, 0, 0⟩
-def oneD : I := Interval128.Interval128.ofRat 1
+def oneD : I := Interval128.ofRat 1
 
 /-- Interval64 hull of `X` as kernel bit patterns (`none` on a NaN endpoint). -/
 def hull64 (X : I) : Option KI :=
-  let J := Interval128.Interval128.toInterval64 X
+  let J := Interval128.toInterval64 X
   if J.lo.isNaN || J.hi.isNaN then none else some (ofI J)
 
 variable [ExtTbl]
@@ -38,38 +38,38 @@ variable [ExtTbl]
 /-- Interval64 enclosure of the unary template `f` (in `var 0`) on `X`, embedded exactly. -/
 def lift1 (f : IExpr) (X : I) : I :=
   match hull64 X with
-  | some K => Interval128.Interval128.ofInterval64 (toIv (evalK [K] f))
-  | none => Interval128.Interval128.whole
+  | some K => Interval128.ofInterval64 (toIv (evalK [K] f))
+  | none => Interval128.whole
 
 /-- Same for a binary template in `var 0`, `var 1`. -/
 def lift2 (f : IExpr) (X Y : I) : I :=
   match hull64 X, hull64 Y with
-  | some K, some L => Interval128.Interval128.ofInterval64 (toIv (evalK [K, L] f))
-  | _, _ => Interval128.Interval128.whole
+  | some K, some L => Interval128.ofInterval64 (toIv (evalK [K, L] f))
+  | _, _ => Interval128.whole
 
 /-- Division: double-double when the divisor is finite and excludes `0`, else the whole line
 (`x / 0 = 0` in `ℝ`, so `whole` is the only safe answer when `0` may be in the divisor). -/
 def divD (X Y : I) : I :=
-  if Y.isFin && (_root_.Interval128.DD.pos Y.lh Y.ll || _root_.Interval128.DD.neg Y.uh Y.ul) then Interval128.Interval128.div X Y
-  else Interval128.Interval128.whole
+  if Y.isFin && (_root_.Interval128.DD.pos Y.lh Y.ll || _root_.Interval128.DD.neg Y.uh Y.ul) then Interval128.div X Y
+  else Interval128.whole
 
 def invD (X : I) : I := divD oneD X
 
 /-- `√X` (double-double when `X` is finite and nonnegative, else through Interval64). -/
 def sqrtD (X : I) : I :=
-  if X.isFin && _root_.Interval128.DD.nonneg X.lh X.ll then Interval128.Interval128.sqrt X
+  if X.isFin && _root_.Interval128.DD.nonneg X.lh X.ll then Interval128.sqrt X
   else lift1 (.sqrt (.var 0)) X
 
 /-- `|X|` (exact when `X` has a sign, else through Interval64). -/
 def absD (X : I) : I :=
   if X.isFin && _root_.Interval128.DD.nonneg X.lh X.ll then X
-  else if X.isFin && _root_.Interval128.DD.nonpos X.uh X.ul then Interval128.Interval128.neg X
+  else if X.isFin && _root_.Interval128.DD.nonpos X.uh X.ul then Interval128.neg X
   else lift1 (.abs (.var 0)) X
 
 /-- `X ^ n` by repeated multiplication. -/
 def mulPow (X : I) : Nat → I
   | 0 => oneD
-  | n + 1 => Interval128.Interval128.mul (mulPow X n) X
+  | n + 1 => Interval128.mul (mulPow X n) X
 
 /-- `X ^ n`; even powers start from `|X|` (no sign loss). -/
 def powD (X : I) (n : Nat) : I := if n % 2 == 0 then mulPow (absD X) n else mulPow X n
@@ -78,17 +78,17 @@ def powD (X : I) (n : Nat) : I := if n % 2 == 0 then mulPow (absD X) n else mulP
 def piLo : Rat := 314159265358979323846 / 100000000000000000000
 def piHi : Rat := 314159265358979323847 / 100000000000000000000
 def piD : I :=
-  Interval128.Interval128.ofDD (Interval128.Interval128.ddOfRatDown piLo)
-    (Interval128.Interval128.ddOfRatUp piHi)
+  Interval128.ofDD (Interval128.ddOfRatDown piLo)
+    (Interval128.ddOfRatUp piHi)
 
 def evalD (env : List I) : IExpr → I
   | .var i => env.getD i zeroD
-  | .rat q => Interval128.Interval128.ofRat q
-  | .add a b => Interval128.Interval128.add (evalD env a) (evalD env b)
-  | .sub a b => Interval128.Interval128.sub (evalD env a) (evalD env b)
-  | .mul a b => Interval128.Interval128.mul (evalD env a) (evalD env b)
+  | .rat q => Interval128.ofRat q
+  | .add a b => Interval128.add (evalD env a) (evalD env b)
+  | .sub a b => Interval128.sub (evalD env a) (evalD env b)
+  | .mul a b => Interval128.mul (evalD env a) (evalD env b)
   | .div a b => divD (evalD env a) (evalD env b)
-  | .neg a => Interval128.Interval128.neg (evalD env a)
+  | .neg a => Interval128.neg (evalD env a)
   | .inv a => invD (evalD env a)
   | .sqrt a => sqrtD (evalD env a)
   | .abs a => absD (evalD env a)
@@ -135,13 +135,13 @@ def lifted : IExpr → List String
 
 /-- `f ≤ c`: the exact upper endpoint is `≤ c`. -/
 def gLe (c : Rat) (F : I) : Bool :=
-  match Interval128.Interval128.ddRat? F.uh F.ul with | some u => decide (u ≤ c) | none => false
+  match Interval128.ddRat? F.uh F.ul with | some u => decide (u ≤ c) | none => false
 def gLt (c : Rat) (F : I) : Bool :=
-  match Interval128.Interval128.ddRat? F.uh F.ul with | some u => decide (u < c) | none => false
+  match Interval128.ddRat? F.uh F.ul with | some u => decide (u < c) | none => false
 def gGe (c : Rat) (F : I) : Bool :=
-  match Interval128.Interval128.ddRat? F.lh F.ll with | some l => decide (c ≤ l) | none => false
+  match Interval128.ddRat? F.lh F.ll with | some l => decide (c ≤ l) | none => false
 def gGt (c : Rat) (F : I) : Bool :=
-  match Interval128.Interval128.ddRat? F.lh F.ll with | some l => decide (c < l) | none => false
+  match Interval128.ddRat? F.lh F.ll with | some l => decide (c < l) | none => false
 
 /-! ### Bisection certificates with rational split points -/
 
@@ -152,10 +152,10 @@ inductive Cert where
 
 /-- Left half of `X` at `q`: upper endpoint `q` rounded up. -/
 def leftAt (X : I) (q : Rat) : I :=
-  Interval128.Interval128.ofDD X.lo (Interval128.Interval128.ddOfRatUp q)
+  Interval128.ofDD X.lo (Interval128.ddOfRatUp q)
 /-- Right half of `X` at `q`: lower endpoint `q` rounded down. -/
 def rightAt (X : I) (q : Rat) : I :=
-  Interval128.Interval128.ofDD (Interval128.Interval128.ddOfRatDown q) X.hi
+  Interval128.ofDD (Interval128.ddOfRatDown q) X.hi
 
 def checkD (e : IExpr) (g : I → Bool) : Cert → List I → Bool
   | .leaf, env => g (evalD env e)
@@ -167,14 +167,14 @@ def checkD (e : IExpr) (g : I → Bool) : Cert → List I → Bool
 def boxes : List (Rat × Rat) → List I
   | [] => []
   | (a, b) :: t =>
-    Interval128.Interval128.ofDD (Interval128.Interval128.ddOfRatDown a)
-      (Interval128.Interval128.ddOfRatUp b) :: boxes t
+    Interval128.ofDD (Interval128.ddOfRatDown a)
+      (Interval128.ddOfRatUp b) :: boxes t
 
 /-! ### Certificate search (compiled code; not trusted) -/
 
 /-- Width of a box coordinate as a rational (`none` if an endpoint is not finite). -/
 def widthQ (X : I) : Option Rat :=
-  match Interval128.Interval128.ddRat? X.lh X.ll, Interval128.Interval128.ddRat? X.uh X.ul with
+  match Interval128.ddRat? X.lh X.ll, Interval128.ddRat? X.uh X.ul with
   | some a, some b => some (b - a)
   | _, _ => none
 
@@ -183,7 +183,7 @@ def pickSplit (env : List I) : Option (Nat × Rat) := Id.run do
   let mut best : Option (Nat × Rat × Rat) := none
   for h : i in [0:env.length] do
     let X := env[i]
-    match Interval128.Interval128.ddRat? X.lh X.ll, Interval128.Interval128.ddRat? X.uh X.ul with
+    match Interval128.ddRat? X.lh X.ll, Interval128.ddRat? X.uh X.ul with
     | some a, some b =>
       if a < b then
         let w := b - a

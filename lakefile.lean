@@ -2,6 +2,10 @@ import Lake
 open System Lake DSL
 
 package «interval64» where
+  version := v!"0.1.0"
+  description := "Binary64 interval arithmetic with hardware directed rounding (realfp core)"
+  license := "Apache-2.0"
+  homepage := "https://github.com/schlafly1/realfp"
   -- Core library has no Mathlib dependency.
   moreLeanArgs := #["-DautoImplicit=false"]
   -- So `#eval` / the editor / `native_decide` load compiled modules
@@ -162,11 +166,15 @@ lean_exe interval128_tests where
   root := `Interval128Test
   moreLeancArgs := #["-O3"]
 
+/-- Micro-benchmarks (experimental; not part of the library). -/
 lean_exe interval64_bench where
+  srcDir := "experimental"
   root := `Interval64Bench
   moreLeancArgs := #["-O3"]
 
+/-- `native_decide` demo from the prototype (experimental; not part of the library). -/
 lean_exe interval64_native where
+  srcDir := "experimental"
   root := `Interval64Native
 
 /-- Enclosure theorems about the Lean spec. Separate from the runtime library

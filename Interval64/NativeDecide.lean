@@ -1,6 +1,6 @@
 /-
 `native_decide` demonstration, compiled as part of the library so the theorem
-is available to dependents. See `Interval64Native.lean` for the runtime
+is available to dependents. See `experimental/Interval64Native.lean` for the runtime
 counter check and axiom report.
 -/
 import Interval64.Interval

@@ -66,9 +66,10 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 ## Tooling and API
 - Plain `lake env lean` needs `--load-dynlib` and `--plugin` flags for the C runtime; without them
   tactics give a clear error, but `#eval` gives Lean's own error.
-- The double-double type keeps the name `Interval128.Interval128`; the 128-bit tactics use the
+- The double-double type `Interval128` is not used by the tactics; the 128-bit tactics use the
   dyadic `Interval128.Dy` path instead.
-- `X.width` is still a `Float`.
+- `X.width` is a `Float` (an upper bound, rounded up, used by the search heuristics); the exact
+  width is `X.widthRat : Option ℚ`.
 - CI on GitHub Actions builds the portable RN+err C backend (runners may lack AVX-512);
   the default local x86_64 build is still AVX-512. The slow Examples and the full axiom
   audit run weekly (or manually), not on every push.
