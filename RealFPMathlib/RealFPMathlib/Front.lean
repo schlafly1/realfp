@@ -28,7 +28,7 @@ Options (any order): `(trust := kernel|native)` (default `kernel`: `decide +kern
 standard axioms; `native` uses `native_decide` and adds a compiler-trust axiom), and for
 `interval`/root/optimisation goals `(depth := n)`, `(maxBoxes := n)`, `(order := n)`,
 `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)` (128: 128-bit dyadic
-endpoints). Integrals take `order` (Taylor order 2/4/6/8; at precision 128 the Taylor-model
+endpoints), and for `≤`/`≥` bounds `(touch := [p₁, …])` (interior touching points). Integrals take `order` (Taylor order 2/4/6/8; at precision 128 the Taylor-model
 order 8–30), `maxBoxes` (cells) and `precision` (128: fixed-point Taylor models with a per-product certificate, `I128TMF.lean`); `pos_def` takes `trust` and `precision` (128: exact rational check). An option a backend cannot use is an error.
 -/
 
@@ -37,7 +37,7 @@ open Lean Meta Elab Tactic
 namespace RealFP.Front
 
 /-- `realfp` with options `(trust := kernel|native)`, `(depth := n)`, `(maxBoxes := n)`,
-`(order := n)`, `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)`. -/
+`(order := n)`, `(deriv := false)`, `(chunk := n)`, `(precision := 64|128)`, `(touch := [p₁, …])`. -/
 syntax (name := realfpTac) "realfp" (ppSpace intervalOpt)* : tactic
 
 /-- Which backend `realfp` should call for the current goal. -/
@@ -90,6 +90,10 @@ partial def realfpCore (rest : Array (TSyntax `intervalOpt)) : TacticM Unit := w
   -- `(precision := 128)` is passed on to every backend (all of them implement it)
   let rest := if r matches .interval | .unique | .exists then rest else
     rest.filter fun o => !(o.raw[1].getId == `precision && o.raw[3].isNatLit? == some 64)
+  if !(r matches .interval | .conj | .infsup) &&
+      rest.any (fun o => o.raw.getKind == ``RealFP.IntervalTactic.touchOpt) then
+    throwError "(touch := _) applies to `≤` / `≥` bounds (the `interval` backend), not to a \
+      `{r.name}` goal"
   try
     match r with
     | .conj =>

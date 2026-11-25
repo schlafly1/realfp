@@ -6,6 +6,18 @@ between minor versions.
 
 ## Unreleased
 
+- Touching points: `interval (touch := [p₁, …])` / `realfp (touch := …)` prove
+  `f ≥ c` / `f ≤ c` when the bound is attained at interior points `pᵢ`
+  (`RealFPMathlib/Touch.lean`). Around each point a kernel-checked touch leaf
+  checks `f(p)`, an exactly zero gradient, and an interval Hessian whose
+  matrix set is positive definite via an exact rational `LDLᵀ` certificate.
+  Soundness comes from a coordinate-wise second-order Taylor expansion
+  (`RealFP.touch_expand`, `checkT_sound`, `proveT_le/ge`; standard axioms).
+  The rest of the box uses the usual search. New examples
+  `Examples/{AMGM,Motzkin}.lean` (AM–GM, `log x ≤ x − 1`, `1 + x ≤ eˣ`,
+  Motzkin polynomial) and tests `Tests/TouchTest.lean`.
+- The exact `LDLᵀ` factoriser of `pos_def` moved to `RealFP.PDQ.ldlInv`
+  (`PosDefQ.lean`). `RealFP.PosDefTactic.ldlInv` remains as an alias.
 - doc-gen4 setup in `docbuild/` (pinned to Lean/Mathlib `v4.36.0`) for a
   browsable API reference of `Interval64`, `Interval128`, `Interval64Proofs`
   and `RealFPMathlib`. See [docs/README.md](docs/README.md#api-reference-doc-gen4).

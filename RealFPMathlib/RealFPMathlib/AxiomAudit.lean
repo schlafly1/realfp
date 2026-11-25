@@ -14,6 +14,7 @@ import RealFPMathlib.Bern
 import RealFPMathlib.Conv
 import RealFPMathlib.Corners
 import RealFPMathlib.Demo
+import RealFPMathlib.Examples.AMGM
 import RealFPMathlib.Examples.Bernstein
 import RealFPMathlib.Examples.Constants
 import RealFPMathlib.Examples.Conv
@@ -28,6 +29,7 @@ import RealFPMathlib.Examples.Jacobian
 import RealFPMathlib.Examples.Jordan
 import RealFPMathlib.Examples.LogIneq
 import RealFPMathlib.Examples.MatrixPD
+import RealFPMathlib.Examples.Motzkin
 import RealFPMathlib.Examples.Ops
 import RealFPMathlib.Examples.Optimization
 import RealFPMathlib.Examples.PolyQuad
@@ -90,6 +92,7 @@ import RealFPMathlib.Taylor2
 import RealFPMathlib.TaylorBound
 import RealFPMathlib.Tests.IntervalTest
 import RealFPMathlib.Tests.KernelNativeAgree
+import RealFPMathlib.Tests.TouchTest
 import RealFPMathlib.Tight
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig

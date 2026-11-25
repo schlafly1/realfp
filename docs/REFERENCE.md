@@ -811,6 +811,7 @@ example (x y : ℝ) (hx : x ∈ Set.Icc (0:ℝ) 1) (hy : 0 ≤ y ∧ y ≤ 1) : 
 example (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 : ℝ) 1.1 := by interval
 example : 1.414 < Real.sqrt 2 := by interval
 example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
+example … := by interval (touch := [(1, 1)])   -- bound attained at (1, 1); see below
 ```
 
 * **Goals**: `f ≤ c`, `f < c`, `c ≤ f`, `c < f`, `≥`, `>`, conjunctions, `f ∈ Set.Icc a b`;
@@ -874,6 +875,58 @@ example (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x^3/6 ≤ Real.sin x := by
 
   Per test 2.5–3.7 s including ~2 s Lean startup (before: up to 12.6 s).
 * Tests: `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`.
+
+### Touching points: `(touch := [p₁, …])` (`RealFPMathlib/Touch.lean`)
+
+Bisection can only prove a touching bound (`f(p) = c` at an interior point `p`) when it
+happens to split exactly at `p`: then monotonicity takes over on each side. The examples
+above work that way. When it does not split at `p` (`[0, 10]` with `p = 1`, or a 2-D
+minimum), name the point:
+
+```lean
+example : ∀ x ∈ Set.Icc (0 : ℝ) 10, Real.sqrt x ≤ (1 + x) / 2 := by realfp (touch := [1])
+example : ∀ x ∈ Set.Icc (0 : ℝ) 2, ∀ y ∈ Set.Icc (0 : ℝ) 2,
+    0 ≤ x^4*y^2 + x^2*y^4 - 3*x^2*y^2 + 1 := by
+  realfp (touch := [(1, 1)])          -- Motzkin polynomial, zero at (1, 1)
+example : ∀ x ∈ Set.Icc (-2 : ℝ) 3, 0 ≤ x^4 - 2*x^2 + 1 := by interval (touch := [1, -1])
+```
+
+* **Syntax**: a list of points. A point is a numeral (one variable) or a tuple `(a, b, …)`
+  with one coordinate per variable, in binder (local context) order. Coordinates are
+  rationals as `norm_num` evaluates them, and must be exactly representable in binary64
+  (dyadic, e.g. `1`, `-1/2`, `3/8`). Works with `interval` and `realfp`; combines with
+  `trust`, `depth`, `maxBoxes` and `chunk`.
+* **Goals**: non-strict `f ≤ c` / `c ≤ f` (`≥`, and `f ≤ g` moved to `f - g ≤ 0`). Errors
+  for `<`, `>`, `≠`, `(precision := 128)`, `(touch := [])`, points with the wrong number of
+  coordinates, points outside the box, and non-dyadic coordinates. In a conjunction every
+  conjunct gets the same points, so prove the conjuncts separately.
+* **Touch leaf** (`touchOK`, checked in the kernel like every other leaf) on a box `B ∋ p`:
+  1. `f(p)` satisfies the bound, using the interval enclosure of `f` at the point;
+  2. every `∂ₖf(p)` evaluates to exactly `[0, 0]`, and `f` and its first partials are
+     defined on `B` (`domOK`);
+  3. an interval Hessian `H` on `B` (from `(e.deriv (max k j)).deriv (min k j)`), a rational
+     symmetric centre `C`, and radii `ρ` with `Σⱼ |Hₖⱼ − Cₖⱼ| ≤ ρₖ` (checked with intervals);
+  4. `C − diag ρ` positive definite, checked exactly in `ℚ` with the `pos_def` `LDLᵀ`
+     congruence certificate (`RealFP.PDQ.congrCheckQ`). For upper bounds `−H` is used.
+* **Soundness** (`RealFP.touch_expand`, `quad_nonneg_of_cert`, `touchOK_sound`,
+  `checkT_sound`, `proveT_le` / `proveT_ge`; no `sorry`, standard axioms). It uses
+  coordinate-by-coordinate Taylor expansion: a one-variable second-order Taylor step
+  (Cauchy mean value theorem) and mean value steps for the gradient. This gives
+  `2(f(x) − f(p)) = uᵀ S u` with `u = x − p` and `S` symmetric, with each entry in the interval
+  Hessian. Step 4 makes every such `S` positive semidefinite. Mixed-partial symmetry and
+  Fréchet `C²` theory are not needed.
+* **Search** (`proveTouch`, untrusted): each point gets a box of half-width `δ`, a power of two
+  at most a quarter of the smallest domain width and of the distance between points. `δ` is
+  halved until the touch leaf checks. The box is carved out with ordinary splits, and the
+  rest is covered by the usual `MCert`/`DCert` search (multivariate centred form first).
+  Polynomials also try their Horner form and keep the smaller certificate. Trace with
+  `set_option trace.interval true`.
+* **Cost** (kernel, box built, `lake lean`): `Examples/AMGM.lean` (three 1-D bounds) about
+  2.5 s. `Examples/Motzkin.lean` (quadrant `[0,2]²`: 174 ordinary boxes and 1 touch box, half-width
+  1/32) about 16 s. The full `[-2,2]²` with all four points at once (696 + 4 boxes) takes about
+  70 s and needs `set_option maxHeartbeats 1000000`; the example derives it from the quadrant
+  by symmetry instead.
+* Tests: `RealFPMathlib/RealFPMathlib/Tests/TouchTest.lean`.
 
 ## Precision 128 (`(precision := 128)`)
 

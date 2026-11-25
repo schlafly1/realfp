@@ -48,26 +48,8 @@ def entryOf (M : Expr) (n i j : Nat) : MetaM ℚ := do
   | none => throwError "pos_def: entry ({i}, {j}) of the matrix does not evaluate to a rational \
       numeral (got {r.expr})"
 
-/-- Exact `LDLᵀ` (no pivoting) of a symmetric rational matrix: `X = L⁻¹` (unit lower
-triangular), so that `X A Xᵀ = D`. `none` if a pivot is not positive. Untrusted. -/
-def ldlInv (n : Nat) (A : List (List ℚ)) : Except String (List (List ℚ)) := do
-  let mut M : Array (Array ℚ) := (List.range n).toArray.map fun i =>
-    (List.range n).toArray.map fun j => lget A i j
-  -- X starts as the identity; row operations on M are applied to X as well
-  let mut X : Array (Array ℚ) := (List.range n).toArray.map fun i =>
-    (List.range n).toArray.map fun j => if i == j then 1 else 0
-  for k in [0:n] do
-    let p := (M[k]!)[k]!
-    unless 0 < p do
-      throw s!"the exact LDLᵀ pivot {k} is {p} ≤ 0, so the matrix is not positive definite"
-    for i in [k+1:n] do
-      let f := (M[i]!)[k]! / p
-      if f != 0 then
-        let rk := M[k]!
-        let xk := X[k]!
-        M := M.set! i ((List.range n).toArray.map fun j => (M[i]!)[j]! - f * rk[j]!)
-        X := X.set! i ((List.range n).toArray.map fun j => (X[i]!)[j]! - f * xk[j]!)
-  return X.toList.map (·.toList)
+/-- Exact `LDLᵀ` inverse factor (see `RealFP.PDQ.ldlInv`). Untrusted. -/
+abbrev ldlInv := RealFP.PDQ.ldlInv
 
 def provePosDef (prec128 : Bool := false) : TacticM Unit := withMainContext do
   let t ← instantiateMVars (← getMainTarget)

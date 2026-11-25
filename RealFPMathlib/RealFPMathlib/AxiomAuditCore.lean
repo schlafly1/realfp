@@ -3,7 +3,7 @@ Core axiom audit, plus the short showcase examples in `docs/EXAMPLES.md`.
 
 The default `lake build` still elaborates `RealFPMathlib.AxiomAudit`, which imports every
 module including the slower feature examples. This file is the same check over the library,
-Demo, Tests and the five polished showcases, so the push CI can audit axioms without
+Demo, Tests and the polished showcases, so the push CI can audit axioms without
 building the slow example files.
 
 Run: `lake build RealFPMathlib.AxiomAuditCore`
@@ -16,11 +16,13 @@ import RealFPMathlib.Conv
 import RealFPMathlib.Corners
 import RealFPMathlib.Demo
 -- Polished showcase examples (each compiles in well under 30 s).
+import RealFPMathlib.Examples.AMGM
 import RealFPMathlib.Examples.Constants
 import RealFPMathlib.Examples.ExpPi
 import RealFPMathlib.Examples.Gaussian
 import RealFPMathlib.Examples.Jordan
 import RealFPMathlib.Examples.LogIneq
+import RealFPMathlib.Examples.Motzkin
 import RealFPMathlib.Ext
 import RealFPMathlib.Extensions.Arsinh
 import RealFPMathlib.Extensions.Artanh
@@ -70,6 +72,7 @@ import RealFPMathlib.Taylor2
 import RealFPMathlib.TaylorBound
 import RealFPMathlib.Tests.IntervalTest
 import RealFPMathlib.Tests.KernelNativeAgree
+import RealFPMathlib.Tests.TouchTest
 import RealFPMathlib.Tight
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig

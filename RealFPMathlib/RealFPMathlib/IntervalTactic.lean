@@ -26,6 +26,7 @@ import RealFPMathlib.I128Sound
 import RealFPMathlib.I128Roots
 import RealFPMathlib.IntervalDeriv
 import RealFPMathlib.Opt
+import RealFPMathlib.Touch
 import RealFPMathlib.Roots
 import RealFPMathlib.Registry
 import RealFPMathlib.Trust
@@ -729,6 +730,8 @@ structure Cfg where
   order : Nat := 3
   /-- Endpoint precision: `64` (Interval64, default) or `128` (128-bit dyadic endpoints, `Interval128/Dyadic.lean`). -/
   precision : Nat := 64
+  /-- Touching points `(touch := [p₁, …])` in binder order (`RealFPMathlib/Touch.lean`). -/
+  touch : List (List ℚ) := []
 
 def denoteSimp : TacticM Unit := do
   let ids ← (← extSimpLemmas).mapM fun n => `(Lean.Parser.Tactic.simpLemma| $(mkIdent n):ident)
@@ -869,6 +872,7 @@ def findCertDM (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (nvars :
     if let some c := c3 then return (some (e, .inl c), n1 + n2 + n3)
     return (none, n1 + n2 + n3)
   return (none, n1 + n2)
+
 
 /-! ### `(precision := 128)`: 128-bit dyadic interval checks -/
 
@@ -1034,6 +1038,267 @@ def proveCmp128 (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) 
     let pf := mkAppN (← mkC pName) #[eE, bsE, cE, dcertQToExpr cert, hM, xsE, hxsM]
     closeWith strict pf
 
+/-! ### Touching points: `(touch := [p₁, p₂, …])` (`RealFPMathlib/Touch.lean`) -/
+
+def tLeaves : TCert → Nat
+  | .m c => mLeaves c
+  | .split _ _ l r => tLeaves l + tLeaves r
+  | .touch _ => 1
+
+/-- (ordinary leaves, touch leaves) -/
+def tStats : TCert → Nat × Nat
+  | .m c => (mLeaves c, 0)
+  | .split _ _ l r => let a := tStats l; let b := tStats r; (a.1 + b.1, a.2 + b.2)
+  | .touch _ => (0, 1)
+
+def touchToExpr (t : Touch) : Expr :=
+  mkApp4 (mkConst ``Touch.mk) (toExpr t.p) (toExpr t.C) (toExpr t.rho) (toExpr t.X)
+
+partial def tcertToExpr : TCert → Expr
+  | .m c => mkApp (mkConst ``TCert.m) (mcertToExpr c)
+  | .split i m l r =>
+    mkApp4 (mkConst ``TCert.split) (toExpr i) (toExpr m) (tcertToExpr l) (tcertToExpr r)
+  | .touch t => mkApp (mkConst ``TCert.touch) (touchToExpr t)
+
+/-- `q` rounded to a multiple of `2^-k` (down, or up if `up`). -/
+def roundQ (q : ℚ) (k : Nat) (up : Bool) : ℚ :=
+  let s : ℚ := (2 : ℚ) ^ k
+  ((if up then (q * s).ceil else (q * s).floor : ℤ) : ℚ) / s
+
+/-- Touch-leaf data on the box `env` around `p` (untrusted; `touchOK` is re-checked). -/
+def touchData (e : IExpr) (g : KI → Bool) (upper : Bool) (p : List ℚ) (env : List KI) :
+    Except String Touch := do
+  let n := env.length
+  let H := hessK e n env
+  let sgn (X : KI) : KI := if upper then KI.neg X else X
+  let mut C : List (List ℚ) := []
+  for k in [0:n] do
+    let mut row : List ℚ := []
+    for j in [0:n] do
+      let X := sgn (H.getD (k * n + j) zeroK)
+      let some lo := floatRat? (toFl X.lo) | throw s!"Hessian entry ({k}, {j}) is unbounded"
+      let some hi := floatRat? (toFl X.hi) | throw s!"Hessian entry ({k}, {j}) is unbounded"
+      row := row ++ [roundQ ((lo + hi) / 2) 24 false]
+    C := C ++ [row]
+  let mut rho : List ℚ := []
+  for k in [0:n] do
+    let F := evalK H (rowE n k upper C)
+    let some r := floatRat? (toFl F.hi) | throw s!"Hessian row {k} is unbounded"
+    rho := rho ++ [roundQ r 24 true + 1 / 2 ^ 24]
+  let A := (List.range n).map fun i => (List.range n).map fun j =>
+    RealFP.PDQ.qg C i j - if i = j then rho.getD i 0 else 0
+  let X ← RealFP.PDQ.ldlInv n A
+  let t : Touch := ⟨p, C, rho, X⟩
+  unless touchOK e g upper t env do
+    throw "the touch check failed (f(p) does not satisfy the bound, or the gradient at p does \
+      not evaluate to exactly 0 in binary64, or the expression is not differentiable on the box)"
+  return t
+
+/-- Ordinary certificate search on a box with no touching point. -/
+def plainCert (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (n : Nat) (env : List KI) :
+    Option MCert := Id.run do
+  let full := 2 * cfg.maxBoxes
+  let (c2, _) := (searchM full e (partials e n) g upper (cfg.depth + 8 * n) env).run 0
+  if let some c := c2 then return some c
+  let (c1, _) := (searchD cfg.deriv (min full 6000) e g upper cfg.order true cfg.depth env).run 0
+  if let some c := c1 then return some (.d c)
+  if 6000 < full then
+    let (c3, _) := (searchD cfg.deriv full e g upper cfg.order true cfg.depth env).run 0
+    if let some c := c3 then return some (.d c)
+  return none
+
+def boxStr (env : List KI) : String :=
+  ", ".intercalate (env.map fun X => s!"[{fmtFloat (toFl X.lo)}, {fmtFloat (toFl X.hi)}]")
+
+/-- A touching point with its float coordinates and the half-width `δ` of its touch box. -/
+structure TPt where
+  p : List ℚ
+  pf : List Float
+  δ : Float
+
+def ptIn (env : List KI) (t : TPt) : Bool :=
+  (env.zip t.pf).all fun (X, x) => toFl X.lo ≤ x && x ≤ toFl X.hi
+
+def touchBits (x : Float) : Nat := x.toBits.toNat
+
+/-- The touch box `[p − δ, p + δ] ∩ env`. -/
+def touchBox (env : List KI) (pf : List Float) (δ : Float) : List KI :=
+  (env.zip pf).map fun (X, x) =>
+    ⟨if toFl X.lo < x - δ then touchBits (x - δ) else X.lo,
+     if x + δ < toFl X.hi then touchBits (x + δ) else X.hi⟩
+
+mutual
+partial def buildT (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (n : Nat)
+    (pts : List TPt) (env : List KI) : Except String TCert := do
+  match pts.find? (ptIn env) with
+  | none =>
+    match plainCert cfg e g upper n env with
+    | some c => return .m c
+    | none => throw s!"no certificate on the sub-box {boxStr env} away from the touching points \
+        (try a larger (depth := _) / (maxBoxes := _))"
+  | some t => carveT cfg e g upper n t (pts.filter fun q => q.p != t.p) 0 env
+
+partial def carveT (cfg : Cfg) (e : IExpr) (g : KI → Bool) (upper : Bool) (n : Nat) (t : TPt)
+    (others : List TPt) (i : Nat) (env : List KI) : Except String TCert := do
+  if i ≥ n then
+    match touchData e g upper t.p env with
+    | .ok d => return .touch d
+    | .error s => throw s!"touching point {t.p.map fmtRat}: {s}"
+  let X := env.getD i zeroK
+  let x := t.pf.getD i 0
+  if toFl X.lo < x - t.δ then
+    let m := touchBits (x - t.δ)
+    let l ← buildT cfg e g upper n others (env.set i ⟨X.lo, m⟩)
+    let r ← carveT cfg e g upper n t others i (env.set i ⟨m, X.hi⟩)
+    return .split i m l r
+  if x + t.δ < toFl X.hi then
+    let m := touchBits (x + t.δ)
+    let l ← carveT cfg e g upper n t others (i + 1) (env.set i ⟨X.lo, m⟩)
+    let r ← buildT cfg e g upper n others (env.set i ⟨m, X.hi⟩)
+    return .split i m l r
+  carveT cfg e g upper n t others (i + 1) env
+end
+
+/-- Largest power-of-two `δ` (at most `δ0`) for which the touch leaf passes at `p`. -/
+def pickDelta (e : IExpr) (g : KI → Bool) (upper : Bool) (env : List KI) (p : List ℚ)
+    (pf : List Float) (δ0 : Float) : Except String Float := do
+  let mut δ := δ0
+  let mut last := ""
+  for _ in [0:40] do
+    match touchData e g upper p (touchBox env pf δ) with
+    | .ok _ => return δ
+    | .error s => last := s
+    δ := δ / 2
+  throw last
+
+/-- `2^⌊log₂ x⌋` for `x > 0`. -/
+def pow2Below (x : Float) : Float := Id.run do
+  if !(x > 0) || x.isInf then return 1
+  let mut d : Float := 1
+  while d > x do d := d / 2
+  while 2 * d ≤ x do d := 2 * d
+  return d
+
+/-- Prove the main goal (`f ≤ c` / `c ≤ f`, not strict) with touch leaves at `pts` (variables
+in the order of `vars`). -/
+def proveTouch (cfg : Cfg) (strict upper : Bool) (c : ℚ) (vars : Array Expr) (e : IExpr)
+    (bs : Array (ℚ × ℚ)) (pts : List (List ℚ)) : TacticM Unit := do
+  if strict then
+    throwError "interval: (touch := _) needs a non-strict bound (`≤`/`≥`); at a touching point \
+      the two sides are equal"
+  let n := vars.size
+  for (lo, hi) in bs do
+    unless lo < hi do
+      throwError "interval: (touch := _) needs every variable to range over an interval of \
+        positive width (got [{fmtRat lo}, {fmtRat hi}])"
+  let pts := pts.eraseDups
+  let env := boxes bs.toList
+  let cK := KI.ofRat c
+  let g := if upper then gLe cK.lo else gGe cK.hi
+  -- float coordinates (must be exact) and the separation of the points
+  let mut tps : Array (List ℚ × List Float) := #[]
+  for p in pts do
+    unless p.length == n do
+      throwError "interval: touching point {p.map fmtRat} has {p.length} coordinate(s), but the \
+        goal has {n} variable(s) {vars}"
+    let pf := p.map qToF
+    for (q, x) in p.zip pf do
+      unless floatRat? x == some q do
+        throwError "interval: touching point coordinate {fmtRat q} is not exactly representable \
+          in binary64; (touch := _) needs dyadic points such as 1, -1/2, 3/8"
+    unless ptIn env ⟨p, pf, 0⟩ do
+      throwError "interval: touching point {p.map fmtRat} is outside the box"
+    tps := tps.push (p, pf)
+  let widths := env.map fun X => toFl X.hi - toFl X.lo
+  let mut δ0 := pow2Below ((widths.foldl min 1e300) / 4)
+  for a in tps do
+    for b in tps do
+      if a.1 != b.1 then
+        let d := (a.2.zip b.2).foldl (fun m (x, y) => max m (x - y).abs) 0
+        δ0 := min δ0 (pow2Below (d / 4))
+  -- polynomial objectives: also try the Horner form and keep the smaller certificate
+  let cands := [e] ++ (match hornerOf? e n with | some h => [h] | none => [])
+  let mut best : Option (IExpr × TCert) := none
+  let mut lastErr : MessageData := m!""
+  for e' in cands do
+    let t0 ← IO.monoMsNow
+    let r : Except MessageData (TCert × List TPt) := do
+      let mut tpts : List TPt := []
+      for (p, pf) in tps do
+        match pickDelta e' g upper env p pf δ0 with
+        | .ok δ => tpts := tpts ++ [⟨p, pf, δ⟩]
+        | .error s => throw m!"touching point {p.map fmtRat}: no touch box found ({s}); the \
+            Hessian must be positive definite at the point (negative definite for an upper bound)"
+      match buildT cfg e' g upper n tpts env with
+      | .ok c => pure (c, tpts)
+      | .error s => throw m!"{s}"
+    match r with
+    | .ok (c, tpts) =>
+      let (nl, nt) := tStats c
+      trace[interval] "touch search ({if e' == e then "expression" else "Horner form"}): \
+        {nl} ordinary boxes, {nt} touch boxes (half-widths {tpts.map (·.δ)}), \
+        {(← IO.monoMsNow) - t0} ms"
+      match best with
+      | some (_, b) => if tLeaves c < tLeaves b then best := some (e', c)
+      | none => best := some (e', c)
+    | .error msg => lastErr := msg
+  let some (e, cert) := best | throwError "interval: {lastErr}"
+  withCurrHeartbeats do
+    if tLeaves cert > cfg.maxBoxes then
+      throwError "interval: certificate needs {tLeaves cert} boxes > maxBoxes {cfg.maxBoxes}"
+    let (nl, nt) := tStats cert
+    trace[interval] "touch: {n} variable(s), {nl} ordinary boxes, {nt} touch boxes"
+    let eE := iexprToExpr e
+    let bsE := toExpr bs.toList
+    let cE := toExpr c
+    let xsE ← mkListLit (mkConst ``Real) vars.toList
+    let kc := mkApp (mkConst (if upper then ``KI.lo else ``KI.hi)) (mkApp (mkConst ``KI.ofRat) cE)
+    let gE := mkApp (mkConst (if upper then ``gLe else ``gGe)) kc
+    let envE := mkApp (mkConst ``boxes) bsE
+    let saved ← getGoals
+    let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
+    let hM ← proveCheckT cfg.chunk eE gE (toExpr upper) cert envE
+    setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
+    let pf := mkAppN (← mkC (if upper then ``RealFP.proveT_le else ``RealFP.proveT_ge))
+      #[eE, bsE, cE, tcertToExpr cert, hM, xsE, hxsM]
+    closeWith false pf
+where
+  proveCheckT (chunk : Nat) (eE gE upperE : Expr) (cert : TCert) (envE : Expr) :
+      TacticM Expr := do
+    match cert with
+    | .split i m l r =>
+      if tLeaves cert > chunk then
+        let lem := mkAppN (← mkC ``RealFP.checkT_split_of)
+          #[eE, gE, upperE, toExpr i, toExpr m, tcertToExpr l, tcertToExpr r, envE]
+        let ty ← inferType lem
+        let .forallE _ _ b1 _ := ty | throwError "interval: internal (split lemma)"
+        let .forallE _ hlT b2 _ := b1 | throwError "interval: internal (split lemma)"
+        let .forallE _ hrT _ _ := b2 | throwError "interval: internal (split lemma)"
+        let hm ← mkEqRefl (mkConst ``Bool.true)
+        let getEnv (t : Expr) : MetaM Expr := do
+          let some (_, lhs, _) := t.eq? | throwError "interval: internal (env)"
+          return lhs.appArg!
+        let hl ← proveCheckT chunk eE gE upperE l (← getEnv hlT)
+        let hr ← proveCheckT chunk eE gE upperE r (← getEnv hrT)
+        return mkAppN lem #[hm, hl, hr]
+      else leafChunk eE gE upperE cert envE
+    | .m mc =>
+      let t0 ← IO.monoMsNow
+      let h ← proveCheckM chunk eE gE upperE mc envE
+      trace[interval] "touch check (ordinary part, {mLeaves mc} leaves): {(← IO.monoMsNow) - t0} ms"
+      return mkAppN (← mkC ``RealFP.checkT_m_of) #[eE, gE, upperE, mcertToExpr mc, envE, h]
+    | .touch _ => leafChunk eE gE upperE cert envE
+  leafChunk (eE gE upperE : Expr) (cert : TCert) (envE : Expr) : TacticM Expr := do
+    let chk := mkApp5 (← mkC ``checkT) eE gE upperE (tcertToExpr cert) envE
+    let hM ← mkFreshExprMVar (← mkEq chk (mkConst ``Bool.true))
+    let saved ← getGoals
+    setGoals [hM.mvarId!]
+    let t0 ← IO.monoMsNow
+    RealFP.closeCheck
+    trace[interval] "touch check ({tLeaves cert} leaves): {(← IO.monoMsNow) - t0} ms"
+    setGoals saved
+    instantiateMVars hM
+
 /-- Prove `lhs ≤ rhs` (`strict = false`) or `lhs < rhs` on the main goal. -/
 def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let goal ← getMainGoal
@@ -1052,6 +1317,22 @@ def proveCmp (cfg : Cfg) (strict : Bool) (lhs rhs : Expr) : TacticM Unit := do
   let vars ← collectVars f
   let e ← reify vars f
   let bs ← vars.mapM (fun v => (findBounds v : MetaM (ℚ × ℚ)))
+  if !cfg.touch.isEmpty then
+    if cfg.precision == 128 then
+      throwError "interval: (touch := _) is implemented at precision 64 only"
+    -- coordinates are given in binder (local context) order
+    let lctx ← getLCtx
+    let idx (v : Expr) : Nat := match v with
+      | .fvar id => ((lctx.find? id).map (·.index)).getD 0
+      | _ => 0
+    let sorted := vars.qsort (fun a b => idx a < idx b)
+    for p in cfg.touch do
+      unless p.length == vars.size do
+        throwError "interval: touching point {p.map fmtRat} has {p.length} coordinate(s); the goal \
+          has {vars.size} variable(s), in order {sorted}"
+    let pts := cfg.touch.map fun p => vars.toList.map fun v =>
+      p.getD ((sorted.findIdx? (· == v)).getD 0) 0
+    return ← proveTouch cfg strict upper c vars e bs pts
   if cfg.precision == 128 then return ← proveCmp128 cfg strict upper c vars e bs
   let env := boxes bs.toList
   let cK := KI.ofRat c
@@ -1237,6 +1518,8 @@ partial def intervalCore (cfg : Cfg) : TacticM Unit := do
     match p.getAppFnArgs with
     | (``Eq, #[ty, a, b]) =>
       unless ← isDefEq ty (mkConst ``Real) do throwError "interval: goal is not over ℝ"
+      unless cfg.touch.isEmpty do
+        throwError "interval: (touch := _) applies to `≤` / `≥` goals, not `≠`"
       proveNe cfg a b
     | _ => throwError "interval: unsupported goal {t}"
   | (``LE.le, #[ty, _, a, b]) =>
@@ -1254,14 +1537,44 @@ declare_syntax_cat intervalOpt
 syntax "(" ident " := " num ")" : intervalOpt
 /-- Identifier tactic option: `(trust := kernel|native)`, `(deriv := false)`. -/
 syntax "(" ident " := " ident ")" : intervalOpt
+/-- Touching points `(touch := [p₁, p₂, …])`: points where the bound is attained (`f(p) = c`,
+`∇f(p) = 0`, Hessian definite), one coordinate per variable in binder order, e.g.
+`(touch := [1])` or `(touch := [(1, 1), (-1, 1)])`. Each point gets a small box proved by
+second-order Taylor expansion (`RealFPMathlib/Touch.lean`); the rest is searched as usual. -/
+syntax (name := touchOpt) "(" &"touch" " := " "[" term,* "]" ")" : intervalOpt
+
+/-- Coordinates of a touching point `(a, b, …)`, `(a)` or `a`. -/
+def touchCoords (t : Syntax) : Array Syntax :=
+  if t.getKind == ``Lean.Parser.Term.tuple then #[t[1][0]] ++ t[1][2].getSepArgs
+  else if t.getKind == ``Lean.Parser.Term.paren then #[t[1]]
+  else #[t]
+
+/-- Rational coordinates of the points in a `(touch := [...])` option. -/
+def parseTouch (o : Syntax) : TacticM (List (List ℚ)) := withMainContext do
+  let mut out : List (List ℚ) := []
+  for t in o[4].getSepArgs do
+    let mut pt : List ℚ := []
+    for c in touchCoords t do
+      let x ← elabTerm c (some (mkConst ``Real))
+      let some q ← ratOf? (← instantiateMVars x) |
+        throwErrorAt c "interval: touching point coordinate {c} is not a rational numeral"
+      pt := pt ++ [q]
+    out := out ++ [pt]
+  if out.isEmpty then
+    throwErrorAt o "interval: (touch := []) lists no points; omit the option instead"
+  return out
 /-- `interval` with options in any order: `(depth := n)`, `(maxBoxes := n)`, `(chunk := n)`,
-    `(deriv := false)`, `(order := n)`, `(trust := kernel|native)`, `(precision := 64|128)`. -/
+    `(deriv := false)`, `(order := n)`, `(trust := kernel|native)`, `(precision := 64|128)`,
+    `(touch := [p₁, …])`. -/
 syntax (name := intervalTac) "interval" (ppSpace intervalOpt)* : tactic
 
 @[tactic intervalTac] def evalInterval : Tactic := fun stx => do
   let mut cfg : Cfg := {}
   let mut trust : Name := `inherit
   for o in stx[1].getArgs do
+    if o.getKind == ``touchOpt then
+      cfg := { cfg with touch := ← parseTouch o }
+      continue
     let k := o[1].getId
     let v := o[3]
     let n := v.isNatLit?
