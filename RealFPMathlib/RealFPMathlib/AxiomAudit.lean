@@ -83,6 +83,7 @@ import RealFPMathlib.Tan
 import RealFPMathlib.Taylor2
 import RealFPMathlib.TaylorBound
 import RealFPMathlib.Tests.IntervalTest
+import RealFPMathlib.Tests.KernelNativeAgree
 import RealFPMathlib.Tight
 import RealFPMathlib.Transc
 import RealFPMathlib.Trig

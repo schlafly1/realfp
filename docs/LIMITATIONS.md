@@ -41,6 +41,11 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   of `∫₀¹ e^{-x²}` take about 75 s (order 20, two cells) and 30 digits take many minutes.
   With `(trust := native)` 30-digit integrals take about 1 s. A witness-per-step kernel
   certificate (as the 64-bit `quadBoundW`) would remove the re-evaluation; not done yet.
+  Kernel and compiled evaluation of the check agree (`Tests/KernelNativeAgree.lean` pins a
+  bound exactly at the enclosure end, true in both, and one `10⁻⁴⁰` below it, false in both).
+  An earlier 30-digit run that seemed kernel-accepted while native rejected it had been killed
+  by the out-of-memory killer without output. Run to completion, the kernel rejects it too
+  (about 7 min, about 11 GB).
 - `≠` at 128 is plain bisection (no derivative certificates for exclusion).
 - 128-bit for `+ - * / ⁻¹ √ |·| ^n`, rational constants, `π` (Mathlib-proved 40-digit bounds,
   enclosure width about `1e-38`), `exp`, `log`, `sin`, `cos`, `sinh`, `cosh`, `tanh`,
