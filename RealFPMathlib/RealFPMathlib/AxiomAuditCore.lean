@@ -1,9 +1,10 @@
 /-
-Core-only axiom audit (no `RealFPMathlib.Examples.*`).
+Core axiom audit, plus the short showcase examples in `docs/EXAMPLES.md`.
 
 The default `lake build` still elaborates `RealFPMathlib.AxiomAudit`, which imports every
-module including Examples. This file is the same check over the library, Demo and Tests
-only, so the push CI can audit axioms without building the slow example files.
+module including the slower feature examples. This file is the same check over the library,
+Demo, Tests and the five polished showcases, so the push CI can audit axioms without
+building the slow example files.
 
 Run: `lake build RealFPMathlib.AxiomAuditCore`
 -/
@@ -14,6 +15,12 @@ import RealFPMathlib.Bern
 import RealFPMathlib.Conv
 import RealFPMathlib.Corners
 import RealFPMathlib.Demo
+-- Polished showcase examples (each compiles in well under 30 s).
+import RealFPMathlib.Examples.Constants
+import RealFPMathlib.Examples.ExpPi
+import RealFPMathlib.Examples.Gaussian
+import RealFPMathlib.Examples.Jordan
+import RealFPMathlib.Examples.LogIneq
 import RealFPMathlib.Ext
 import RealFPMathlib.Extensions.Arsinh
 import RealFPMathlib.Extensions.Artanh
@@ -124,7 +131,7 @@ elab "#realfp_audit_axioms_core" : command => do
     unless disallowed.isEmpty do
       bad := bad.push m!"{n}: {disallowed}"
   if bad.isEmpty then
-    logInfo m!"axiom audit passed (core, no Examples): {nThm} RealFP theorems; {nNative} (Demo/Examples only) use \
+    logInfo m!"axiom audit passed (core + showcases, no slow Examples): {nThm} RealFP theorems; {nNative} (Demo/Examples only) use \
       native_decide, all others only propext, Classical.choice, Quot.sound"
   else
     throwError m!"axiom audit FAILED for {bad.size} theorem(s):\n{MessageData.joinSep bad.toList "\n"}"

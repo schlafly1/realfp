@@ -4,6 +4,13 @@ All notable changes to realfp are listed here. Versions follow
 [Semantic Versioning](https://semver.org/); before 1.0 the API may still change
 between minor versions.
 
+## Unreleased
+
+- Polished, self-contained examples of famous inequalities and constants
+  (`RealFPMathlib/Examples/{Constants,ExpPi,Gaussian,Jordan,LogIneq}.lean`),
+  documented in `docs/EXAMPLES.md`. Each is kernel-checked (standard axioms
+  only) and elaborates in well under 30 s.
+
 ## [0.1.0] — 2026-11-24
 
 First tagged release. Lean `leanprover/lean4:v4.36.0`, Mathlib `v4.36.0`.

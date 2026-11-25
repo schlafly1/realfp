@@ -34,8 +34,9 @@ cd .. && python3 scripts/check_tutorial_snippets.py
 ```
 
 The full `RealFPMathlib` build compiles all examples and takes a while; for a
-quicker loop use `lake build RealFPMathlib.AxiomAuditCore` (everything except
-the examples), which is what CI runs on every push.
+quicker loop use `lake build RealFPMathlib.AxiomAuditCore` (the library, tests,
+and the short showcase examples in `docs/EXAMPLES.md`, but not the slower
+feature examples), which is what CI runs on every push.
 
 ## Rules for changes
 
@@ -56,6 +57,9 @@ the examples), which is what CI runs on every push.
 - **Tutorial snippets are compiled.** If you edit `docs/TUTORIAL.md`, update
   `RealFPMathlib/RealFPMathlib/Examples/Tutorial.lean` to match, and run
   `scripts/check_tutorial_snippets.py`.
+- The short showcase examples in `RealFPMathlib/Examples/` are listed in
+  `docs/EXAMPLES.md`. New ones should be self-contained, kernel-checked, and
+  elaborate in well under 30 s.
 - New functions for the tactics go through the extension registry
   (`RealFPMathlib/Registry.lean`); see "Adding a function" in the tutorial.
 - Keep prototypes and benchmarks out of the library; `experimental/` is the

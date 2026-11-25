@@ -1,6 +1,7 @@
 # realfp documentation
 
 - [Tutorial](TUTORIAL.md) — hands-on guide from setup to tactics and certificates; every snippet is compiled
+- [Examples](EXAMPLES.md) — five short, self-contained proofs of famous inequalities and constants
 - [Reference](REFERENCE.md) — operations, theorem names, kernels, backends, tactics, and [Precision 128](REFERENCE.md#precision-128-precision--128)
 - [Comparisons](COMPARISONS.md) — measured comparisons with FloatLib, LeanCert, and two research showcases
 - [Limitations](LIMITATIONS.md) — known gaps (not soundness bugs), including the limits of precision 128

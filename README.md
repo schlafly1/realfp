@@ -94,6 +94,7 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 ## Documentation
 
 - [Tutorial](docs/TUTORIAL.md) — hands-on guide; every snippet is compiled
+- [Examples](docs/EXAMPLES.md) — five short proofs of famous inequalities and constants
 - [Reference](docs/REFERENCE.md) — operations, theorems, kernels, tactics, and precision 128
 - [Comparisons](docs/COMPARISONS.md) — FloatLib, LeanCert, and two research showcases
 - [Limitations](docs/LIMITATIONS.md) — known gaps
