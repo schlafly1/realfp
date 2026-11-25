@@ -21,10 +21,11 @@ lake lean RealFPMathlib/Examples/Constants.lean
 | [Jordan.lean](../RealFPMathlib/RealFPMathlib/Examples/Jordan.lean) | `x − x³/6 ≤ sin x ≤ x` and Jordan's inequality `(2/π) x ≤ sin x` on `[0, 157/100] ⊂ [0, π/2]` |
 | [LogIneq.lean](../RealFPMathlib/RealFPMathlib/Examples/LogIneq.lean) | `x/(1+x) ≤ log(1+x) ≤ x ≤ exp(x) − 1` on `[0, 10]` |
 | [AMGM.lean](../RealFPMathlib/RealFPMathlib/Examples/AMGM.lean) | Equality at an interior point, with `realfp (touch := [p])`: AM–GM `√x ≤ (1+x)/2` on `[0, 10]`, `log x ≤ x − 1` on `[1/10, 10]`, `1 + x ≤ eˣ` on `[-2, 5]` |
+| [TouchingPoints.lean](../RealFPMathlib/RealFPMathlib/Examples/TouchingPoints.lean) | The `touch` option: points found by `(touch := auto)` (`(x²−1)² ≥ 0` expanded, a 3-variable minimum at `(1/3, 1/3, 1/3)`); exact rational touching at `1/3` and `(1/3, 1/5)`; near touching with margin `10⁻¹³` at the irrational point `(√2, 1/√3)`, where plain bisection fails; and why exact touching at `√2` cannot be proved numerically |
 | [Motzkin.lean](../RealFPMathlib/RealFPMathlib/Examples/Motzkin.lean) | The Motzkin polynomial `x⁴y² + x²y⁴ − 3x²y² + 1 ≥ 0` on `[-2, 2]²` (zeros at `(±1, ±1)`; nonnegative but not a sum of squares), via `realfp (touch := [(1, 1)])` on a quadrant |
 
 The tactic needs numeral endpoints, which is why Jordan's interval is
-written `157/100 = 1.57` rather than `π/2`. AMGM and Motzkin need the
+written `157/100 = 1.57` rather than `π/2`. AMGM, Motzkin and TouchingPoints need the
 `(touch := …)` option: their bound is attained at an interior point, where
 every enclosing box dips below the bound. See "Touching points" in the
 [reference](REFERENCE.md). Each file elaborates in well

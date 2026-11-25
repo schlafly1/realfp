@@ -23,6 +23,7 @@ import RealFPMathlib.Examples.Gaussian
 import RealFPMathlib.Examples.Jordan
 import RealFPMathlib.Examples.LogIneq
 import RealFPMathlib.Examples.Motzkin
+import RealFPMathlib.Examples.TouchingPoints
 import RealFPMathlib.Ext
 import RealFPMathlib.Extensions.Arsinh
 import RealFPMathlib.Extensions.Artanh

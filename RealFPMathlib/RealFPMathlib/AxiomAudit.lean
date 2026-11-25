@@ -40,6 +40,7 @@ import RealFPMathlib.Examples.Roots
 import RealFPMathlib.Examples.Sinc
 import RealFPMathlib.Examples.Split
 import RealFPMathlib.Examples.Taylor2
+import RealFPMathlib.Examples.TouchingPoints
 import RealFPMathlib.Examples.Transc
 import RealFPMathlib.Examples.Trig
 import RealFPMathlib.Examples.Tutorial

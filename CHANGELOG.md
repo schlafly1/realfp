@@ -6,6 +6,9 @@ between minor versions.
 
 ## Unreleased
 
+- New showcase `Examples/TouchingPoints.lean`: `(touch := auto)`, exact rational
+  touching points, near touching at an irrational point, and the impossible case of exact
+  irrational touching. Kernel-checked; about 17 s.
 - `(touch := auto)`: touching points are located by multistart Newton on
   `∇f = 0` (interior, Hessian definite, value near the bound) and snapped to small
   rationals when the gradient vanishes exactly there. The tactic falls back to the
