@@ -17,7 +17,8 @@ only on `x²` and `y²`, the bound on `[-2, 2]²` follows from the quadrant.
 Both theorems are kernel-checked and use Lean's standard axioms only. You
 can also give all four points at once, as in
 `realfp (touch := [(1, 1), (-1, 1), (1, -1), (-1, -1)])` on `[-2, 2]²`.
-That works, but it needs about four times as many boxes.
+That works, but it needs about four times as many boxes. `(touch := auto)`
+finds the zeros by itself (all four on `[-2, 2]²`).
 
 Copy this file into a Mathlib project that requires `realfp_mathlib`, or run
 it from a checkout of realfp:

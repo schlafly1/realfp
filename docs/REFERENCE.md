@@ -812,6 +812,7 @@ example (x : ℝ) (h0 : 2 ≤ x) (h1 : x ≤ 3) : Real.log x ∈ Set.Icc (0.69 :
 example : 1.414 < Real.sqrt 2 := by interval
 example … := by interval (depth := 30) (maxBoxes := 100000) (chunk := 32)
 example … := by interval (touch := [(1, 1)])   -- bound attained at (1, 1); see below
+example … := by interval (touch := auto)       -- touching points located automatically
 ```
 
 * **Goals**: `f ≤ c`, `f < c`, `c ≤ f`, `c < f`, `≥`, `>`, conjunctions, `f ∈ Set.Icc a b`;
@@ -876,56 +877,93 @@ example (x : ℝ) (h0 : 0 ≤ x) (h1 : x ≤ 1) : x - x^3/6 ≤ Real.sin x := by
   Per test 2.5–3.7 s including ~2 s Lean startup (before: up to 12.6 s).
 * Tests: `RealFPMathlib/RealFPMathlib/Tests/IntervalTest.lean`.
 
-### Touching points: `(touch := [p₁, …])` (`RealFPMathlib/Touch.lean`)
+### Touching points: `(touch := [p₁, …])`, `(touch := auto)` (`RealFPMathlib/Touch.lean`)
 
 Bisection can only prove a touching bound (`f(p) = c` at an interior point `p`) when it
 happens to split exactly at `p`: then monotonicity takes over on each side. The examples
 above work that way. When it does not split at `p` (`[0, 10]` with `p = 1`, or a 2-D
-minimum), name the point:
+minimum), name the point or let realfp find it:
 
 ```lean
 example : ∀ x ∈ Set.Icc (0 : ℝ) 10, Real.sqrt x ≤ (1 + x) / 2 := by realfp (touch := [1])
 example : ∀ x ∈ Set.Icc (0 : ℝ) 2, ∀ y ∈ Set.Icc (0 : ℝ) 2,
     0 ≤ x^4*y^2 + x^2*y^4 - 3*x^2*y^2 + 1 := by
-  realfp (touch := [(1, 1)])          -- Motzkin polynomial, zero at (1, 1)
-example : ∀ x ∈ Set.Icc (-2 : ℝ) 3, 0 ≤ x^4 - 2*x^2 + 1 := by interval (touch := [1, -1])
+  realfp (touch := auto)              -- Motzkin polynomial, finds the zero at (1, 1)
+example : ∀ x ∈ Set.Icc (0 : ℝ) 1, 0 ≤ 9*x^2 - 6*x + 1 := by interval (touch := [1/3])
+-- near touching at the irrational point (√2, 1/√3): plain `interval` fails
+example : ∀ x ∈ Set.Icc (0 : ℝ) 2, ∀ y ∈ Set.Icc (0 : ℝ) 2,
+    0 < x^4 - 4*x^2 + 4 + 9*y^4 - 6*y^2 + 1 + 1/10^13 := by interval (touch := auto)
 ```
 
-* **Syntax**: a list of points. A point is a numeral (one variable) or a tuple `(a, b, …)`
-  with one coordinate per variable, in binder (local context) order. Coordinates are
-  rationals as `norm_num` evaluates them, and must be exactly representable in binary64
-  (dyadic, e.g. `1`, `-1/2`, `3/8`). Works with `interval` and `realfp`; combines with
-  `trust`, `depth`, `maxBoxes` and `chunk`.
-* **Goals**: non-strict `f ≤ c` / `c ≤ f` (`≥`, and `f ≤ g` moved to `f - g ≤ 0`). Errors
-  for `<`, `>`, `≠`, `(precision := 128)`, `(touch := [])`, points with the wrong number of
-  coordinates, points outside the box, and non-dyadic coordinates. In a conjunction every
-  conjunct gets the same points, so prove the conjuncts separately.
-* **Touch leaf** (`touchOK`, checked in the kernel like every other leaf) on a box `B ∋ p`:
-  1. `f(p)` satisfies the bound, using the interval enclosure of `f` at the point;
-  2. every `∂ₖf(p)` evaluates to exactly `[0, 0]`, and `f` and its first partials are
-     defined on `B` (`domOK`);
-  3. an interval Hessian `H` on `B` (from `(e.deriv (max k j)).deriv (min k j)`), a rational
-     symmetric centre `C`, and radii `ρ` with `Σⱼ |Hₖⱼ − Cₖⱼ| ≤ ρₖ` (checked with intervals);
-  4. `C − diag ρ` positive definite, checked exactly in `ℚ` with the `pos_def` `LDLᵀ`
-     congruence certificate (`RealFP.PDQ.congrCheckQ`). For upper bounds `−H` is used.
-* **Soundness** (`RealFP.touch_expand`, `quad_nonneg_of_cert`, `touchOK_sound`,
-  `checkT_sound`, `proveT_le` / `proveT_ge`; no `sorry`, standard axioms). It uses
-  coordinate-by-coordinate Taylor expansion: a one-variable second-order Taylor step
-  (Cauchy mean value theorem) and mean value steps for the gradient. This gives
-  `2(f(x) − f(p)) = uᵀ S u` with `u = x − p` and `S` symmetric, with each entry in the interval
-  Hessian. Step 4 makes every such `S` positive semidefinite. Mixed-partial symmetry and
-  Fréchet `C²` theory are not needed.
-* **Search** (`proveTouch`, untrusted): each point gets a box of half-width `δ`, a power of two
-  at most a quarter of the smallest domain width and of the distance between points. `δ` is
-  halved until the touch leaf checks. The box is carved out with ordinary splits, and the
-  rest is covered by the usual `MCert`/`DCert` search (multivariate centred form first).
-  Polynomials also try their Horner form and keep the smaller certificate. Trace with
-  `set_option trace.interval true`.
-* **Cost** (kernel, box built, `lake lean`): `Examples/AMGM.lean` (three 1-D bounds) about
-  2.5 s. `Examples/Motzkin.lean` (quadrant `[0,2]²`: 174 ordinary boxes and 1 touch box, half-width
-  1/32) about 16 s. The full `[-2,2]²` with all four points at once (696 + 4 boxes) takes about
-  70 s and needs `set_option maxHeartbeats 1000000`; the example derives it from the quadrant
-  by symmetry instead.
+* **Syntax**:
+  * `(touch := [p₁, …])` takes a list of points. A point is a numeral (one variable) or a
+    tuple `(a, b, …)` with one coordinate per variable, in binder (local context) order.
+    Coordinates are any rationals `norm_num` evaluates (`1`, `-1/2`, `1/3`, `0.25`).
+  * `(touch := auto)` finds the points itself (see *Locating points*).
+  * Both work with `interval` and `realfp`, and combine with `trust`, `depth`, `maxBoxes`
+    and `chunk`.
+* **Goals**: `f ≤ c`, `c ≤ f`, `<`, `>`, `≥`; `f ≤ g` becomes `f - g ≤ 0`. A strict bound
+  needs slack at the point, so it suits near-touching. Errors: `≠`, `(precision := 128)`,
+  `(touch := [])`, points with the wrong number of coordinates, points outside the box, and
+  goals of other backends. In a conjunction every conjunct gets the same option, so prove
+  the conjuncts separately.
+* **Tangent-plane leaf** (`tanOK`, kernel-checked like every other leaf), on a box
+  `B ∋ p` with `p` rational:
+  1. `f(p)` and every `∂ₖf(p)` are enclosed exactly when the expression uses only
+     `+ − × ÷ ⁻¹ |·| ^n` (`evalQ`: exact `ℚ` arithmetic in the kernel, then outward rounding).
+     Otherwise they are enclosed by interval evaluation at the point.
+  2. `f` and its first partials are defined on `B` (`domOK`).
+  3. The goal holds on the interval enclosure of the tangent plane
+     `T(x) = f(p) + Σₖ ∂ₖf(p)·(xₖ − pₖ)` over `B`. At an exact stationary point this is
+     just `f(p)`.
+  4. Hessian certificate: an interval Hessian `H` on `B` (from
+     `(e.deriv (max k j)).deriv (min k j)`), a rational symmetric centre `C`, and radii `ρ`
+     with `Σⱼ |Hₖⱼ − Cₖⱼ| ≤ ρₖ` (interval check). `C − diag ρ` is positive definite, checked
+     exactly in `ℚ` with the `pos_def` `LDLᵀ` congruence certificate
+     (`RealFP.PDQ.congrCheckQ`). For upper bounds `−H` is used.
+* **Soundness** (`RealFP.touch_expand_gen`, `quad_nonneg_of_cert`, `evalQ_sound`,
+  `tanOK_sound`, `checkT_sound`, `proveT_le` / `lt` / `ge` / `gt`; no `sorry`, standard
+  axioms).
+  * A coordinate-by-coordinate Taylor expansion gives
+    `2(f(x) − f(p)) = 2 ∇f(p)·u + uᵀ S u` with `u = x − p`. It uses a one-variable
+    second-order Taylor step (Cauchy mean value theorem) and mean value steps for the
+    gradient. `S` is symmetric, with each entry in the interval Hessian.
+  * Step 4 makes every such `S` positive semidefinite, so `f(x) ≥ T(x)` on `B`: the
+    tangent plane of a convex function.
+  * Mixed-partial symmetry, Fréchet `C²` theory and a uniqueness (Krawczyk) argument are
+    not needed.
+  * The older `touch` leaf (exactly zero gradient, `touchOK_sound`) is kept. The tactic
+    now emits `tan` leaves.
+* **Locating points** (`autoTouchPts`, untrusted, floating point): Newton's method on
+  `∇f = 0` runs from a grid of starts (9 / 6² / 4³ / 2ⁿ for 1 / 2 / 3 / ≤ 6 variables). A
+  limit is kept if it is interior and the floating-point Hessian is positive definite
+  (negative for upper bounds). It must also be within `10⁻⁴·(1 + |c| + spread)` of the bound.
+  A limit is snapped to a rational with denominator ≤ 1000 when the gradient vanishes there
+  exactly (`evalQ`, or interval evaluation at a dyadic point). Otherwise the floating-point
+  limit itself is used (a dyadic rational, gradient ≈ 10⁻¹⁶). If no point is found, or the
+  touch certificate fails, the ordinary search runs; its failure message then reports the
+  `auto` attempt.
+* **Search** (`proveTouch`, untrusted):
+  * Each point gets a box of half-width `δ`: a power of two, at most a quarter of the
+    smallest domain width and of the distance between points. `δ` is halved until the leaf
+    checks.
+  * The box is carved out with ordinary splits. The rest is covered by the usual
+    `MCert`/`DCert` search (multivariate centred form first).
+  * Polynomials also try their Horner form and keep the smaller certificate.
+  * Trace with `set_option trace.interval true`.
+* **Cost** (kernel, library built, `lake lean`):
+  * `Examples/AMGM.lean` (three 1-D bounds): about 3 s.
+  * `Examples/Motzkin.lean`: about 16 s. The quadrant `[0,2]²` has 174 ordinary boxes and
+    1 touch box (half-width 1/32).
+  * The full `[-2,2]²` with all four points, given or found by `auto` in 0.3 s: 696 + 4
+    boxes, about 70 s, and needs `set_option maxHeartbeats 1000000`. The example derives it
+    from the quadrant by symmetry instead.
+  * Point search takes a few ms in 1-D and about 0.3 s for Motzkin.
+* **Not possible**: a bound attained *exactly* at an irrational point, such as
+  `(x² − 2)² ≥ 0` at `√2`. `f(p)` can then only be enclosed by an interval that straddles
+  the bound, so interval arithmetic cannot prove it. The goal has to be rewritten, for
+  example with the square made explicit or in terms of a rational touching point. Near
+  touching (`… + 10⁻¹³ > 0`) works.
 * Tests: `RealFPMathlib/RealFPMathlib/Tests/TouchTest.lean`.
 
 ## Precision 128 (`(precision := 128)`)

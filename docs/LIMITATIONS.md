@@ -22,21 +22,27 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
   artanh bounds) use `trust := native`; looser versions of each are kernel-checked.
 - Example files for the new functions take 37–104 s each to build.
 
-## Touching points (`(touch := [p₁, …])`)
-- Points must be given by the user. They must be exactly representable in binary64 (dyadic),
-  and the gradient must evaluate to exactly `[0, 0]` there in interval arithmetic. Irrational
-  or non-dyadic touching points (`x = 1/3`, `x = √2`) are not supported.
-- The Hessian must be definite at the point (positive for `≥`, negative for `≤`). Degenerate
-  touching points such as `(x − 1)⁴ ≥ 0` at `1` are rejected. Boundary touching points need
-  `f(p)` and `∂f(p) = 0` as well, so a minimum on an edge with nonzero gradient does not work.
+## Touching points (`(touch := [p₁, …])`, `(touch := auto)`)
+- A bound attained *exactly* at an irrational point (`(x² − 2)² ≥ 0` at `√2`) cannot be
+  proved: interval enclosures of `f(p)` straddle the bound. Near touching (min − bound
+  ≳ 10⁻¹³·scale) works, and exact touching works at rational points.
+- Exact (non-dyadic) evaluation at a rational point needs an expression built from
+  `+ − × ÷ ⁻¹ |·| ^n`. With `sqrt`, `exp`, `log` and so on, the point must be dyadic (or the
+  gradient small) for an exact touch to pass.
+- The Hessian must be definite at the point (positive for `≥`, negative for `≤`).
+  Degenerate touching points such as `(x − 1)⁴ ≥ 0` at `1` are rejected, and `auto` skips
+  them.
+- `auto` only finds interior nondegenerate critical points within a small margin of the
+  bound, from a fixed grid of Newton starts (at most 6 variables). Minima on the boundary,
+  or in a basin no start reaches, are left to the ordinary search.
 - The certificate makes every symmetric matrix in the interval Hessian positive definite,
   which is stronger than definiteness at each point. Strong cross-coupling can force small
   touch boxes. Centre and radii are rounded to multiples of `2⁻²⁴`, so very flat minima
   (Hessian ≲ `1e-6`) fail.
-- Non-strict bounds only; precision 64 only (`(precision := 128)` is an error); not for `≠`,
-  roots or optimisation goals.
-- Many points or large domains make many ordinary boxes. The full Motzkin square with all four
-  points needs about 70 s and a raised `maxHeartbeats`.
+- Precision 64 only (`(precision := 128)` is an error); not for `≠`, roots or
+  optimisation goals.
+- Many points or large domains make many ordinary boxes. The full Motzkin square with all
+  four points needs about 70 s and a raised `maxHeartbeats`.
 
 ## Precision 128 (`(precision := 128)`)
 - **Functions.** `arctan`, `atan2`, `tan`, `arcsin`, `arccos`, registered functions, and

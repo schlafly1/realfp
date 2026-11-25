@@ -13,7 +13,8 @@ equality point gets an enclosure that dips slightly below the bound.
 that the bound holds at `p` and that the derivative is exactly `0` there,
 and proves the second derivative has the right sign on a small box around
 `p`. Taylor's theorem then covers that box, and ordinary bisection covers
-the rest of the interval.
+the rest of the interval. With `(touch := auto)` realfp finds the point
+itself (Newton's method on `f′ = 0`); the last example uses that.
 
 (On `[0, 4]` plain `realfp` already proves AM–GM: bisection lands exactly on
 `x = 1`, where the two sides are equal in binary64 and monotonicity takes
@@ -42,6 +43,6 @@ theorem log_le_sub_one :
 /-- `1 + x ≤ exp x` on `[-2, 5]`, with equality at `x = 0`. -/
 theorem one_add_le_exp :
     ∀ x ∈ Set.Icc (-2 : ℝ) 5, 1 + x ≤ Real.exp x := by
-  realfp (touch := [0])
+  realfp (touch := auto)
 
 end RealFP.Examples.AMGM

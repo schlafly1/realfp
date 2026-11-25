@@ -6,6 +6,21 @@ between minor versions.
 
 ## Unreleased
 
+- `(touch := auto)`: touching points are located by multistart Newton on
+  `∇f = 0` (interior, Hessian definite, value near the bound) and snapped to small
+  rationals when the gradient vanishes exactly there. The tactic falls back to the
+  ordinary search if none are found or the certificate fails.
+- Touch leaves are now tangent-plane leaves (`TCert.tan`, `tanOK_sound`): the goal is
+  checked on `f(p) + ∇f(p)·(x − p)` over the box, using the general expansion
+  `RealFP.touch_expand_gen`. As a result:
+  - touching points may be any rationals (`1/3`): `f` and `∇f` are evaluated exactly
+    in `ℚ` for `+ − × ÷ ⁻¹ |·| ^n` expressions (`evalQ`, `evalQ_sound`);
+  - near touching at irrational points works (`… + 1/10^13 > 0` at `(√2, 1/√3)`, where
+    plain bisection fails);
+  - strict bounds are accepted (`proveT_lt`, `proveT_gt`).
+
+  Bounds attained exactly at an irrational point remain out of reach of interval
+  arithmetic (documented in LIMITATIONS).
 - Touching points: `interval (touch := [p₁, …])` / `realfp (touch := …)` prove
   `f ≥ c` / `f ≤ c` when the bound is attained at interior points `pᵢ`
   (`RealFPMathlib/Touch.lean`). Around each point a kernel-checked touch leaf
