@@ -1,15 +1,32 @@
 # GitHub Actions workflow: build the doc-gen4 API reference and deploy it to
-# GitHub Pages.
+# GitHub Pages at https://schlafly1.github.io/realfp/.
 #
-# For now it runs only on manual dispatch (Actions tab -> Docs -> Run workflow),
-# because Pages on a private repository needs a paid plan and a full docs build
-# takes ~20 min. Once the repo is public and Settings -> Pages -> Source is set
-# to "GitHub Actions", add a `push: branches: [main]` trigger below.
+# Runs on manual dispatch, and on pushes to main that may change the generated
+# docs (Lean sources, Lake/toolchain manifests, the docbuild project, or this
+# workflow). Settings -> Pages -> Source must be "GitHub Actions".
+#
+# The docs job adds swap and caps Lean/Lake parallelism (LEAN_NUM_THREADS)
+# because a full Mathlib-inclusive doc-gen4 build can exceed the 16 GB RAM of
+# a GitHub-hosted ubuntu-latest runner. Lake 4.36 has no -j flag; build jobs
+# are Lean tasks scheduled on the runtime thread pool, which that env var
+# limits.
 
 name: Docs
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.lean'
+      - 'docbuild/**'
+      - '.github/workflows/docs.yml'
+      - 'lean-toolchain'
+      - 'lakefile.lean'
+      - 'lake-manifest.json'
+      - 'RealFPMathlib/lean-toolchain'
+      - 'RealFPMathlib/lakefile.lean'
+      - 'RealFPMathlib/lake-manifest.json'
 
 permissions:
   contents: read
@@ -29,6 +46,19 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free disk space and add swap
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          df -h /
+          sudo swapoff -a || true
+          sudo rm -f /swapfile2
+          sudo fallocate -l 12G /swapfile2
+          sudo chmod 600 /swapfile2
+          sudo mkswap /swapfile2
+          sudo swapon /swapfile2
+          swapon --show
+          free -h
 
       - name: Cache elan
         uses: actions/cache@v4
@@ -74,9 +104,32 @@ jobs:
 
       - name: Generate API documentation
         working-directory: docbuild
+        env:
+          # Caps concurrent doc-gen4/Lake jobs. Default is hardware concurrency.
+          LEAN_NUM_THREADS: "2"
         run: |
+          set +e
+          (
+            while true; do
+              echo "===== $(date -u +%H:%M:%S)Z mem ====="
+              free -h
+              swapon --show || true
+              sleep 30
+            done
+          ) &
+          MEMLOG_PID=$!
           MATHLIB_NO_CACHE_ON_UPDATE=1 lake -R -Kbackend=rnerr update doc-gen4
-          lake -R -Kbackend=rnerr build Interval64:docs Interval128:docs Interval64Proofs:docs RealFPMathlib:docs
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            lake -R -Kbackend=rnerr build Interval64:docs Interval128:docs Interval64Proofs:docs RealFPMathlib:docs
+            status=$?
+          fi
+          kill "$MEMLOG_PID" 2>/dev/null || true
+          wait "$MEMLOG_PID" 2>/dev/null || true
+          echo "===== final mem ====="
+          free -h
+          du -sh .lake/build/doc || true
+          exit "$status"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
