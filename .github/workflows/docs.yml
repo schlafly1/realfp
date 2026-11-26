@@ -44,7 +44,7 @@ jobs:
     env:
       # GitHub-hosted x86 runners may lack AVX-512; same portable backend as ci.yml.
       IV64_BACKEND: rnerr
-    timeout-minutes: 90
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
 
@@ -110,8 +110,9 @@ jobs:
       - name: Generate API documentation
         working-directory: docbuild
         env:
-          # Caps concurrent doc-gen4/Lake jobs. Default is hardware concurrency.
-          LEAN_NUM_THREADS: "1"
+          # Caps concurrent doc-gen4/Lake jobs. 2 is a compromise: 1 missed the old 90-min timeout;
+          # default (hardware concurrency) plus no overcommit OOMed on srcUri.
+          LEAN_NUM_THREADS: "2"
         run: |
           set +e
           (
