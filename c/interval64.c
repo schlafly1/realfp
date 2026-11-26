@@ -23,11 +23,17 @@
 #endif
 #include "iv64_rnerr.h"
 
-/* binary128 type for the software oracle: __float128 on x86, _Float128 elsewhere. */
-#if defined(__x86_64__) || defined(__i386__)
+/* binary128 type for the software multiplication oracle (self-test only): `__float128` on
+   x86 (gcc, clang on Linux, MinGW), `long double` where it is IEEE binary128 (aarch64 Linux).
+   macOS has no binary128 type; there the oracle falls back to the `fesetround` kernel. */
+#if (defined(__x86_64__) || defined(__i386__)) && !defined(__APPLE__)
+#define IV64_HAVE_F128 1
 typedef __float128 iv64_f128;
+#elif defined(__LDBL_MANT_DIG__) && __LDBL_MANT_DIG__ == 113
+#define IV64_HAVE_F128 1
+typedef long double iv64_f128;
 #else
-typedef _Float128 iv64_f128;
+#define IV64_HAVE_F128 0
 #endif
 #include <fenv.h>
 #include <math.h>
@@ -211,6 +217,7 @@ double iv64_fe_sqrt_up(double a) {
 /* Software oracles                                                             */
 /* -------------------------------------------------------------------------- */
 
+#if IV64_HAVE_F128
 /* Convert an exact (or already correctly-rounded-to-113-bit? no: exact) iv64_f128
    to binary64 with directed rounding, via RN conversion plus a side test. */
 static int q_isnan(iv64_f128 x) { return x != x; }
@@ -244,6 +251,11 @@ double iv64_soft_mul_up(double a, double b) {
   if (isnan(a) || isnan(b)) return u2d(0x7ff8000000000000ull);
   return q2d_up((iv64_f128)a * (iv64_f128)b);
 }
+#else
+/* No binary128 type: use the fesetround kernels (not independent, self-test only). */
+double iv64_soft_mul_down(double a, double b) { return iv64_fe_mul_down(a, b); }
+double iv64_soft_mul_up(double a, double b) { return iv64_fe_mul_up(a, b); }
+#endif
 
 /* Integer-significand directed rounding for binary64.
    mode: 0 = down (-inf), 1 = up (+inf). */
