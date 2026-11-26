@@ -105,6 +105,7 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 
 ## Documentation
 
+- [API reference](https://schlafly1.github.io/realfp/) — browsable doc-gen4 docs, rebuilt on every push to `main`
 - [Tutorial](docs/TUTORIAL.md) — hands-on guide; every snippet is compiled
 - [Examples](docs/EXAMPLES.md) — short proofs of famous inequalities and constants
 - [Reference](docs/REFERENCE.md) — operations, theorems, kernels, tactics, and precision 128
@@ -113,8 +114,9 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 - [Soundness](docs/SOUNDNESS.md) — what kernel and native mode trust, and how it is checked
 - [Philosophy](docs/PHILOSOPHY.md) — design rationale
 
-An index of these files is in [docs/](docs/README.md). A browsable API
-reference can be generated locally with doc-gen4:
+An index of these files is in [docs/](docs/README.md). The API reference
+is published at <https://schlafly1.github.io/realfp/>; to generate it locally
+with doc-gen4:
 
 ```bash
 cd docbuild
