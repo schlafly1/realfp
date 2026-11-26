@@ -95,6 +95,6 @@ every proof that succeeds is checked by Lean, and the axiom audit runs in the de
 - CI on GitHub Actions builds the portable RN+err C backend (runners may lack AVX-512);
   the default local x86_64 build is still AVX-512. The slow Examples and the full axiom
   audit run weekly (or manually), not on every push.
-- The showcase repos (em8-realfp, four-body-realfp) are private. Both build unchanged against
+- The showcase projects (em8-realfp, four-body-realfp) are private, not publicly available. Both build unchanged against
   v0.1.0 (em8 `main` and `kernel-only`, four-body `main`); they require realfp by a local path
   next to this repository, not by a pinned git revision.

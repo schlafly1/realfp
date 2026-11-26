@@ -42,4 +42,4 @@ and, when documenting `RealFPMathlib`, for Mathlib and the other imported
 packages. That output is large and is not committed (`.lake` is gitignored).
 On GitHub Actions, a workflow that builds this site and deploys it to GitHub
 Pages is kept as a draft until it can be pushed with a `workflow`-scoped
-token. Pages on a private repository may also require a paid GitHub plan.
+token. The repository is public, so GitHub Pages is available on the free plan.

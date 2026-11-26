@@ -9,8 +9,9 @@ Nothing here was re-run for this file. Every timing comes from an earlier
 logged measurement. Different Lean versions and shared machines mean these are
 not pure backend-only comparisons.
 
-`em8-realfp` and `four-body-realfp` (both under `schlafly1`) are private
-working repos. They are named only as the sources of the showcase builds.
+`em8-realfp` and `four-body-realfp` are private showcase projects (not
+publicly available). They are named only as the sources of the showcase builds;
+the numbers below come from their logged builds.
 
 ## Method
 
@@ -141,7 +142,7 @@ realfp-only forms, same run: `sInf (f '' Icc 0 1) = −1/4` 3.5 s; `|sInf … �
 
 ## 8-point Coulomb energy
 
-Original formalization: [lukasliehr/Energy-Minimization-8-Points](https://github.com/lukasliehr/Energy-Minimization-8-Points) (Kryvonos–Liehr–Taylor, Coulomb / s = 1, N = 8). realfp re-verification is the private repo `schlafly1/em8-realfp`: branch `main` uses `native_decide`; branch `kernel-only` uses only `decide +kernel`.
+Original formalization: [lukasliehr/Energy-Minimization-8-Points](https://github.com/lukasliehr/Energy-Minimization-8-Points) (Kryvonos–Liehr–Taylor, Coulomb / s = 1, N = 8). realfp re-verification is the private showcase project `em8-realfp` (not publicly available): branch `main` uses `native_decide`; branch `kernel-only` uses only `decide +kernel`.
 
 Targets: `EM8` and `EM8Port.Coulomb8.WithCollisions` (plus `EM8Port.KernelAxioms` for kernel-only). Spark clean builds:
 
@@ -162,7 +163,7 @@ The kernel-only build is about 5.5× faster in wall time and 10.5× cheaper in C
 
 ## Four-body central configurations
 
-The theorem is Tomar, *Uniqueness of convex central configurations in the planar four-body problem*, [arXiv 2609.35632](https://arxiv.org/abs/2609.35632), formalized in lean4body. realfp re-verification is the private repo `schlafly1/four-body-realfp` (`main`, `7da88d7`): a fused branch-and-bound in Interval64, 16 `native_decide` chunks, no stored search certificates.
+The theorem is Tomar, *Uniqueness of convex central configurations in the planar four-body problem*, [arXiv 2609.35632](https://arxiv.org/abs/2609.35632), formalized in lean4body. realfp re-verification is the private showcase project `four-body-realfp` (not publicly available; `main`, `7da88d7`): a fused branch-and-bound in Interval64, 16 `native_decide` chunks, no stored search certificates.
 
 **Native result.** Theorems `C4.theoremA` and `C4.theoremB` compile with 0 `sorry`. Axioms: the three standard ones plus 16 `native_decide` axioms (`chChunk0–7`, `dirChunk0–7`). 63 modules, 13,134 lines. The two charts have 62,720 and 73,728 cells.
 
@@ -178,6 +179,6 @@ lean4body itself was not timed on these machines. Its published cost is 7.6 CPU-
 ## Sources
 
 - LeanCert vs realfp: goal files and rerun script in [`experimental/bench/leancert/`](../experimental/bench/leancert/) (21 goals plus roots); the optimisation problems o01–o10 and the original logs were local notes, not in this repository.
-- 8-point timings and axioms: `em8-realfp` README (branch `kernel-only`) and `NOTES-kernel.md`, plus local build-log notes.
+- 8-point timings and axioms: the private `em8-realfp` README (branch `kernel-only`) and `NOTES-kernel.md`, plus local build-log notes.
 - Four-body native timings: local build-log notes; kernel estimates in `em8-realfp` README / `NOTES-kernel.md`.
 - FloatLib characterisation and the 0.159 s kernel dot-product figure: a local review of FloatLib's docs and source. realfp `addDown` micro-benchmark: this repo’s README.

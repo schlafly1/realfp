@@ -21,10 +21,8 @@ the end. This guide only covers what you need to get realfp running.
 10. [Troubleshooting](#10-troubleshooting)
 11. [Learning Lean](#learning-lean)
 
-> **The repository is private for now.** Until it is public, cloning it needs a
-> GitHub account that has been given access (Git will ask you to sign in), and
-> Codespaces only works for collaborators. Once it is public, the same commands
-> work for anyone, with no sign-in.
+> realfp is public: <https://github.com/schlafly1/realfp>. Downloading it needs no
+> GitHub account; only the optional Codespaces route (§9) needs one.
 
 ---
 
@@ -190,9 +188,8 @@ cd ~
 git clone https://github.com/schlafly1/realfp
 ```
 
-(While the repository is private, Git asks for your GitHub user name and a
-*personal access token* instead of a password; see GitHub's help on
-"personal access tokens". Once it is public, no sign-in is needed.)
+No sign-in is needed. If Git asks for a user name or password, check the address
+for typos.
 
 **6.2 Download Lean and the prebuilt Mathlib.** The examples live in the
 `RealFPMathlib` folder; always work from there:
@@ -320,8 +317,6 @@ subDir = "RealFPMathlib"
 
 `rev = "v0.1.1"` pins the release v0.1.1; use a newer release tag to upgrade, or
 `"main"` for the latest development version.
-(While the repository is private, the Git form needs your GitHub sign-in to be
-set up for Git; the path form does not.)
 
 **8.3 Write your first theorem** in a new file `MyFirst.lean` in the same folder:
 
@@ -382,8 +377,8 @@ Costs: personal GitHub accounts get a free monthly allowance (currently 120
 core-hours and 15 GB-months of storage). realfp's configuration asks for a
 4-core machine (so about 30 free hours a month) and uses about 12 GB of disk, so
 **stop the codespace when you finish and delete it when you no longer need it**
-(github.com/codespaces). While the repository is private, only people with access
-to it can create a codespace.
+(github.com/codespaces). Any GitHub account can create a codespace from the
+public repository.
 
 *Tested:* the container was built with Docker (18 s) and its setup command run on a
 fresh copy of the repository on an 8-core machine: 2.6 minutes for the Mathlib
