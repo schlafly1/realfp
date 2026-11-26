@@ -119,21 +119,19 @@ double iv64_rn_sqrt_up  (double a) { return iv64r_sqrt(a, 1); }
 #define ROUND_DOWN (_MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC)
 #define ROUND_UP   (_MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC)
 
-static inline double avx_binop(
-    double a, double b,
-    __m128d (*op)(__m128d, __m128d, int),
-    int rounding) {
-  return _mm_cvtsd_f64(op(_mm_set_sd(a), _mm_set_sd(b), rounding));
-}
+/* The `_mm_*_round_sd` intrinsics take the rounding mode as an immediate; clang defines them
+   as macros, so they are called directly here (not through a function pointer). */
+#define AVX_BINOP(op, a, b, rounding) \
+  _mm_cvtsd_f64(op(_mm_set_sd(a), _mm_set_sd(b), (rounding)))
 
-double iv64_avx_add_down(double a, double b) { return avx_binop(a, b, _mm_add_round_sd, ROUND_DOWN); }
-double iv64_avx_add_up  (double a, double b) { return avx_binop(a, b, _mm_add_round_sd, ROUND_UP); }
-double iv64_avx_sub_down(double a, double b) { return avx_binop(a, b, _mm_sub_round_sd, ROUND_DOWN); }
-double iv64_avx_sub_up  (double a, double b) { return avx_binop(a, b, _mm_sub_round_sd, ROUND_UP); }
-double iv64_avx_mul_down(double a, double b) { return avx_binop(a, b, _mm_mul_round_sd, ROUND_DOWN); }
-double iv64_avx_mul_up  (double a, double b) { return avx_binop(a, b, _mm_mul_round_sd, ROUND_UP); }
-double iv64_avx_div_down(double a, double b) { return avx_binop(a, b, _mm_div_round_sd, ROUND_DOWN); }
-double iv64_avx_div_up  (double a, double b) { return avx_binop(a, b, _mm_div_round_sd, ROUND_UP); }
+double iv64_avx_add_down(double a, double b) { return AVX_BINOP(_mm_add_round_sd, a, b, ROUND_DOWN); }
+double iv64_avx_add_up  (double a, double b) { return AVX_BINOP(_mm_add_round_sd, a, b, ROUND_UP); }
+double iv64_avx_sub_down(double a, double b) { return AVX_BINOP(_mm_sub_round_sd, a, b, ROUND_DOWN); }
+double iv64_avx_sub_up  (double a, double b) { return AVX_BINOP(_mm_sub_round_sd, a, b, ROUND_UP); }
+double iv64_avx_mul_down(double a, double b) { return AVX_BINOP(_mm_mul_round_sd, a, b, ROUND_DOWN); }
+double iv64_avx_mul_up  (double a, double b) { return AVX_BINOP(_mm_mul_round_sd, a, b, ROUND_UP); }
+double iv64_avx_div_down(double a, double b) { return AVX_BINOP(_mm_div_round_sd, a, b, ROUND_DOWN); }
+double iv64_avx_div_up  (double a, double b) { return AVX_BINOP(_mm_div_round_sd, a, b, ROUND_UP); }
 
 double iv64_avx_sqrt_down(double a) {
   __m128d x = _mm_set_sd(a);
@@ -940,10 +938,6 @@ uint64_t iv64_bench_dot3_sq_cmp_fe_up_batch(const double *a, const double *b, ui
     p0h2 = ai[1] * bi[1];
     p0l2 = -( (-ai[0]) * bi[0] );
     /* Use all four corners in upward mode for general sign patterns. */
-    auto void mul_up_iv(double alo, double ahi, double blo, double bhi, double *lo, double *hi) {
-      /* This nested function is a gcc extension. To stay portable I'll expand below. */
-      (void)alo;(void)ahi;(void)blo;(void)bhi;(void)lo;(void)hi;
-    }
     (void)p0h;(void)p0l;(void)p0l2;(void)p0h2; (void)t;
   }
   fesetround(old);
@@ -1288,6 +1282,16 @@ uint64_t iv64_selftest_report(void *u) {
 #include <time.h>
 #include <stdlib.h>
 
+/* `aligned_alloc` is C11 but missing from the Windows C runtime. */
+#if defined(_WIN32)
+#include <malloc.h>
+static void *iv64_aligned_alloc(size_t al, size_t sz) { return _aligned_malloc(sz, al); }
+static void iv64_aligned_free(void *p) { _aligned_free(p); }
+#else
+static void *iv64_aligned_alloc(size_t al, size_t sz) { return aligned_alloc(al, sz); }
+static void iv64_aligned_free(void *p) { free(p); }
+#endif
+
 static double now_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -1325,8 +1329,8 @@ static void fill_pairs(double *a, double *b, uint64_t n, uint64_t seed) {
 static double bench_kernel(uint64_t n, uint64_t reps, uint64_t seed,
                            uint64_t (*fn)(const double*, const double*, uint64_t),
                            volatile uint64_t *sink) {
-  double *a = aligned_alloc(64, n * 6 * sizeof(double));
-  double *b = aligned_alloc(64, n * 6 * sizeof(double));
+  double *a = iv64_aligned_alloc(64, n * 6 * sizeof(double));
+  double *b = iv64_aligned_alloc(64, n * 6 * sizeof(double));
   if (!a || !b) abort();
   fill_pairs(a, b, n, seed);
   /* warmup */
@@ -1346,7 +1350,7 @@ static double bench_kernel(uint64_t n, uint64_t reps, uint64_t seed,
     for (int j = i+1; j < runs; j++)
       if (times[j] < times[i]) { double tmp = times[i]; times[i] = times[j]; times[j] = tmp; }
   double med = (times[runs/2 - 1] + times[runs/2]) / 2.0;
-  free(a); free(b);
+  iv64_aligned_free(a); iv64_aligned_free(b);
   return med;
 }
 

@@ -16,8 +16,9 @@ package «interval64» where
 /-- True when Lake runs on x86_64 (the C kernels are built for the host). -/
 def isX86_64 : Bool := System.Platform.target.startsWith "x86_64"
 
-/-- Backend selection. Default: AVX-512 on x86_64, RN + exact error term elsewhere
-    (aarch64). `lake build -Kbackend=rnerr` or `IV64_BACKEND=rnerr` forces the
+/-- Backend selection. Default: AVX-512 on x86_64 machines that support it (asked from
+    the C compiler, see `hostHasAvx512`), RN + exact error term elsewhere (aarch64, and
+    x86_64 without AVX-512). `lake build -Kbackend=rnerr` or `IV64_BACKEND=rnerr` forces the
     portable backend on x86_64 (for testing it against the Lean spec, and for CI
     on machines without AVX-512). The env var is required when a downstream
     package such as RealFPMathlib builds this one: Lake `-K` options are not
@@ -38,6 +39,40 @@ def cArchArgsOf (force : Bool) : Array String :=
 
 def cArchArgs : Array String := cArchArgsOf forceRnErr
 
+/-- The C compiler: `$CC` if set, else the first of `cc`, `gcc`, `clang` that runs.
+    Lean's bundled `clang` cannot be used: the toolchain ships no C library headers
+    (`math.h`, `fenv.h`, …), so a system C compiler is required. -/
+def cCompiler : IO String := do
+  if let some c ← IO.getEnv "CC" then
+    if !c.isEmpty then return c
+  for c in ["cc", "gcc", "clang"] do
+    try
+      let out ← IO.Process.output { cmd := c, args := #["--version"] }
+      if out.exitCode == 0 then return c
+    catch _ => pure ()
+  return "cc"
+
+/-- Whether the build machine supports AVX-512F, asked from the C compiler
+    (`cc -march=native -dM -E`). If the probe fails, answer `false`, so the portable
+    backend is used: an AVX-512 build would crash on a CPU without AVX-512.
+    `IV64_BACKEND=avx512` skips the probe. -/
+def hostHasAvx512 (cc : String) (dir : FilePath) : IO Bool := do
+  if !isX86_64 then return false
+  if (← IO.getEnv "IV64_BACKEND") == some "avx512" then return true
+  try
+    IO.FS.createDirAll dir
+    let f := dir / "iv64_avx512_probe.c"
+    IO.FS.writeFile f "\n"
+    let out ← IO.Process.output { cmd := cc, args := #["-march=native", "-dM", "-E", f.toString] }
+    return out.exitCode == 0 && (out.stdout.splitOn "__AVX512F__").length > 1
+  catch _ => return false
+
+/-- `true` when the portable RN + error-term backend must be used: `-Kbackend=rnerr`,
+    `IV64_BACKEND=rnerr`, or an x86_64 machine without AVX-512. -/
+def usePortable (cc : String) (dir : FilePath) : IO Bool := do
+  if forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr" then return true
+  return isX86_64 && !(← hostHasAvx512 cc dir)
+
 /-- C kernels: AVX-512 embedded rounding (x86_64) or RN + exact error term
     (aarch64 / other), plus fesetround fallbacks. Compiled with gcc (cc).
     The Lean 4.36 bundled clang is missing immintrin.h. -/
@@ -45,11 +80,12 @@ target interval64.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "interval64.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "interval64.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let cc ← cCompiler
+  let force ← usePortable cc (pkg.buildDir / "c")
   let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
   -- Headers are part of the trace, so editing them rebuilds the object.
-  buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
+  buildO oFile srcJob weakArgs args cc (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval64.h"))
     return h1.mix h2)
@@ -59,10 +95,11 @@ target interval128.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "interval128.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "interval128.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let cc ← cCompiler
+  let force ← usePortable cc (pkg.buildDir / "c")
   let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++ (if isX86_64 then #["-mfma"] else #[]) ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
-  buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
+  buildO oFile srcJob weakArgs args cc (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval128.h"))
     return h1.mix h2)
@@ -72,10 +109,11 @@ target iv64_matrix.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "iv64_matrix.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "iv64_matrix.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let cc ← cCompiler
+  let force ← usePortable cc (pkg.buildDir / "c")
   let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++ (if isX86_64 then #["-mfma"] else #[]) ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
-  buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
+  buildO oFile srcJob weakArgs args cc (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval128.h"))
     let h3 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_matrix.h"))
@@ -86,10 +124,11 @@ target iv64_poly.o pkg : FilePath := do
   let oFile := pkg.buildDir / "c" / "iv64_poly.o"
   let srcJob ← inputTextFile <| pkg.dir / "c" / "iv64_poly.c"
   let weakArgs := #["-I", (← getLeanIncludeDir).toString]
-  let force := forceRnErr || (← IO.getEnv "IV64_BACKEND") == some "rnerr"
+  let cc ← cCompiler
+  let force ← usePortable cc (pkg.buildDir / "c")
   let args := #["-fPIC", "-O2"] ++ cArchArgsOf force ++ (if isX86_64 then #["-mfma"] else #[]) ++
     #["-ffp-contract=off", "-frounding-math", "-fno-math-errno"]
-  buildO oFile srcJob weakArgs args "cc" (extraDepTrace := do
+  buildO oFile srcJob weakArgs args cc (extraDepTrace := do
     let h1 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_rnerr.h"))
     let h2 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "interval128.h"))
     let h3 : BuildTrace ← computeTrace (TextFilePath.mk (pkg.dir / "c" / "iv64_matrix.h"))
@@ -107,7 +146,7 @@ def coreMathArgs : Array String :=
 def transcObj (pkg : Package) (src : String) (obj : String) : FetchM (Job FilePath) := do
   let oFile := pkg.buildDir / "c" / obj
   let srcJob ← inputTextFile <| pkg.dir / "c" / src
-  buildO oFile srcJob #["-I", (← getLeanIncludeDir).toString] coreMathArgs "cc"
+  buildO oFile srcJob #["-I", (← getLeanIncludeDir).toString] coreMathArgs (← cCompiler)
     (extraDepTrace := computeTrace (TextFilePath.mk (pkg.dir / "c" / "coremath" / "dint.h")))
 
 target cm_exp.o pkg : FilePath := transcObj pkg "coremath/exp.c" "cm_exp.o"
