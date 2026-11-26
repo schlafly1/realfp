@@ -2,7 +2,7 @@ import Lake
 open System Lake DSL
 
 package «interval64» where
-  version := v!"0.1.0"
+  version := v!"0.1.1"
   description := "Binary64 interval arithmetic with hardware directed rounding (realfp core)"
   license := "Apache-2.0"
   homepage := "https://github.com/schlafly1/realfp"

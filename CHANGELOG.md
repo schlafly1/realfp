@@ -6,6 +6,21 @@ between minor versions.
 
 ## Unreleased
 
+## [0.1.1] — 2026-11-25
+
+Lean `leanprover/lean4:v4.36.0`, Mathlib `v4.36.0` (unchanged).
+
+- Beginner guide [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md): Windows 11
+  (WSL), Linux and macOS from nothing installed to the examples and a first
+  theorem; troubleshooting. A `.devcontainer/` for GitHub Codespaces.
+- Build portability: the C compiler is `$CC`, else the first of `cc`, `gcc`,
+  `clang` found, with a clear error if there is none (Lean's bundled clang has no
+  C library headers). On x86-64 the AVX-512 backend is chosen only if the
+  compiler reports AVX-512F for the host, otherwise the portable backend.
+  The C runtime compiles with clang (no function pointers to macro intrinsics,
+  no nested function), on Windows/mingw (`aligned_alloc` fallback) and on
+  macOS (the binary128 self-test oracle is used only where such a type exists).
+
 - New showcase `Examples/TouchingPoints.lean`: `(touch := auto)`, exact rational
   touching points, near touching at an irrational point, and the impossible case of exact
   irrational touching. Kernel-checked; about 17 s.
@@ -126,4 +141,5 @@ Licensed under Apache-2.0.
 - The prototype benchmarks, the `native_decide` demo and the GPU prototype
   moved to `experimental/`.
 
+[0.1.1]: https://github.com/schlafly1/realfp/releases/tag/v0.1.1
 [0.1.0]: https://github.com/schlafly1/realfp/releases/tag/v0.1.0

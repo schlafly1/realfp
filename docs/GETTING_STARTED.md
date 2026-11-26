@@ -314,11 +314,12 @@ Alternatively, without a local copy, let Lake download realfp from GitHub:
 [[require]]
 name = "realfp_mathlib"
 git = "https://github.com/schlafly1/realfp"
-rev = "main"
+rev = "v0.1.1"
 subDir = "RealFPMathlib"
 ```
 
-Replace `"main"` by a release tag (such as `"v0.1.0"`) to pin a fixed version.
+`rev = "v0.1.1"` pins the release v0.1.1; use a newer release tag to upgrade, or
+`"main"` for the latest development version.
 (While the repository is private, the Git form needs your GitHub sign-in to be
 set up for Git; the path form does not.)
 

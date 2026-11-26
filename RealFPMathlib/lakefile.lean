@@ -11,7 +11,7 @@ Mathlib must be built for exactly the same Lean version as the core
 `leanprover/lean4:v4.36.0`. Upgrade both together. -/
 
 package «realfp_mathlib» where
-  version := v!"0.1.0"
+  version := v!"0.1.1"
   description := "realfp: kernel-checked real-number bounds in Lean 4 + Mathlib via interval arithmetic"
   license := "Apache-2.0"
   homepage := "https://github.com/schlafly1/realfp"

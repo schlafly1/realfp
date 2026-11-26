@@ -1176,7 +1176,7 @@ Use it from your own Mathlib project (same Lean and Mathlib versions) with
 `require realfp_mathlib from "path/to/realfp/RealFPMathlib"` and
 `import RealFPMathlib` (theorems, the tactics from `RealFPMathlib.Front`, and the short kernel
 names from `RealFPMathlib.Kernel`). (A git requirement with subdirectory,
-`... from git "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"`,
+`... from git "https://github.com/schlafly1/realfp" @ "v0.1.1" / "RealFPMathlib"`,
 should also work but has not been tested.)
 
 **What it provides** (namespace `RealFP`; files in `RealFPMathlib/RealFPMathlib/`):

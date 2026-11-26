@@ -137,8 +137,8 @@ Both theorems are checked by the Lean kernel and depend only on
 \item Benchmarks against other Lean tools and a downstream re-verification
   of a published formal proof (\cref{sec:bench}).
 \end{itemize}
-This paper describes version~0.1.0 together with the touching-point
-features added after it on the main branch. The library is licensed under
+This paper describes version~0.1.1, which adds the touching-point
+features and build portability to the first release~0.1.0. The library is licensed under
 Apache-2.0; full documentation, benchmarks scripts and logs are in the
 repository~\cite{realfp}.
 
@@ -822,7 +822,7 @@ repository.
 the Apache-2.0 license. A project uses it by adding
 \begin{lstlisting}
 require realfp_mathlib from git
-  "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"
+  "https://github.com/schlafly1/realfp" @ "v0.1.1" / "RealFPMathlib"
 \end{lstlisting}
 to its lakefile and using the same Lean and Mathlib versions
 (\lean{v4.36.0}). The repository contains a tutorial in which every snippet

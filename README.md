@@ -40,7 +40,7 @@ package «my_project»
 
 -- Brings the core and Mathlib (v4.36.0) with it.
 require realfp_mathlib from git
-  "https://github.com/schlafly1/realfp" @ "v0.1.0" / "RealFPMathlib"
+  "https://github.com/schlafly1/realfp" @ "v0.1.1" / "RealFPMathlib"
 
 @[default_target]
 lean_lib MyProject

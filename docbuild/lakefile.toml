@@ -1,6 +1,6 @@
 name = "docbuild"
 reservoir = false
-version = "0.1.0"
+version = "0.1.1"
 # Share Mathlib (and other deps) with the RealFPMathlib package so we do not
 # clone or rebuild it. doc-gen4 itself is added here on `lake update`.
 packagesDir = "../RealFPMathlib/.lake/packages"
