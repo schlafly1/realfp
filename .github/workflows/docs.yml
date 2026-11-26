@@ -5,11 +5,12 @@
 # docs (Lean sources, Lake/toolchain manifests, the docbuild project, or this
 # workflow). Settings -> Pages -> Source must be "GitHub Actions".
 #
-# The docs job adds swap and caps Lean/Lake parallelism (LEAN_NUM_THREADS)
-# because a full Mathlib-inclusive doc-gen4 build can exceed the 16 GB RAM of
-# a GitHub-hosted ubuntu-latest runner. Lake 4.36 has no -j flag; build jobs
-# are Lean tasks scheduled on the runtime thread pool, which that env var
-# limits.
+# The docs job frees runner disk, adds swap, enables vm.overcommit_memory=1,
+# and caps Lean/Lake parallelism (LEAN_NUM_THREADS). A full Mathlib-inclusive
+# doc-gen4 build can exhaust a GitHub-hosted runner, and srcUri.github forks
+# git from the large Lake process, which Linux can refuse with ENOMEM even
+# when free RAM remains. Lake 4.36 has no -j flag; build jobs are Lean tasks
+# scheduled on the runtime thread pool, which LEAN_NUM_THREADS limits.
 
 name: Docs
 
@@ -53,12 +54,16 @@ jobs:
           df -h /
           sudo swapoff -a || true
           sudo rm -f /swapfile2
-          sudo fallocate -l 12G /swapfile2
+          sudo fallocate -l 16G /swapfile2
           sudo chmod 600 /swapfile2
           sudo mkswap /swapfile2
           sudo swapon /swapfile2
+          # srcUri.github forks git from Lake; default overcommit heuristics can
+          # refuse that with ENOMEM even when free(1) still shows spare RAM.
+          sudo sysctl -w vm.overcommit_memory=1
           swapon --show
           free -h
+          awk '/Commit|MemTotal|MemAvailable|Swap/ {print}' /proc/meminfo
 
       - name: Cache elan
         uses: actions/cache@v4
@@ -106,7 +111,7 @@ jobs:
         working-directory: docbuild
         env:
           # Caps concurrent doc-gen4/Lake jobs. Default is hardware concurrency.
-          LEAN_NUM_THREADS: "2"
+          LEAN_NUM_THREADS: "1"
         run: |
           set +e
           (
@@ -114,6 +119,7 @@ jobs:
               echo "===== $(date -u +%H:%M:%S)Z mem ====="
               free -h
               swapon --show || true
+              awk '/Commit|MemAvailable|SwapTotal|SwapFree/ {print}' /proc/meminfo
               sleep 30
             done
           ) &
@@ -128,6 +134,7 @@ jobs:
           wait "$MEMLOG_PID" 2>/dev/null || true
           echo "===== final mem ====="
           free -h
+          awk '/Commit|MemTotal|MemAvailable|Swap/ {print}' /proc/meminfo
           du -sh .lake/build/doc || true
           exit "$status"
 
