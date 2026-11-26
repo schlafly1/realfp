@@ -15,7 +15,15 @@ dyadic arithmetic (about 38 digits, still kernel-checked). The core library
 (`interval64`) has no Mathlib dependency. The Mathlib layer (`realfp_mathlib`)
 supplies theorems about `ℝ` and the tactics.
 
+> **New to Lean?** Start with **[Getting started](docs/GETTING_STARTED.md)**: a
+> step-by-step guide for Windows 11, Linux and macOS, from nothing installed to
+> running the examples and proving your first theorem.
+
 ## Install
+
+Starting from scratch (no Lean, no C compiler, no Mathlib project)? Follow
+[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). The short version for Lean
+users:
 
 realfp targets Lean `leanprover/lean4:v4.36.0` and Mathlib `v4.36.0`. Your
 project must use the same toolchain; copy `RealFPMathlib/lean-toolchain` into
@@ -48,17 +56,21 @@ lake exe interval64_tests
 cd RealFPMathlib && lake exe cache get && lake build
 ```
 
-**C compiler.** The core compiles C kernels with `cc`.
+**C compiler.** The core compiles small C kernels, so a system C compiler with
+the C library headers is required, even in kernel mode (Lean's bundled clang
+has no libc headers). Lake uses `$CC` if set, else the first of `cc`, `gcc`,
+`clang` it finds; gcc and clang both work. On Windows use WSL (see
+[Getting started](docs/GETTING_STARTED.md#2-choose-your-path)).
 
-- **x86-64.** Use gcc as `cc` (Lean 4.36's bundled clang is missing `immintrin.h`).
-  The default backend uses AVX-512 embedded rounding and needs a CPU with
-  AVX-512F. On a machine without AVX-512, or to force the portable backend,
-  build with `lake -Kbackend=rnerr` or set `IV64_BACKEND=rnerr`. The
-  environment variable is required when another Lake package (such as
-  `RealFPMathlib`) is the Lake root, because Lake does not forward `-K`
-  options to required packages.
-- **arm64.** The portable round-to-nearest + exact-error-term backend is
-  selected automatically; any C compiler works.
+- **x86-64.** The AVX-512 backend (embedded rounding) is used when the compiler
+  reports AVX-512F for the host (`cc -march=native`); otherwise the portable
+  backend is selected automatically. To force the portable backend, build with
+  `lake -Kbackend=rnerr` or set `IV64_BACKEND=rnerr` (`IV64_BACKEND=avx512`
+  forces AVX-512 without the check). The environment variable is required when
+  another Lake package (such as `RealFPMathlib`) is the Lake root, because Lake
+  does not forward `-K` options to required packages.
+- **arm64** (including Apple Silicon). The portable round-to-nearest +
+  exact-error-term backend is selected automatically.
 
 Both backends produce bit-identical results; the theorems do not depend on
 which one you use. GitHub Actions CI always builds the portable backend.

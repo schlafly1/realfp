@@ -39,7 +39,8 @@ def cArchArgsOf (force : Bool) : Array String :=
 
 def cArchArgs : Array String := cArchArgsOf forceRnErr
 
-/-- The C compiler: `$CC` if set, else the first of `cc`, `gcc`, `clang` that runs.
+/-- The C compiler: `$CC` if set, else the first of `cc`, `gcc`, `clang` that runs
+    (an error with installation hints if there is none).
     Lean's bundled `clang` cannot be used: the toolchain ships no C library headers
     (`math.h`, `fenv.h`, …), so a system C compiler is required. -/
 def cCompiler : IO String := do
@@ -50,7 +51,11 @@ def cCompiler : IO String := do
       let out ← IO.Process.output { cmd := c, args := #["--version"] }
       if out.exitCode == 0 then return c
     catch _ => pure ()
-  return "cc"
+  throw <| IO.userError <|
+    "realfp needs a C compiler with the C library headers (Lean's bundled clang has none), " ++
+    "but none of cc, gcc, clang was found. Install one: Debian/Ubuntu/WSL `sudo apt install " ++
+    "build-essential`; Fedora `sudo dnf install gcc`; macOS `xcode-select --install`; or set " ++
+    "the CC environment variable. See docs/GETTING_STARTED.md."
 
 /-- Whether the build machine supports AVX-512F, asked from the C compiler
     (`cc -march=native -dM -E`). If the probe fails, answer `false`, so the portable

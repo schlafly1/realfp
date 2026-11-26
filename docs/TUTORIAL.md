@@ -25,6 +25,10 @@ Contents
 
 ## 1. Setup
 
+> **Nothing installed yet** (no Lean, no C compiler, new to Mathlib projects)? Follow
+> [Getting started](GETTING_STARTED.md) first; it ends with a working project, and this
+> section is then only background.
+
 realfp is two Lake packages in one repository:
 
 | package | directory | depends on | import |
@@ -65,13 +69,15 @@ lake exe cache get   # prebuilt Mathlib; never build Mathlib yourself
 lake build
 ```
 
-**C compiler and CPU.** The core compiles C kernels with `cc`:
+**C compiler and CPU.** The core compiles C kernels, so a system C compiler with the C
+library headers is required (Lean's bundled clang has none). Lake uses `$CC`, else the first of
+`cc`, `gcc`, `clang`; gcc and clang both work.
 
-- **x86-64:** use gcc as `cc` (Lean's bundled clang lacks `immintrin.h`). The default backend
-  uses AVX-512 embedded rounding and needs a CPU with AVX-512F. On an x86 CPU without it,
-  build the core with `lake build -Kbackend=rnerr` (the portable backend).
+- **x86-64:** the AVX-512 backend (embedded rounding) is chosen when `cc -march=native` reports
+  AVX-512F, otherwise the portable backend. Force the portable one with `-Kbackend=rnerr` or
+  `IV64_BACKEND=rnerr` (the variable is needed when `RealFPMathlib` or your project is the root).
 - **arm64 (Apple silicon, Graviton, DGX Spark…):** the portable round-to-nearest +
-  exact-error-term backend is selected automatically; any C compiler works.
+  exact-error-term backend is selected automatically.
 
 Both backends compute bit-identical results; the theorems do not depend on which one you use.
 

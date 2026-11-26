@@ -1,0 +1,11 @@
+{
+  "name": "realfp",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+  // Download prebuilt Mathlib, then build realfp and one example (about 10 GB, 5-15 minutes).
+  "onCreateCommand": "cd RealFPMathlib && lake exe cache get && lake build RealFPMathlib.Examples.Constants",
+  "hostRequirements": { "cpus": 4, "memory": "16gb", "storage": "32gb" },
+  "customizations": {
+    "vscode": { "extensions": ["leanprover.lean4"] }
+  }
+}
