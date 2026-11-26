@@ -171,3 +171,8 @@ gpu/build/ivgpu_lean
 * GB10 memory is unified. Copies between host and device still cost about half of
   the list-mode call. Zero-copy mapped memory could remove that, but it is not
   measured here.
+
+## Follow-up: adaptive many-box searches
+
+See [`manybox/`](manybox/README.md): level-synchronous bisection (same tree on CPU and GPU) on
+two problems needing 10^3-10^7 boxes, with the GPU tree checked by Lean as a certificate.
