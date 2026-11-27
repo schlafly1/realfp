@@ -13,6 +13,10 @@ fastlib="$here/fast/.lake/build/lib/lean"
 if [ -f "$fastlib/manyboxfast_ManyBoxFast.so" ] && [ -z "${MB_NO_FAST:-}" ]; then
   LOAD="$LOAD --plugin=$fastlib/manyboxfast_ManyBoxFast.so"
 fi
+# the C batch checker (fast/c/mbtape.c) and its Lean side
+if [ -f "$fastlib/manyboxfast_ManyBoxTape.so" ] && [ -z "${MB_NO_FAST:-}" ]; then
+  LOAD="$LOAD --load-dynlib=$here/fast/.lake/build/lib/libmbtape.so --plugin=$fastlib/manyboxfast_ManyBoxTape.so"
+fi
 LP="$LP:$fastlib"
 out="$here/../build/olean"; mkdir -p "$out"
 if [ ! -f "$out/ManyBoxCert.olean" ] || [ "$here/ManyBoxCert.lean" -nt "$out/ManyBoxCert.olean" ]; then

@@ -183,6 +183,92 @@ file, including Lean start-up and imports (about 2.5 s).
   * Lake cannot precompile a module that imports Mathlib, which is why the compiled part is a
     separate Mathlib-free package and the soundness proof lives in `ManyBoxCert.lean`.
 
+### C batch checker (`lean/fast/ManyBoxTape.lean`, `lean/fast/c/mbtape.c`, `checkHex`)
+
+The whole certificate check runs in C. It is attached the way realfp attaches its Bernstein
+checker (`checkGeB` / `checkGeBImpl` / `iv64_bern_check`):
+
+* **Spec:** `checkHex fe upper c d hex env := checkC3 fe (if upper then gLe c else gGe c)
+  (decodeCertC d hex) env`. `checkHex_le` / `checkHex_ge` are `rfl`. `proveT_le` / `proveT_ge`
+  (in `ManyBoxCert.lean`) then go through `proveC3_le/ge` → `checkK` → `RealFP.prove_le/ge`.
+* **Runtime:** `@[implemented_by checkHexImpl]`. `checkHexImpl` compiles the expression once to
+  a flat tape: 12-byte instructions `var/const/add/sub/mul/neg/pow` plus a constant pool. It
+  then calls `@[extern "mb_check_tape"]`. The C loop decodes the hex preorder bits, keeps the
+  box as doubles, interprets the tape at every leaf and applies `gLe`/`gGe`. If the expression
+  has another node (div, sqrt, transcendental), if `d ∉ [1,16]`, or if `env.length ≠ d`, it
+  falls back to `checkC3`.
+* **Exactness:** the C mirrors realfp's definitions operation by operation: `Interval64.add`,
+  `sub`, `mul`/`accCorner`, `neg`, `abs`, `square`, `ipow`/`ipowAux 64`, `powLo`/`powHi`,
+  `pown`, and `KF.cmp`/`le` on bit patterns. It also mirrors `decC`/`midBitsC`/`bitAtC`,
+  including `get!`'s 0 past the end of the string. For rounding it calls realfp's own
+  `iv64_dir_*` kernels, so it uses whichever backend the core was built with (AVX-512 or
+  RN + error term). It is compiled with no backend flags, `-ffp-contract=off -frounding-math`.
+* **Fails safe:** anything outside the range the C handles exactly (a coordinate ≥ 2⁵¹, a
+  shift > 1000, a bad tape, a big-endian host, a failed allocation or thread) returns `false`.
+* **Threads:** subtrees below a cut depth are checked by pthreads (`MB_THREADS`, default all
+  CPUs, at most 64; `MB_THREADS=1` is serial). The spec's value is the conjunction of
+  pure midpoint and leaf tests, so the order of evaluation does not change it.
+
+Timings were taken on the idle dev box (x86-64, AVX-512 backend, 8 CPUs), one file at a time.
+They are `native_decide` evaluations as reported by the profiler and include decoding. Each
+file's wall time also includes about 2.5 s of Lean start-up.
+
+| certificate | leaves | before: `checkC3` | after, 8 threads | after, 1 thread | speedup (8 / 1) | leaves/s (8 / 1) | GPU search + cert copy |
+|---|---|---|---|---|---|---|---|
+| P1 δ=4 | 4,444 | 0.072 s | 1.9 ms | 4.1 ms | 38× / 18× | 2.4 M / 1.1 M | 0.61 ms |
+| P1 δ=1 | 21,304 | 0.245 s | 3.8 ms | 18.1 ms | 64× / 14× | 5.6 M / 1.2 M | 0.80 ms |
+| P1 δ=1/64 | 620,152 | 7.34 s | 0.081 s | 0.509 s | 91× / 14× | 7.7 M / 1.2 M | 3.2 ms |
+| P1 δ=1/1024 | 8,203,716 | 98.8 s | 1.13 s | 7.01 s | 87× / 14× | 7.3 M / 1.2 M | 28.8 ms |
+| P2 δ=1/8 | 2,212,208 | 25.6 s | 0.246 s | 1.49 s | 104× / 17× | 9.0 M / 1.5 M | 8.75 ms |
+| P2 δ=1/16 | 17,301,552 | 198 s | 1.77 s | 11.9 s | 112× / 17× | 9.8 M / 1.5 M | 69.7 ms |
+
+* **Whole files:** the P1 δ=1/1024 theorem file takes 3.6 s wall and the P2 δ=1/16 file 4.6 s,
+  against 101.6 s and 201 s before.
+* **The gap to the GPU search** shrinks from about 3,500× to about 40× (P1 δ=1/1024) and 25×
+  (P2 δ=1/16).
+* **DGX Spark** (aarch64, so realfp's RN + error-term backend; 10 X925 + 10 A725 cores), via
+  `lean/fast/bench.sh` (Mathlib-free, compiled C vs compiled spec):
+  * P1 δ=1/1024: 3.91 s on 1 thread, 0.82–0.88 s on 20 threads; the compiled spec took 68.9 s.
+  * P2 δ=1/16: 6.99 s on 1 thread, 1.07–1.21 s on 20 threads; the compiled spec took 139 s.
+  * Scaling beyond 8 threads is weak, because the bisection trees are very unbalanced.
+* **Agreement tests (C vs Lean spec):** `lean/TapeTest.lean` on the box and `bench.sh` on the
+  Spark.
+  * Passing and failing bounds, plus truncated certificates.
+  * Every hex digit (or every k-th) of the small certificates replaced by `0`/`7`/`f`:
+    10,329 mutated certificates on the box (240 of them pass) and 17,040 on the Spark.
+  * 0 disagreements, and all six certificates are `true` in both.
+* **Axioms:** `#print axioms` shows `propext`, `Classical.choice`, `Quot.sound` and the
+  per-theorem `native_decide` axiom. No `sorry`.
+* **Trust:** this adds new trusted code, but only under `native_decide` for these proofs.
+  * `c/mbtape.c`: 344 lines, 283 of them non-comment.
+  * The Lean side of `checkHexImpl`: tape builder, box packing, the dispatch (about 50 lines).
+    `implemented_by` replaces the spec with it without proof.
+  * realfp's core and its default `lake build` are unchanged, and so is the trust of every
+    other realfp proof.
+* **Caveats:**
+  * Polynomial-type nodes only.
+  * Little-endian hosts only (otherwise the check returns `false`).
+  * At most 16 variables and 4,096 tape instructions.
+  * Tested on Linux x86-64 (AVX-512 backend) and Linux aarch64 (RN + error-term backend). The
+    RN + error-term backend on x86 (`IV64_BACKEND=rnerr`) and macOS were not tested.
+
+### The derivative certificate, checked (P1 δ=1/1024, 4,208 leaves)
+
+realfp's `interval` tactic was run on the same goal, on the box, alone:
+`lean/DerivKernel1024.lean`, `DerivNative1024.lean` and `DerivSearch1024.lean`.
+
+| | search | check | file total |
+|---|---|---|---|
+| `interval` (kernel, default) | 150 s | 592 s kernel type checking | 746 s |
+| `interval (trust := native)` | 153 s | 30.3 s interpreted + about 9 s compiling | 196 s |
+| `findCertDM` + `checkM` in `#eval` | 150.6 s | 28.7 s | 183 s |
+| GPU + C checker (`checkHex`, 8 threads) | 0.029 s (GPU) | 1.13 s | 3.6 s |
+
+Under `native_decide`, the GPU certificate (8.2 M leaves) is now checked about 25× faster than
+realfp checks its own 4,208-leaf derivative certificate natively. Counting the search too, the
+GPU path is about 50× faster end to end. In the kernel the derivative certificate is the only
+option, at 592 s.
+
 ### Native only, or the kernel too?
 
 The kernel cannot run compiled code. `decide +kernel` evaluates `checkK` itself at about 15
@@ -191,15 +277,11 @@ take about 6 days. For kernel-only proofs the derivative certificates win (4,208
 P1 δ=1/1024, 17,056 for P2 δ=1/16). There the GPU helps only with the search and exploration,
 or on problems where derivatives don't shrink the count.
 
-Under `native_decide`, the precompiled checker now verifies the 16 M-node P1 δ=1/1024
-certificate in about 100 s, at about 85 k leaves/s. That is in the same range as realfp's own
-derivative *search* for that claim (≤ 160 s, from the earlier, parallel-loaded measurement;
-the check of the derivative certificate itself was not timed). It is still about 3,500× the
-GPU search time (29 ms).
-
-The next step would be a batched C box evaluator: an `@[implemented_by]` routine with
-specification `evalFE`, like realfp's Bernstein and quadrature routines. It could plausibly
-gain another 30–100×, but it would add new trusted C code.
+Under `native_decide`, the C batch checker (above) verifies the 16 M-node P1 δ=1/1024
+certificate in 1.13 s, at 7.3 M leaves/s with 8 threads (1.2 M on one). The precompiled
+`checkC3` took about 100 s. The C checker is faster than realfp's own derivative search
+(150 s) and than its native check of the 4,208-leaf derivative certificate (30 s). It is still
+about 40× the GPU search time (29 ms).
 
 ## The smarter alternative: realfp's own derivative search
 
@@ -228,17 +310,20 @@ them (MCert, centred forms) was not timed here.
 * **GPU for the search:** on any search above about 10⁵ boxes the GPU is 3–10× faster than all
   20 CPU cores and about 100× faster than one core. With the same algorithm it never gives a
   different answer.
-* **For a formal proof today the bottleneck is Lean, not the search.** Even the new
-  C-runtime checker takes 10⁴× longer than the GPU search. With the derivative tricks, a
-  smarter certificate is 10³× smaller and usually wins end to end.
+* **With `native_decide` and the C batch checker, GPU bisection now wins end to end** on these
+  problems. P1 δ=1/1024 takes 3.6 s per file, against 196 s for `interval (trust := native)`.
+  The check is still 25–40× the GPU search.
+* **With kernel-only trust, the derivative certificates win.** They are 10³× smaller, and the
+  kernel cannot run C (592 s for P1 δ=1/1024).
 * **Where a GPU does pay:**
   1. exploration: finding the right δ, the right splitting, or counterexamples over 10⁷–10⁹
      boxes in milliseconds;
   2. problems where derivative methods don't collapse the count: many near-extremal
      points, degenerate (line or surface) minima in 4D and above, or families of many
      independent instances;
-  3. combined with a faster trusted checker. The precompiled `checkC3` (above) cut the gap
-     from about 10⁴× to about 3·10³×. A batched C evaluator could shrink it further.
+  3. combined with a fast trusted checker. The precompiled `checkC3` cut the gap from about
+     10⁴× to about 3·10³×, and the C batch checker cuts it to 25–40×. This costs new trusted
+     C code under `native_decide`.
 
 ## Rerun
 
@@ -246,6 +331,10 @@ them (MCert, centred forms) was not timed here.
 manybox/build.sh                # needs nvcc + gcc with OpenMP; -> build/mbbench, build/mbexport
 manybox/build/mbbench           # full table (about 40 s on GB10); `quick` for the small sizes
 manybox/make_certs.sh           # certificates for lean/ (p1_d1024 4 MB and p2_d16 8.6 MB are not committed)
-(cd manybox/lean/fast && lake build +ManyBoxFast:dynlib)   # precompiled checker
-manybox/lean/run.sh FastSmall.lean FastP1d1024.lean    # needs RealFPMathlib built; also Check*.lean (before)
+(cd manybox/lean/fast && lake build +ManyBoxFast:dynlib +ManyBoxTape:dynlib)   # precompiled + C checker
+manybox/lean/run.sh TapeSmall.lean TapeP1d1024.lean    # C checker; Fast*.lean = checkC3, Check*.lean = older
+MB_THREADS=1 manybox/lean/run.sh TapeP1d1024.lean      # serial C checker
+manybox/lean/run.sh TapeTest.lean                      # C vs Lean spec agreement tests
+manybox/lean/fast/bench.sh                             # Mathlib-free bench + agreement (any platform)
+manybox/lean/run.sh DerivKernel1024.lean               # realfp `interval` on P1 δ=1/1024 (~12 min)
 ```

@@ -1,5 +1,6 @@
 import RealFPMathlib
 import ManyBoxFast
+import ManyBoxTape
 
 /-! Shared part of the manybox Lean check (see `../README.md`).
 
@@ -249,5 +250,23 @@ theorem proveC3_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : Cert)
     (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs := by
   rw [checkC3_map, checkC2_compile] at h
   exact proveC_ge e bs c cert h xs hxs
+
+
+/-! ### C batch checker (`fast/ManyBoxTape.lean`, `fast/c/mbtape.c`)
+
+`checkHex` is `checkC3` on the decoded certificate by definition (`checkHex_le` / `_ge`, `rfl`);
+natively it runs the whole tree walk in C. -/
+
+theorem proveT_le (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (d : Nat) (hex : String)
+    (h : checkHex (compile e) true (KI.ofRat c).lo d hex ((boxes bs).map toIC) = true)
+    (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : e.denote xs ≤ (c : ℝ) := by
+  rw [checkHex_le] at h
+  exact proveC3_le e bs c _ h xs hxs
+
+theorem proveT_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (d : Nat) (hex : String)
+    (h : checkHex (compile e) false (KI.ofRat c).hi d hex ((boxes bs).map toIC) = true)
+    (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs := by
+  rw [checkHex_ge] at h
+  exact proveC3_ge e bs c _ h xs hxs
 
 end ManyBox
