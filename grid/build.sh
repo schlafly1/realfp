@@ -18,12 +18,14 @@ fi
 "$CXX" $CFL -c src/main.cpp -o build/main.o
 if [ -n "$NVCC" ]; then
   CUDADIR=$(dirname "$(dirname "$NVCC")")
+  { echo 'static const char *RFG_OPS_HPP = R"RFG('; cat src/ops.hpp; echo ')RFG";'
+    echo 'static const char *RFG_POL_HPP = R"RFG('; cat src/gpu_pol.hpp; echo ')RFG";'; } > build/embed.h
   # no fused multiply-add, IEEE division and square root: the directed-rounding intrinsics
   # (__dadd_rd ...) are exact regardless, but plain operations (midpoints) must round like the checker
   "$NVCC" -O3 -std=c++17 -arch="$ARCH" -fmad=false -ftz=false -prec-div=true -prec-sqrt=true \
-    -c src/gpu.cu -o build/gpu.o
+    -Ibuild -c src/gpu.cu -o build/gpu.o
   "$CXX" -pthread build/main.o build/problem.o build/cpu.o build/gpu.o -o build/realfp-grid \
-    -L"$CUDADIR/lib64" -lcudart -lm -Wl,-rpath,"$CUDADIR/lib64"
+    -L"$CUDADIR/lib64" -lcudart -lnvrtc -lcuda -lm -Wl,-rpath,"$CUDADIR/lib64"
   echo "built grid/build/realfp-grid (CPU + CUDA)"
 else
   "$CXX" $CFL -c src/nogpu.cpp -o build/nogpu.o

@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <functional>
 #include "grid.hpp"
 
 static double now() {
@@ -30,43 +31,54 @@ struct BitW {
   std::string done() { std::string h = hex; if (n) h.push_back("0123456789abcdef"[cur << (4 - n)]); return h; }
 };
 
-static void emit_preorder(const std::vector<std::vector<uint8_t>> &fl, BitW &w) {
-  std::vector<size_t> idx(fl.size() + 1, 0);
-  std::vector<int> stk; stk.push_back(0);
-  while (!stk.empty()) {
-    int l = stk.back(); stk.pop_back();
-    uint8_t f = fl[l][idx[l]++];
-    if (f == 0) w.put(0);
-    else { w.put(1); stk.push_back(l + 1); stk.push_back(l + 1); }
-  }
-}
-
 struct Ctx {
   const Problem *P; Engine *E; Opts o; int maxLevel; Stats st; FailInfo fi; int runs = 0, overflows = 0;
+  uint64_t cap = 0;
 };
 
-static void children(const Problem &P, const double *box, int l, double *L, double *R, double &m) {
-  uint32_t i = l % P.d;
-  memcpy(L, box, 2 * P.d * 8); memcpy(R, box, 2 * P.d * 8);
-  m = (box[2 * i] * 0.5) + (box[2 * i + 1] * 0.5);
-  { volatile double a = box[2 * i] * 0.5, b = box[2 * i + 1] * 0.5; m = a + b; }
-  L[2 * i + 1] = m; R[2 * i] = m;
-}
+/* Preorder emission of a run's tree(s) with "holes": split nodes at the last level D whose subtrees
+   are solved later; their bits (including their own 1) are written by the sub-solve, in order. */
+struct TopIter {
+  const std::vector<std::vector<uint8_t>> &fl; int D; uint64_t R, r = 0; BitW &w;
+  const std::function<void(uint64_t)> &before;
+  std::vector<size_t> idx; std::vector<int> stk;
+  TopIter(const std::vector<std::vector<uint8_t>> &f, uint64_t R_, BitW &w_, const std::function<void(uint64_t)> &b)
+      : fl(f), D((int)f.size() - 1), R(R_), w(w_), before(b), idx(f.size() + 1, 0) {}
+  /* emit bits up to the next hole (true) or to the end (false) */
+  bool next_hole() {
+    for (;;) {
+      if (stk.empty()) { if (r == R) return false; before(r); r++; stk.push_back(0); }
+      int l = stk.back(); stk.pop_back();
+      uint8_t f = fl[l][idx[l]++];
+      if (f == 0) { w.put(0); continue; }
+      if (l == D) return true;
+      w.put(1); stk.push_back(l + 1); stk.push_back(l + 1);
+    }
+  }
+};
 
-/* box: AoS (lo0, hi0, lo1, hi1, ...) here; engines take one root box (stride 1 = same layout). */
-static RunStatus solve(Ctx &C, const double *box, int l, BitW &w) {
-  std::vector<std::vector<uint8_t>> fl;
+/* Solve a forest of R roots at depth l, writing each root's preorder bits to w in order, calling
+   before(k) just before root k's bits (so that a caller can interleave its own bits). */
+static RunStatus solve_forest(Ctx &C, const double *roots, uint64_t R, int l, BitW &w,
+                              const std::function<void(uint64_t)> &before) {
+  std::vector<std::vector<uint8_t>> fl; std::vector<double> holes;
   C.runs++;
-  RunStatus r = C.E->run(box, l, C.maxLevel, C.o.cap, fl, C.st, C.fi);
-  if (r == RUN_OK) { emit_preorder(fl, w); return RUN_OK; }
+  RunStatus r = C.E->run(roots, R, l, C.maxLevel, C.cap, fl, holes, C.st, C.fi);
   if (r == RUN_FAIL) return r;
+  TopIter it(fl, R, w, before);
+  if (r == RUN_OK) { it.next_hole(); return RUN_OK; }
   C.overflows++;
-  double Lb[2 * RFG_MAXD], Rb[2 * RFG_MAXD], m;
-  children(*C.P, box, l, Lb, Rb, m);
-  w.put(1);
-  RunStatus a = solve(C, Lb, l + 1, w);
-  if (a != RUN_OK) return a;
-  return solve(C, Rb, l + 1, w);
+  const uint32_t d2 = 2 * C.P->d;
+  uint64_t H = holes.size() / d2, Ch = std::max<uint64_t>(1, C.cap / 4);
+  std::function<void(uint64_t)> cb = [&](uint64_t) { it.next_hole(); };
+  int D = (int)fl.size() - 1;
+  fl.shrink_to_fit();
+  for (uint64_t s = 0; s < H; s += Ch) {
+    RunStatus q = solve_forest(C, holes.data() + s * d2, std::min(Ch, H - s), l + D, w, cb);
+    if (q != RUN_OK) return q;
+  }
+  it.next_hole();
+  return RUN_OK;
 }
 
 struct Job { int l0; std::string hex; };
@@ -192,17 +204,17 @@ int main(int argc, char **argv) {
   Problem P; std::string err;
   if (!read_problem(pf, P, err)) { fprintf(stderr, "realfp-grid: %s\n", err.c_str()); return 2; }
   if (o.maxDepth <= 0) o.maxDepth = std::min(1000, 30 * (int)P.d);
-  if (o.cap == 0 && eng == "cpu") o.cap = 1ull << 24;
   Engine *E = pick(eng, P, o);
   double box[2 * RFG_MAXD];
   for (uint32_t j = 0; j < P.d; j++) { box[2 * j] = P.lo[j]; box[2 * j + 1] = P.hi[j]; }
 
   if (mode == "prove") {
     if (!out) usage();
-    if (o.cap == 0 && strncmp(E->name(), "cpu", 3) == 0) o.cap = 1ull << 24;
     Ctx C; C.P = &P; C.E = E; C.o = o; C.maxLevel = o.maxDepth;
+    C.cap = o.cap ? o.cap : E->default_cap();
     double t0 = now();
-    BitW w; RunStatus r = solve(C, box, 0, w);
+    BitW w; std::function<void(uint64_t)> none = [](uint64_t) {};
+    RunStatus r = solve_forest(C, box, 1, 0, w, none);
     double t1 = now();
     if (r != RUN_OK) {
       if (C.fi.level < 0) printf("FAIL: box budget %llu exhausted after %.3f s\n", (unsigned long long)o.maxBoxes, t1 - t0);
@@ -213,12 +225,23 @@ int main(int argc, char **argv) {
         printf("\n  fp64 enclosure of f there: [%.17g, %.17g], bound %s %.17g\n", C.fi.flo, C.fi.fhi, P.upper ? "<=" : ">=", P.c);
         bool refuted = P.upper ? C.fi.flo > P.c : C.fi.fhi < P.c;
         if (refuted) printf("  REFUTED: the bound is false on this whole box.\n");
+        else {
+          double mid[2 * RFG_MAXD];
+          for (uint32_t j = 0; j < P.d; j++) {
+            volatile double a = C.fi.box[2 * j] * 0.5, b = C.fi.box[2 * j + 1] * 0.5; mid[2 * j] = mid[2 * j + 1] = a + b;
+          }
+          Engine *ex = make_cpu(P, o); double flo, fhi, plo, phi;
+          ex->eval_mm(mid, 1, &flo, &fhi, &plo, &phi); delete ex;
+          printf("  at its midpoint f in [%.17g, %.17g]%s\n", flo, fhi,
+                 (P.upper ? flo > P.c : fhi < P.c) ? ": REFUTED, the bound is false at this point" : "");
+        }
       }
       return 1;
     }
     char info[512];
-    snprintf(info, sizeof info, "engine %s, %llu boxes, %llu leaves, max level %d, %d runs, %.3f s", E->name(),
-             (unsigned long long)C.st.boxes, (unsigned long long)C.st.leaves, C.st.maxLevel, C.runs, t1 - t0);
+    snprintf(info, sizeof info, "engine %s, %llu boxes evaluated, certificate %llu nodes / %llu leaves, depth %d, %d runs, %.3f s",
+             E->name(), (unsigned long long)C.st.boxes, (unsigned long long)w.bits,
+             (unsigned long long)((w.bits + 1) / 2), C.st.maxLevel, C.runs, t1 - t0);
     std::string hex = w.done();
     if (K >= 0) {
       BitW top; std::vector<Job> jobs;
@@ -251,10 +274,11 @@ int main(int argc, char **argv) {
       E->eval_mm(cur.data(), n, flo.data(), fhi.data(), plo.data(), phi.data());
       evals += n;
       /* work with g = f (min) or g = -f (max) */
-      std::vector<double> glo(n);
+      std::vector<double> glo(n), gpu(n);
       for (uint64_t i = 0; i < n; i++) {
         double lo = mx ? -fhi[i] : flo[i], pu = mx ? -plo[i] : phi[i];
         glo[i] = (lo != lo) ? -INFINITY : lo;
+        gpu[i] = (pu != pu) ? INFINITY : pu;
         if (pu == pu && pu < U) {
           U = pu;
           for (uint32_t j = 0; j < d; j++) arg[j] = 0.5 * cur[(2 * j) * n + i] + 0.5 * cur[(2 * j + 1) * n + i];
@@ -268,8 +292,11 @@ int main(int argc, char **argv) {
       if (o.verbose) fprintf(stderr, "level %d: %llu boxes, %zu kept, [%.17g, %.17g]\n", L, (unsigned long long)n, keep.size(), Lb, U);
       if (stop) break;
       if (2 * keep.size() > cap) {
+        /* keep 3/4 by lowest enclosure (to raise the lower bound) and 1/4 by lowest midpoint
+           value (to find better points); the lower bound of the dropped boxes is remembered */
         std::sort(keep.begin(), keep.end(), [&](uint64_t a, uint64_t b) { return glo[a] < glo[b]; });
-        size_t k = cap / 2;
+        size_t k = cap / 2, k1 = 3 * k / 4;
+        std::sort(keep.begin() + k1, keep.end(), [&](uint64_t a, uint64_t b) { return gpu[a] < gpu[b]; });
         for (size_t t = k; t < keep.size(); t++) dropped = std::min(dropped, glo[keep[t]]);
         keep.resize(k);
       }

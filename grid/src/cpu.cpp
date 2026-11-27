@@ -56,12 +56,16 @@ struct CpuEngine : Engine {
     return P.upper ? F.hi <= P.c : P.c <= F.lo;
   }
 
-  RunStatus run(const double *box0, int l0, int maxLevel, uint64_t cap,
-                std::vector<std::vector<uint8_t>> &flags, Stats &st, FailInfo &fi) override {
+  uint64_t default_cap() override { return 1ull << 23; }
+
+  RunStatus run(const double *roots, uint64_t R, int l0, int maxLevel, uint64_t cap,
+                std::vector<std::vector<uint8_t>> &flags, std::vector<double> &holes, Stats &st,
+                FailInfo &fi) override {
     const uint32_t d = P.d;
-    std::vector<double> cur(2 * d), nxt;
-    for (uint32_t j = 0; j < 2 * d; j++) cur[j] = box0[j];
-    uint64_t n = 1;
+    std::vector<double> cur(2 * d * R), nxt;
+    for (uint64_t r = 0; r < R; r++)
+      for (uint32_t j = 0; j < 2 * d; j++) cur[j * R + r] = roots[2 * d * r + j];
+    uint64_t n = R;
     flags.clear();
     for (int L = l0;; L++) {
       std::vector<uint8_t> fl(n);
@@ -102,7 +106,14 @@ struct CpuEngine : Engine {
       flags.push_back(std::move(fl));
       if (splits == 0) return RUN_OK;
       if (o.maxBoxes && st.boxes + 2 * splits > o.maxBoxes) { fi.level = -1; return RUN_FAIL; }
-      if (2 * splits > cap) return RUN_OVERFLOW;
+      if (2 * splits > cap) {
+        holes.assign(2 * d * splits, 0.0);
+        const std::vector<uint8_t> &F = flags.back();
+        uint64_t h = 0;
+        for (uint64_t i = 0; i < n; i++)
+          if (F[i] == 1) { for (uint32_t j = 0; j < 2 * d; j++) holes[2 * d * h + j] = cur[j * n + i]; h++; }
+        return RUN_OVERFLOW;
+      }
       uint64_t n2 = 2 * splits;
       nxt.assign(2 * d * n2, 0.0);
       const std::vector<uint8_t> &F = flags.back();

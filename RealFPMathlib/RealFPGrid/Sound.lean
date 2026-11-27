@@ -120,4 +120,16 @@ theorem proveTopC_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (t : TopC) (
     (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs :=
   proveC2_ge e bs c _ (TopC.sound _ _ t _ hm hl) xs hxs
 
+/-- Transport a stored bound (e.g. `bound` from `grid/gen_lean.py`) to the reified goal
+(`interval_grid (use := thm)`; the equalities are proved by `decide +kernel`). -/
+theorem use_le {e e' : IExpr} {bs bs' : List (ℚ × ℚ)} {c c' : ℚ}
+    (h : ∀ xs, RealFP.InBoxes xs bs' → e'.denote xs ≤ (c' : ℝ)) (he : e = e') (hb : bs = bs')
+    (hc : c = c') (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : e.denote xs ≤ (c : ℝ) := by
+  subst he hb hc; exact h xs hxs
+
+theorem use_ge {e e' : IExpr} {bs bs' : List (ℚ × ℚ)} {c c' : ℚ}
+    (h : ∀ xs, RealFP.InBoxes xs bs' → (c' : ℝ) ≤ e'.denote xs) (he : e = e') (hb : bs = bs')
+    (hc : c = c') (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs := by
+  subst he hb hc; exact h xs hxs
+
 end RealFP.Grid

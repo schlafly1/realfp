@@ -30,16 +30,21 @@ struct Opts {
 
 struct Stats { uint64_t boxes = 0, leaves = 0; int maxLevel = 0; };
 
-/* One breadth-first run from a box at depth l0. On success, flags[j] (j = level - l0) holds one
-   byte per node of that level in BFS order: 0 leaf (goal proved on the box), 1 split. */
+/* One breadth-first run from a forest of R root boxes (AoS: root r, variable j at roots[2d r + 2j],
+   [.. + 1]) at depth l0. flags[j] (j = level - l0) holds one byte per node of that level in BFS
+   order: 0 leaf (goal proved on the box), 1 split. RUN_OVERFLOW: the next level would exceed
+   `cap` boxes; flags are complete down to the last level evaluated, and `holes` gets the boxes
+   (AoS, BFS order) of that level's split nodes, to be continued by the caller. */
 enum RunStatus { RUN_OK = 0, RUN_OVERFLOW = 1, RUN_FAIL = 2 };
 struct FailInfo { int level; double box[2 * RFG_MAXD]; double flo, fhi; };
 
 struct Engine {
   virtual ~Engine() {}
   virtual const char *name() const = 0;
-  virtual RunStatus run(const double *box, int l0, int maxLevel, uint64_t cap,
-                        std::vector<std::vector<uint8_t>> &flags, Stats &st, FailInfo &fi) = 0;
+  virtual RunStatus run(const double *roots, uint64_t R, int l0, int maxLevel, uint64_t cap,
+                        std::vector<std::vector<uint8_t>> &flags, std::vector<double> &holes,
+                        Stats &st, FailInfo &fi) = 0;
+  virtual uint64_t default_cap() = 0;
   /* Min/max exploration: evaluate n boxes (SoA, stride n: box[(2j)*n+i] = lo of var j) -> the
      enclosure of f on each box and of f at its midpoint. */
   virtual void eval_mm(const double *box, uint64_t n, double *flo, double *fhi, double *plo,

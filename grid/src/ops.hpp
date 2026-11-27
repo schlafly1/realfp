@@ -7,7 +7,13 @@
    is negative in fp64 but not in fp32) accepted in fp64 too. Nothing here is trusted: every
    certificate is re-checked by Lean (native_decide + the C checker). */
 #pragma once
+#ifdef __CUDACC_RTC__
+typedef unsigned int uint32_t;
+typedef unsigned long long uint64_t;
+typedef unsigned char uint8_t;
+#else
 #include <stdint.h>
+#endif
 #ifdef __CUDACC__
 #define HD __host__ __device__ __forceinline__
 #else

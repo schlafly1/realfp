@@ -136,14 +136,22 @@ def proveLe (cfg : GCfg) (lhs rhs : Expr) : TacticM Unit := do
   let hxsM ← mkFreshExprMVar (mkApp2 (mkConst ``InBoxes) xsE bsE)
   -- (use := thm): an existing theorem
   if let some thm := cfg.use? then
-    let pf := mkAppN (← mkConstWithFreshMVarLevels thm) #[xsE, hxsM]
-    let want ← if upper then mkAppM ``LE.le #[mkApp2 (mkConst ``IExpr.denote) xsE eE, ← mkAppM ``Rat.cast #[cE]]
-      else mkAppM ``LE.le #[← mkAppM ``Rat.cast #[cE], mkApp2 (mkConst ``IExpr.denote) xsE eE]
-    unless ← isDefEq (← inferType pf) want do
-      throwError "interval_grid: {thm} does not state this bound; it states{indentExpr (← inferType pf)}\n\
-        expected{indentExpr want}"
+    let lemN := if upper then ``RealFP.Grid.use_le else ``RealFP.Grid.use_ge
+    let h ← mkConstWithFreshMVarLevels thm
+    let lem ← mkAppOptM lemN #[eE, none, bsE, none, cE, none, h]
+    let ty ← inferType lem
+    let .forallE _ heT b1 _ := ty | throwError "interval_grid: {thm} is not `∀ xs, InBoxes xs bs → …`"
+    let .forallE _ hbT b2 _ := b1 | throwError "interval_grid: internal (use)"
+    let .forallE _ hcT _ _ := b2 | throwError "interval_grid: internal (use)"
+    let mut eqs := #[]
+    for (t, what) in [(heT, "expression"), (hbT, "boxes"), (hcT, "bound")] do
+      let m ← mkFreshExprMVar (← instantiateMVars t)
+      setGoals [m.mvarId!]
+      try evalTactic (← `(tactic| decide +kernel))
+      catch _ => throwError "interval_grid: {thm} is about another {what}:{indentExpr (← instantiateMVars t)}"
+      eqs := eqs.push (← instantiateMVars m)
     setGoals [hxsM.mvarId!]; inBoxesTac; setGoals saved
-    return ← closeWith false pf
+    return ← closeWith false (mkAppN lem (eqs ++ #[xsE, hxsM]))
   -- (export := file): the problem file (and the problem as Lean source) for the CLI workflow
   if let some p := cfg.export? then
     let some prob := prob? | throwError "interval_grid: this expression has operations the tool \
