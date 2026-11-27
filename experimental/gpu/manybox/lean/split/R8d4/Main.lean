@@ -25,7 +25,7 @@ set_option profiler.threshold 200
 
 namespace ManyBox.Split.R8d4
 
-def top : Top :=
+noncomputable def top : Top :=
 .split 0 0
  (.split 1 0
  (.split 2 0

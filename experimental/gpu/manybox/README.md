@@ -305,6 +305,108 @@ certificate. The derivative certificates are 10–2000× smaller. Their growth i
 where the maxima are isolated, and stronger for P2, where the minima lie on lines. Checking
 them (MCert, centred forms) was not timed here.
 
+## v2: division and square roots, fp32 search, 6–8 variables, split and weaker certificates
+
+New pieces (all experimental; the realfp core is unchanged):
+
+* `v2/`: one generic search engine (C++ templates over a rounding policy) for GPU fp64
+  (`__dadd_rd`/`__dmul_ru`…), GPU **fp32** (`__fadd_rd`/`__fmul_ru`/`__fdiv_r*`/`__fsqrt_r*`)
+  and CPU fp64 (round-to-nearest + error bound, OpenMP). Breadth-first forest with a memory
+  cap (levels above 2²⁷ boxes are processed depth-first in chunks). Modes `search`, `export`,
+  `split`, `refute`, `sample` (see `v2/mb2.cpp`). Operations: + − × integer powers, **÷ and √**
+  with realfp's exact semantics (÷ by an interval containing 0 → whole line; √ clips at 0,
+  `hi < 0` → invalid).
+* fp32 soundness: box endpoints are dyadic (−1 + k·2⁻ˢ), exact in binary32 while
+  s ≤ 23 (the engine stops at 23·d+1 levels); constants are checked to be exact in binary32;
+  every operation is directed-rounded, so fp32 enclosures are sound, only wider. The certificate
+  format is the same (split bits only), and it is still checked in fp64 by the Lean/C checker.
+* `lean/fast/c/mbtape.c`: tape ops 7 (÷ = a·inv b, realfp's `inv`) and 8 (√, realfp's
+  `sqrtI` = hull with 0 when lo < 0), via realfp's `iv64_dir_div_*`/`iv64_dir_sqrt_*` kernels;
+  new entry point `checkHexAt` (a sub-tree starting at depth l0 and coordinates cs0).
+  Agreement with the Lean spec (`fast/bench.sh v2` and `rand`): 0 disagreements on all
+  single-bit mutations of the NES/PM certificates (312+312, 1083+1083, 210, 201 cases) and on
+  200,000 random expressions using every operation, constants up to 10^±200, boxes up to 10^±300
+  (each through both `checkHex` and `checkHexAt`).
+* `Top`/`Top.sound` (fast, proved) + `proveTop_le/ge` (ManyBoxCert): a certificate split into
+  independent sub-checks, each proved in its own file (own process, possibly another machine),
+  glued by kernel computation (`midsOK`, `decide +kernel`) and `rfl` (job list).
+
+### Search times (spark GB10; later repetitions; boxes = evaluated nodes)
+
+| problem (d) | δ | boxes fp64 | fp32 extra | GPU fp64 | GPU fp32 | CPU 20 thr | CPU 1 thr |
+|---|---|---|---|---|---|---|---|
+| P1 T8+T8 (2) | 1/1024 | 1.64e7 | +1.1% | 26 ms | 14 ms | 0.19 s | 2.0 s |
+| P2 Choi–Lam (4) | 1/16 | 3.46e7 | +0.001% | 60 ms | 34 ms | 0.32 s | 3.1 s |
+| NES Nesbitt, ÷ (3) | 0.001 | 8.18e7 | +0.04% | 0.128 s | 0.072 s | 0.58 s | 6.1 s |
+| PM power means, √ (3) | 0.001 | 4.35e8 | +0.08% | 0.64 s | 0.38 s | 2.53 s | 20.4 s |
+| R8 T4 ring (8) | 8 | 3.59e7 | 0 | 0.134 s | 0.053 s | 1.08 s | 11.8 s |
+| R8 | 4 | 3.90e8 | 0 | 1.44 s | 0.56 s | 10.7 s | 124 s |
+| R8 | 2 | 2.04e9 | 0 | 8.0 s | 3.5 s | 59.9 s | 638 s |
+| R8 | 1 | 1.07e10 | 0 | 41.4 s | 17.8 s | 312 s | (~3300 s) |
+| M6 Reznick AM–GM (6) | 0.5 | 3.29e8 | 0 | 0.67 s | 0.40 s | 3.95 s | 38.7 s |
+| M6 | 0.375 | 1.54e9 | +0.001% | 3.67 s | 2.34 s | 26.0 s | 189 s |
+| M6 | 0.25 | 1.33e10 | +0.002% | 30.4 s | 19.1 s | 200 s | |
+| C6 Σ T8 (6) | 32 | 2.61e9 | 0 | 9.8 s | 3.8 s | 87.5 s | |
+
+R8 = Σᵢ T4(xᵢ)T4(xᵢ₊₁ mod 8) ≥ −8 − δ; M6 = x₆¹² + P·Σxᵢ² − 6x₆²P ≥ −δ (P = x₁²⋯x₅²);
+C6 = Σ T8(xᵢ) ≤ 6 + δ (naive interval T8 is very loose, so C6 needs δ = 32 to stay ≤ 1e10).
+The CPU 1-thread R8 δ=1 entry is extrapolated (3.2e6 boxes/s), not run.
+fp32 is 1.6–2.6× faster than fp64 on the GB10 (whose fp64 rate is low) and costs at most ~1%
+more boxes here; for the polynomial problems with dyadic data the counts are identical. The
+fp32 GPU is 7–23× faster than 20 CPU threads (spark: 10 performance + 10 efficiency cores)
+and 54–220× faster than one.
+
+### Checking in Lean (box: 8-core x86, AVX-512)
+
+| claim | leaves | how | Lean time | axioms |
+|---|---|---|---|---|
+| Nesbitt ≥ 3/2 − 1/64 (÷) | 141,007 | `proveT_ge`, C checker | ~6 ms native | std + native_decide |
+| power means ≤ 1/64 (√) | 673,837 | `proveT_le`, C checker | 14.6 ms (C, `bench.sh`) | std + native_decide |
+| (same two, fp32-searched certificates) | | | same | same |
+| R8 ≥ −12 (δ=4) | 1.95e8 | split: 256 jobs in 16 files | 128.5 s (1 proc × 8 thr), 100 s (8 procs × 1 thr) + 4.2 s glue | std + 16 native_decide |
+| R8 ≥ −10 (δ=2) | 1.02e9 | split: 4096 jobs in 32 files | 499 s (8 procs × 1 thr) + 29.7 s glue | std + 32 native_decide |
+| R8 ≥ −9 (δ=1) | 5.34e9 | not checked (see below) | est. ~45 min | — |
+
+(`lean/V2DivSqrt.lean`, `lean/split/R8d4/Main.lean`, `lean/split/R8d2/Main.lean`.) The C
+checker does about 2·10⁶ R8 leaves/s on 8 cores (the R8 tape has ~70 operations), so checking
+is 150–250× slower than the fp32 GPU search: 1e10 leaves ≈ 1.4 h, 1e11 ≈ 14 h on this box. The
+practical limit was moving certificates, not checking them: 1 bit per node is 1.3 GB of hex for
+R8 δ=1, and the spark → box link ran at ~0.25 MB/s. Splitting removes every other limit: the
+sub-files are Mathlib-free, independent, and can be compiled on any number of machines; the
+glue (Mathlib) only imports their `ok` theorems.
+
+### Weaker than proof (`lean/Weak*.lean`)
+
+* **Counterexample** (`WeakRefute.lean`, standard axioms only): `mb2 refute P1 64 1.9921875`
+  finds in 0.3 s a box `[−1/128, 0]²` on which T8(x)+T8(y) > 2 − 1/128 everywhere; Lean checks
+  that one box with the kernel (`decide +kernel`) and proves `¬ (∀ x y ∈ [−1,1], T8 x + T8 y ≤
+  2 − 1/64)`. Refutations are always cheap to verify: one box, any dimension.
+* **Labeled assumption** (`WeakAxiom.lean`): `axiom gpu_R8_ge_neg9` states the δ=1 R8 result,
+  with its certificate hash (fnv 893675208e4e9f33) and reproduction command in the docstring;
+  `ring_ge'` uses it, and `#print axioms` shows `gpu_R8_ge_neg9`. The gap is explicit and
+  machine-visible; anything downstream is "proved modulo this search".
+* **Sampled check** (`WeakSample.lean`, standard axioms only, 21 s): 64 leaves drawn uniformly
+  from the 5.3e9 leaves of the R8 δ=1 certificate (`mb2 sample`), each re-checked by the
+  kernel. What it proves: the bound on the union of those 64 boxes (volume 5.6e−9 of the cube) —
+  mathematically almost nothing. What it supports: if a fraction p of the GPU's leaf claims
+  were wrong at random, passing 64 samples has probability (1−p)⁶⁴, so p < 4.6% at 95%
+  confidence. It cannot detect systematic faults (wrong expression or rounding mode, a
+  coverage bug), which only the full check rules out.
+
+Is a search that cannot be checked worthless? No: (1) a refutation is a proof as soon as one box
+is checked; (2) a successful search is strong evidence that pins down the right margin, the
+splitting, or where the hard region is, and as a labeled axiom it makes the dependence explicit;
+(3) splitting makes the full check embarrassingly parallel, so "infeasible" usually means
+"needs N machines for T hours", and the search tells you N and T in advance.
+
+### Trust base (changes in this round)
+
+`native_decide` theorems now also trust: the larger `mbtape.c` (÷, √, `mb_check_tape_at`), the
+Lean-side tape builder (`toTape`, with the new ops 7/8) and `checkHexAtImpl`'s guard, plus
+realfp's `iv64_dir_div/sqrt` kernels (already trusted by realfp). `Top.sound`, `proveTop_*`, the
+refutation and the sampled check are ordinary proofs. The GPU/CPU search code (`v2/`) is never
+trusted: its certificates are re-checked, except in `WeakAxiom.lean`, where that is the point.
+
 ## Assessment
 
 * **GPU for the search:** on any search above about 10⁵ boxes the GPU is 3–10× faster than all
@@ -337,4 +439,10 @@ MB_THREADS=1 manybox/lean/run.sh TapeP1d1024.lean      # serial C checker
 manybox/lean/run.sh TapeTest.lean                      # C vs Lean spec agreement tests
 manybox/lean/fast/bench.sh                             # Mathlib-free bench + agreement (any platform)
 manybox/lean/run.sh DerivKernel1024.lean               # realfp `interval` on P1 δ=1/1024 (~12 min)
+manybox/v2/build.sh                                    # v2 engine (CXX=g++, NOGPU=1 for CPU only)
+manybox/v2/build/mb2 search R8 32 1 gpu                # fp32 GPU search; `cpu20`, `cpu1`; 64 = fp64
+manybox/v2/build/mb2 split R8 64 4 8 certs/split/r8_4  # split certificate (not committed: 94 MB)
+manybox/lean/split/gen_split.py ../../certs/split/r8_4 R8d4 V2.eR8 false -12 16   # (run in lean/split)
+manybox/lean/split/run_split.sh R8d4 8 1               # 8 lean processes × 1 C thread, then Main
+manybox/lean/run.sh V2DivSqrt.lean WeakRefute.lean WeakAxiom.lean WeakSample.lean
 ```
