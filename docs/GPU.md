@@ -54,7 +54,7 @@ following hold:
 |---|---|---|
 | **Operations** | everything realfp supports, including `exp`, `log`, `sin`, `atan`, … | `+ − * /`, negation, `√`, natural powers only |
 | **Trust** | `kernel` (default, standard axioms only) or `native` | always `native_decide` (+ the C checker) |
-| **Boxes needed** | up to about 10⁵ (kernel), or about 10⁶ native; the derivative certificates often cut the count by orders of magnitude | 10⁵ to 10¹⁰ plain bisection boxes |
+| **Boxes needed** | up to about 10⁴ to 10⁵. It ran at 20–60 boxes/s on the 6–8-variable showcases, faster in low dimension; each box also tries derivative tests, which often cut the count by orders of magnitude | 10⁵ to 10¹⁰ plain bisection boxes |
 | **Dimension** | 1–3 comfortably; more if the margin is wide | 2–16 variables; it pays off most in 4–8 dimensions |
 | **Margin** | comfortable or moderate | tight: the count grows like δ^-k as the margin δ shrinks |
 
@@ -74,7 +74,7 @@ Rules of thumb:
 * **The tool is optional.** Without `realfp-grid`, `interval_grid` uses its built-in
   single-threaded search. It managed about 1.6·10⁵ boxes/s on the x86 dev box (Nesbitt:
   282,013 boxes in 1.75 s), which is fine up to about 10⁷ boxes. With the tool on all CPU cores
-  you get 10⁸–10⁹ boxes. A GPU adds a further 5–12× (measured below).
+  you get 10⁸–10¹⁰ boxes. A GPU makes the search another 5–12× faster (measured below).
 
 ## Trust: what a proof depends on
 
@@ -196,7 +196,101 @@ to rebuild them.
 
 ## Showcases and timings
 
-<!-- TIMINGS -->
+All timings below were measured on 2026-11-27 on an NVIDIA DGX Spark:
+
+* **GPU:** GB10 (48 SMs, CUDA 13.0).
+* **CPU:** 10 Cortex-X925 + 10 Cortex-A725 cores (20 threads), aarch64. realfp's RN +
+  error-term backend.
+
+The tool's own reported times are shown, with the process wall time in parentheses. "Nodes"
+counts the certificate's bits (splits plus leaves).
+
+Another user's long job was running on the machine at the same time, so the CPU numbers are,
+if anything, pessimistic.
+
+### Search: `realfp-grid prove`
+
+* **R8:** `Σᵢ T₄(xᵢ)T₄(xᵢ₊₁) ≥ c` on `[−1, 1]⁸` (a ring of 8 Chebyshev terms; the true
+  minimum is −8, attained at irrational points).
+* **M6:** Reznick's AM–GM form `x₆¹² + P·Σxᵢ² − 6x₆²P ≥ c` on `[−1, 1]⁶`, with
+  `P = x₁²⋯x₅²` (the minimum is 0, attained).
+
+| problem | nodes | GPU fp32 | GPU fp64 | CPU 20 threads | CPU 1 thread |
+|---|---|---|---|---|---|
+| R8, c = −12 | 3.9·10⁸ | 3.3 s (4.9) | 5.5 s (7.0) | 40.6 s | 290 s |
+| R8, c = −10 | 2.0·10⁹ | 21.9 s (23.2) | 33.9 s (35.1) | 173 s | — |
+| R8, c = −9 | 1.07·10¹⁰ | 112 s (116) | 176 s (180) | 914 s | — |
+| M6, c = −1/2 | 3.2·10⁸ | 2.5 s (3.7) | 3.4 s (4.6) | 16.7 s | 115 s |
+| M6, c = −3/8 | 1.5·10⁹ | 6.8 s (7.8) | 11.2 s (12.2) | 83.2 s | — |
+| M6, c = −1/4 | 1.3·10¹⁰ | 90.0 s (93.6) | 129 s (133) | 817 s | — |
+
+* **Speedups:** against all 20 CPU threads, GPU fp32 is 7–12× faster and GPU fp64 is 5–7×
+  faster. Against one thread, the GPU is 46–87× faster.
+* **Identical certificates:** `cpu` and `gpu64` produce bit-identical certificates in every
+  row. `gpu32` matches them on R8. On M6 its wider enclosures give certificates about 0.002%
+  larger. Use `gpu64` or `cpu` certificates for proofs: a `gpu32` certificate is not
+  guaranteed to pass the binary64 checker.
+* **Memory:** the c = −9 and c = −1/4 runs need about 42 GB of host memory.
+
+### Proof: certificate to Lean theorem (`grid/showcase.sh … 16 8 gpu64`)
+
+| step | R8 ≥ −9 (5.3·10⁹ leaves) | M6 ≥ −1/4 (6.5·10⁹ leaves) |
+|---|---|---|
+| problem files (`#grid_export`) | 11.4 s | 2.5 s |
+| search, GPU fp64, with the split into sub-certificates | 207 s | 180 s |
+| generate the Lean files | 4.1 s | 7.3 s |
+| check 256 group modules in parallel (C checker, `native_decide`) | 379 s | 257 s |
+| glue (`TopC.sound`) and final theorem | 9.0 s | 16.5 s |
+| **total** | **611 s (10.2 min)** | **464 s (7.7 min)** |
+
+The theorems are `RealFPGridShowcase/R8.lean` (`r8_ge`) and `RealFPGridShowcase/M6.lean`
+(`m6_ge`). The generated files take 2.7 GB and 3.1 GB, and are not committed.
+
+### Without the GPU
+
+* **CPU tool:** the same searches on all 20 CPU threads take 914 s (R8 ≥ −9) and 817 s
+  (M6 ≥ −1/4), with the same certificates. With the same Lean checking time, that gives
+  about 22 and 18 minutes end to end (the sum of the measured steps).
+
+  Most of the payoff over `interval` comes from plain bisection plus the multithreaded C
+  checker; the GPU makes the search another 5–12× faster. On one CPU thread the searches
+  would take hours (R8 at c = −12 alone takes 290 s).
+* **realfp's `interval`:** `interval (trust := native)` was run on the easiest rows, R8 at
+  c = −12 and M6 at c = −1/2. With a budget of 3000 boxes, it stopped after 145 s and 48 s,
+  including imports.
+
+  Those wall times include imports and elaboration, so the rates are about 20 boxes/s on R8
+  and 60 boxes/s on M6 (each box also tries derivative certificates). Both runs reported
+  that they could not certify. With a budget of 200,000 boxes, R8 had not finished after
+  18 minutes on the Spark (stopped), nor within a 30-minute timeout on the x86 dev box.
+
+  The plain bisection certificates have 1.9·10⁸ (R8) and 1.6·10⁸ (M6) leaves. At those
+  rates, `interval` would need months for them. Its derivative tests might cut the count,
+  but they do not help much here, because the minimum is attained in the interior on large
+  sets. This is an extrapolation, not a measurement.
+* **The kernel:** it checks about 15 boxes/s, so kernel-only proofs of these bounds are out
+  of reach.
+
+So with the GPU, R8 ≥ −9 and M6 ≥ −1/4 become Lean theorems in about 10 and 8 minutes. The
+easier constants take seconds to search. With realfp's `interval`, the same bounds would
+take months or more.
+
+### Exploration: `realfp-grid minmax` (time-limited)
+
+| problem | engine, limit | result |
+|---|---|---|
+| R8 | gpu32, 10 s | min ≤ −7.9126 (a point), 8·10⁷ boxes |
+| R8 | gpu32, 60 s (finished at depth 80, 34 s) | min ≤ −7.99983 at (≈0, ±0.708, …), 2.5·10⁸ boxes |
+| R8 | cpu 20 threads, 60 s (depth 80, 59 s) | min ≤ −7.99983, the same boxes |
+| M6 | gpu32, 60 s (depth 80, 25 s) | min ∈ [−0.782, 0], attained at 0 |
+
+* **What `minmax` is good at:** it quickly finds where the extremum is, and a rigorous
+  value at a point. That value is a proof that no bound beyond it can hold.
+* **What it is not good at:** in 8 dimensions its rigorous lower bound stays weak (−19.3 for
+  R8), because the frontier it can keep is limited.
+* **Finding the best provable constant:** bisect on `c` with `realfp-grid prove --engine
+  gpu32`, which takes seconds per try (table above). For R8, c = −12, −10 and −9 succeed;
+  the true minimum is −8.
 
 ## Limitations
 

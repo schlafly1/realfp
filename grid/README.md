@@ -33,6 +33,10 @@ grid/showcase.sh NAME MODULE K [K1] [ENGINE]   # big certificates → Lean theor
   bit-identical certificates, and so does `gpu32` on R8.
 * **Memory:** a level that does not fit in the frontier capacity (`--cap`, chosen from the
   GPU memory by default) is finished in chunks of its remaining boxes, without redoing work.
+* **Measured (DGX Spark GB10):** R8 ≥ −9 (1.07·10¹⁰ nodes) takes 112 s on gpu32, 176 s on
+  gpu64, and 914 s on 20 CPU threads. M6 ≥ −1/4 (1.3·10¹⁰ nodes) takes 90 s, 129 s, and
+  817 s. The full tables, and the times for the Lean proofs, are in
+  [docs/GPU.md](../docs/GPU.md#showcases-and-timings).
 * **Sources:**
   * `src/ops.hpp`: the interval operations and tape evaluation (templated over policies);
   * `src/cpu.cpp`, `src/gpu.cu`, `src/gpu_pol.hpp`: the engines;
