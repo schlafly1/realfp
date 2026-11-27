@@ -3,3 +3,4 @@
 /build
 RealFPMathlib/.lake
 experimental/gpu/build/
+grid/build/

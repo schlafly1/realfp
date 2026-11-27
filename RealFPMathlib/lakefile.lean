@@ -41,3 +41,35 @@ lean_lib RealFPMathlib where
     axioms with `scripts/check_axioms.sh RealFPMathlib RealFPMathlibSlowAxioms.lean`. -/
 lean_lib RealFPMathlibSlow where
   globs := #[.submodules `RealFPMathlibSlow]
+
+/-! ### Optional: `RealFP.Grid` (many-box certificates, `docs/GPU.md`). Not default targets.
+
+`lake build RealFPGrid` builds the native part (`RealFPGridNative`: Mathlib-free, precompiled, with
+the C batch checker `c/grid_tape.c`) and the Mathlib layer (`RealFPGrid`: soundness theorems and
+the `interval_grid` tactic). No GPU or CUDA is needed: the search tool `grid/` is separate. -/
+
+/-- The C batch checker. No backend flags: it calls realfp's `iv64_dir_*` kernels (from the core
+    library), so it uses whatever backend the core was built with. -/
+target grid_tape.o pkg : System.FilePath := do
+  let oFile := pkg.buildDir / "c" / "grid_tape.o"
+  let srcJob ← inputTextFile <| pkg.dir / "c" / "grid_tape.c"
+  let weakArgs := #["-I", (← getLeanIncludeDir).toString]
+  buildO oFile srcJob weakArgs
+    #["-fPIC", "-O2", "-ffp-contract=off", "-frounding-math", "-fno-math-errno"] "cc"
+
+extern_lib librealfpgrid pkg := do
+  let o ← fetch <| pkg.target ``grid_tape.o
+  buildStaticLib (pkg.staticLibDir / nameToStaticLib "realfpgrid") #[o]
+
+/-- Native part of `RealFP.Grid` (no Mathlib), compiled to native code for `native_decide`. -/
+lean_lib RealFPGridNative where
+  globs := #[.andSubmodules `RealFPGridNative]
+  precompileModules := true
+
+/-- `import RealFPGrid`: soundness theorems and the `interval_grid` tactic (needs Mathlib). -/
+lean_lib RealFPGrid where
+  globs := #[.andSubmodules `RealFPGrid]
+
+/-- Examples for `RealFP.Grid` (`docs/GPU.md`); certificates in `RealFPGridExamples/certs/`. -/
+lean_lib RealFPGridExamples where
+  globs := #[.andSubmodules `RealFPGridExamples]
