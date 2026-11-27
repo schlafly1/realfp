@@ -478,6 +478,12 @@ Control). On a machine where Smart App Control is off (it is off on many
 machines, e.g. after an upgrade from Windows 10), native Windows may work; this is
 untested. Use WSL instead if you can.
 
+### Optional: GPU many-box proofs
+
+You do not need a GPU for realfp. If you have an NVIDIA GPU with CUDA, the opt-in
+`interval_grid` tactic and its `realfp-grid` search tool can prove some bounds that need
+billions of boxes. Without a GPU, they run on all your CPU cores. See [GPU.md](GPU.md).
+
 ---
 
 ## Learning Lean

@@ -1,5 +1,8 @@
 # GPU experiment: Interval64-style interval arithmetic on an NVIDIA GPU
 
+> The supported, opt-in successor of these experiments is `RealFP.Grid` / `realfp-grid`:
+> see [docs/GPU.md](../../docs/GPU.md).
+
 A deliberately GPU-friendly workload: prove a 2-D global bound by brute force on a
 uniform grid of up to 2^26 boxes, with the same branch-free interval code for every
 box. The GPU, one CPU core and all CPU cores run literally the same expression

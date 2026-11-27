@@ -748,6 +748,14 @@ example : (∫ x in (1 : ℝ)..2, sinc x) ∈ Set.Icc (0.655 : ℝ) 0.663 := by 
 
 ## 7. Troubleshooting, performance, limitations
 
+**Very many boxes.** Some bounds are tight on large regions in several variables. They need
+10⁵–10¹⁰ boxes, even with the derivative certificates, and are then too slow for `interval`.
+For these, the opt-in `interval_grid` tactic (`import RealFPGrid`) checks a bisection
+certificate with a multithreaded C checker under `native_decide`. The certificate can be
+found by the `realfp-grid` tool on a GPU or on all CPU cores. It handles polynomial,
+rational and `√` expressions only. See [GPU.md](GPU.md) for when it pays off (sometimes
+minutes instead of days) and for what it trusts.
+
 **Common problems**
 
 | symptom | fix |

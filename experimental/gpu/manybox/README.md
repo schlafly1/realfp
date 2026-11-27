@@ -1,5 +1,10 @@
 # manybox: GPU payoff on bisection searches with 10³–10⁷ boxes
 
+> **Now supported (opt-in):** this experiment grew into `RealFP.Grid`: the `interval_grid`
+> tactic, the C checker `RealFPMathlib/c/grid_tape.c`, and the search tool `grid/`
+> (`realfp-grid`, CUDA or CPU). See [docs/GPU.md](../../../docs/GPU.md). The files here are
+> kept as the original experiment and its measurements.
+
 Standalone experiment (not part of `lake build`). It runs one adaptive bisection search
 three ways: on one CPU core, on all CPU cores, and on the GPU. Then it hands the GPU's
 bisection tree to Lean as an untrusted certificate. Measured 2026-11-26.

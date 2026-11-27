@@ -6,6 +6,20 @@ between minor versions.
 
 ## Unreleased
 
+- **Opt-in GPU / many-box proofs**: [docs/GPU.md](docs/GPU.md). Nothing is added to the default
+  build, and the trust of existing proofs is unchanged.
+  - New Lean libraries `RealFPGridNative`, `RealFPGrid` and `RealFPGridExamples`, plus
+    `RealFPGridShowcase`, which is built by script.
+  - `interval_grid` tactic: plain bisection certificates, checked by a multithreaded C
+    checker (`c/grid_tape.c`) under one `native_decide`, with a soundness proof over `ℝ`.
+  - Options: certificate cache files; `(explore := true)` for the extremum and a point
+    where it is attained; `(export := …)`; `(use := thm)`. Also `#grid_export`.
+  - Standalone search tool `grid/` (`realfp-grid`): CUDA binary32/binary64 with run-time
+    compiled tapes, or multithreaded CPU. Modes `prove`, `split` and `minmax`.
+  - `grid/showcase.sh` + `grid/gen_lean.py` for certificates with 10⁸–10¹⁰ boxes: split
+    certificates, parallel Lean checks, and a checked glue proof.
+  - The experiment it grew from stays in `experimental/gpu/manybox/`.
+
 ## [0.1.1] — 2026-11-25
 
 Lean `leanprover/lean4:v4.36.0`, Mathlib `v4.36.0` (unchanged).

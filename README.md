@@ -111,6 +111,7 @@ you can also `#eval` interval expressions such as `Interval64.sqrt 2`.
 - [Reference](docs/REFERENCE.md) — operations, theorems, kernels, tactics, and precision 128
 - [Comparisons](docs/COMPARISONS.md) — FloatLib, LeanCert, and two research showcases
 - [Limitations](docs/LIMITATIONS.md) — known gaps
+- [GPU / many-box proofs](docs/GPU.md) — opt-in `interval_grid` and the `realfp-grid` search tool (CUDA or CPU) for problems needing 10⁵–10¹⁰ boxes; when to use it, trust, showcases
 - [Soundness](docs/SOUNDNESS.md) — what kernel and native mode trust, and how it is checked
 - [Philosophy](docs/PHILOSOPHY.md) — design rationale
 
