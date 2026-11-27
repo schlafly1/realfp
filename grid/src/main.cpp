@@ -71,25 +71,58 @@ static RunStatus solve(Ctx &C, const double *box, int l, BitW &w) {
 
 struct Job { int l0; std::string hex; };
 
-static RunStatus solve_top(Ctx &C, Engine *exact, const double *box, int l, int K, BitW &top,
-                           std::vector<Job> &jobs) {
-  if (l == K) {
-    BitW w; RunStatus r = solve(C, box, l, w);
-    if (r != RUN_OK) return r;
-    jobs.push_back({l, w.done()}); top.put(0); return RUN_OK;
+/* Bit reader over a hex certificate (missing bits = 0, as in the checker). */
+struct BitR {
+  const std::string &h; explicit BitR(const std::string &s) : h(s) {}
+  inline int at(uint64_t i) const {
+    uint64_t j = i / 4; if (j >= h.size()) return 0;
+    char c = h[j]; int v = (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10 : 0;
+    return (v >> (3 - i % 4)) & 1;
   }
-  double flo, fhi, plo, phi;
-  exact->eval_mm(box, 1, &flo, &fhi, &plo, &phi);
-  bool ok = !(flo != flo) && !(fhi != fhi) && (C.P->upper ? fhi <= C.P->c : C.P->c <= flo);
-  C.st.boxes++;
-  if (ok) { jobs.push_back({l, "0"}); top.put(0); C.st.leaves++; return RUN_OK; }
-  double Lb[2 * RFG_MAXD], Rb[2 * RFG_MAXD], m;
-  children(*C.P, box, l, Lb, Rb, m);
-  if (m != m) { C.fi.level = l; memcpy(C.fi.box, box, 2 * C.P->d * 8); C.fi.flo = flo; C.fi.fhi = fhi; return RUN_FAIL; }
-  top.put(1);
-  RunStatus a = solve_top(C, exact, Lb, l + 1, K, top, jobs);
-  if (a != RUN_OK) return a;
-  return solve_top(C, exact, Rb, l + 1, K, top, jobs);
+};
+static uint64_t skip_tree(const BitR &r, uint64_t pos) {
+  uint64_t pending = 1;
+  while (pending) { pending--; if (r.at(pos++)) pending += 2; }
+  return pos;
+}
+/* Split a certificate at depth K: the top tree (1 = split, 0 = sub-check) and the sub-checks
+   (`Top.sub l0 hex`: the subtree rooted at depth l0 <= K; a leaf above K is a sub-check "0"). */
+static void split_cert(const std::string &hex, int K, BitW &top, std::vector<Job> &jobs) {
+  BitR r(hex);
+  struct Fr { int l; };
+  std::vector<int> stk; stk.push_back(0);
+  uint64_t pos = 0;
+  while (!stk.empty()) {
+    int l = stk.back(); stk.pop_back();
+    if (l == K || !r.at(pos)) {
+      uint64_t q = (l == K) ? skip_tree(r, pos) : pos + 1;
+      BitW w; for (uint64_t i = pos; i < q; i++) w.put(r.at(i));
+      jobs.push_back({l, w.done()}); top.put(0); pos = q;
+    } else { top.put(1); pos++; stk.push_back(l + 1); stk.push_back(l + 1); }
+  }
+}
+
+static bool read_cert_line(const char *path, std::string &line) {
+  FILE *f = fopen(path, "rb"); if (!f) return false;
+  std::string cur; int ch;
+  line.clear();
+  while ((ch = fgetc(f)) != EOF) {
+    if (ch == '\n') { if (!cur.empty() && cur[0] != '#') { line = cur; break; } cur.clear(); }
+    else cur.push_back((char)ch);
+  }
+  if (line.empty() && !cur.empty() && cur[0] != '#') line = cur;
+  fclose(f); return !line.empty();
+}
+
+static bool write_split(const char *out, const Problem &P, const std::string &info, BitW &top,
+                        std::vector<Job> &jobs) {
+  FILE *f = fopen(out, "wb");
+  if (!f) return false;
+  fprintf(f, "# realfp-grid split certificate v1\n# problem fnv %016llx\n# %s\n", (unsigned long long)P.fnv, info.c_str());
+  fprintf(f, "top %s\n", top.done().c_str());
+  for (auto &j : jobs) fprintf(f, "job %d %s\n", j.l0, j.hex.c_str());
+  fclose(f);
+  return true;
 }
 
 static void usage() {
@@ -97,6 +130,7 @@ static void usage() {
     "usage: realfp-grid info\n"
     "       realfp-grid prove PROBLEM -o CERT [--engine auto|cpu|gpu|gpu32|gpu64] [--depth N]\n"
     "                         [--max-boxes N] [--cap N] [--threads N] [--split K] [-v]\n"
+    "       realfp-grid split PROBLEM CERT K -o SPLITCERT\n"
     "       realfp-grid minmax PROBLEM [--max] [--engine E] [--depth N] [--cap N] [--tol X] [--time S]\n");
   exit(2);
 }
@@ -120,6 +154,20 @@ int main(int argc, char **argv) {
   if (mode == "info") {
     std::string d; bool g = gpu_available(d);
     printf("realfp-grid 1\nengines: cpu-fp64%s\ngpu: %s\n", g ? ", gpu-fp32, gpu-fp64" : "", d.c_str());
+    return 0;
+  }
+  if (mode == "split") {
+    if (argc != 7 || strcmp(argv[5], "-o") != 0) usage();
+    Problem P; std::string err;
+    if (!read_problem(argv[2], P, err)) { fprintf(stderr, "realfp-grid: %s\n", err.c_str()); return 2; }
+    std::string hex;
+    if (!read_cert_line(argv[3], hex)) { fprintf(stderr, "realfp-grid: cannot read %s\n", argv[3]); return 2; }
+    int K = atoi(argv[4]);
+    double t0 = now();
+    BitW top; std::vector<Job> jobs;
+    split_cert(hex, K, top, jobs);
+    if (!write_split(argv[6], P, std::string("split of ") + argv[3], top, jobs)) { fprintf(stderr, "realfp-grid: cannot write %s\n", argv[6]); return 2; }
+    printf("OK: %zu sub-checks (depth %d), %.3f s -> %s\n", jobs.size(), K, now() - t0, argv[6]);
     return 0;
   }
   if (argc < 3) usage();
@@ -154,10 +202,7 @@ int main(int argc, char **argv) {
     if (o.cap == 0 && strncmp(E->name(), "cpu", 3) == 0) o.cap = 1ull << 24;
     Ctx C; C.P = &P; C.E = E; C.o = o; C.maxLevel = o.maxDepth;
     double t0 = now();
-    BitW w; std::vector<Job> jobs; BitW top; RunStatus r;
-    Engine *exact = make_cpu(P, o);
-    if (K >= 0) r = solve_top(C, exact, box, 0, K, top, jobs);
-    else r = solve(C, box, 0, w);
+    BitW w; RunStatus r = solve(C, box, 0, w);
     double t1 = now();
     if (r != RUN_OK) {
       if (C.fi.level < 0) printf("FAIL: box budget %llu exhausted after %.3f s\n", (unsigned long long)o.maxBoxes, t1 - t0);
@@ -171,19 +216,22 @@ int main(int argc, char **argv) {
       }
       return 1;
     }
+    char info[512];
+    snprintf(info, sizeof info, "engine %s, %llu boxes, %llu leaves, max level %d, %d runs, %.3f s", E->name(),
+             (unsigned long long)C.st.boxes, (unsigned long long)C.st.leaves, C.st.maxLevel, C.runs, t1 - t0);
+    std::string hex = w.done();
+    if (K >= 0) {
+      BitW top; std::vector<Job> jobs;
+      split_cert(hex, K, top, jobs);
+      if (!write_split(out, P, info, top, jobs)) { fprintf(stderr, "realfp-grid: cannot write %s\n", out); return 2; }
+      printf("OK: %s, %zu sub-checks (split at depth %d) -> %s\n", info, jobs.size(), K, out);
+      return 0;
+    }
     FILE *f = fopen(out, "wb");
     if (!f) { fprintf(stderr, "realfp-grid: cannot write %s\n", out); return 2; }
-    fprintf(f, "# realfp-grid certificate v1\n# problem fnv %016llx\n", (unsigned long long)P.fnv);
-    fprintf(f, "# engine %s, %llu boxes, %llu leaves, max level %d, %d runs, %.3f s\n", E->name(),
-            (unsigned long long)C.st.boxes, (unsigned long long)C.st.leaves, C.st.maxLevel, C.runs, t1 - t0);
-    if (K >= 0) {
-      fprintf(f, "top %s\n", top.done().c_str());
-      for (auto &j : jobs) fprintf(f, "job %d %s\n", j.l0, j.hex.c_str());
-    } else fprintf(f, "%s\n", w.done().c_str());
+    fprintf(f, "# realfp-grid certificate v1\n# problem fnv %016llx\n# %s\n%s\n", (unsigned long long)P.fnv, info, hex.c_str());
     fclose(f);
-    printf("OK: %s, %llu boxes, %llu leaves, max level %d, %.3f s%s -> %s\n", E->name(),
-           (unsigned long long)C.st.boxes, (unsigned long long)C.st.leaves, C.st.maxLevel, t1 - t0,
-           K >= 0 ? (", " + std::to_string(jobs.size()) + " jobs").c_str() : "", out);
+    printf("OK: %s -> %s\n", info, out);
     return 0;
   }
 

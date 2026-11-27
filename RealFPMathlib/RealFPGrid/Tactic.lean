@@ -253,14 +253,24 @@ partial def gridCore (cfg : GCfg) : TacticM Unit := do
   | _ => throwError "interval_grid: unsupported goal {t}; expected `f ≤ g` or `f ≥ g` over ℝ \
       (variables bounded in context), or a conjunction of these"
 
+/-- Introduce the variables, normalise the hypotheses, prove. -/
+def runGrid (cfg : GCfg) : TacticM Unit := do
+  liftMetaTactic fun g => do
+    let (_, g) ← g.introNP (getIntrosSize (← instantiateMVars (← g.getType)))
+    return [g]
+  evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
+    ge_iff_le, gt_iff_lt] at *))
+  evalTactic (← `(tactic| try casesm* _ ∧ _))
+  gridCore cfg
+
 /-- `interval_grid` (options in any order): `(cert := "file")`, `(tool := auto|none|cpu|gpu|gpu32|gpu64)`,
 `(depth := n)`, `(maxBoxes := n)`, `(explore := true)`, `(export := "file")`, `(use := thm)`.
 See the module docstring and `docs/GPU.md`. -/
 syntax (name := intervalGridTac) "interval_grid" (ppSpace gridOpt)* : tactic
 
-@[tactic intervalGridTac] def evalIntervalGrid : Tactic := fun stx => do
+def parseOpts (opts : Array Syntax) : CoreM GCfg := do
   let mut cfg : GCfg := {}
-  for o in stx[1].getArgs do
+  for o in opts do
     let k := o[1].getId
     let v := o[3]
     if k == `depth then cfg := { cfg with depth := v.isNatLit?.getD 0 }
@@ -280,12 +290,26 @@ syntax (name := intervalGridTac) "interval_grid" (ppSpace gridOpt)* : tactic
     else if k == `use then cfg := { cfg with use? := some (← realizeGlobalConstNoOverloadWithInfo v) }
     else throwErrorAt o "interval_grid: unknown option {k} (expected cert, tool, depth, maxBoxes, \
       explore, export, use)"
-  liftMetaTactic fun g => do
-    let (_, g) ← g.introNP (getIntrosSize (← instantiateMVars (← g.getType)))
-    return [g]
-  evalTactic (← `(tactic| try simp only [Set.mem_Icc, Set.mem_Ioo, Set.mem_Ico, Set.mem_Ioc,
-    ge_iff_le, gt_iff_lt] at *))
-  evalTactic (← `(tactic| try casesm* _ ∧ _))
-  gridCore cfg
+  return cfg
+
+@[tactic intervalGridTac] def evalIntervalGrid : Tactic := fun stx => do
+  runGrid (← parseOpts stx[1].getArgs)
+
+/-- `#grid_export "file.problem" : statement` writes the problem file for `realfp-grid` and its
+Lean source (`file.problem.lean.txt`, for `grid/gen_lean.py`), without proving anything. -/
+syntax (name := gridExportCmd) "#grid_export " str " : " term : command
+
+open Command in
+@[command_elab gridExportCmd] def elabGridExport : CommandElab := fun stx => liftTermElabM do
+  let some p := stx[1].isStrLit? | throwError "#grid_export: expected a file name"
+  let ty ← Term.elabType stx[3]
+  Term.synthesizeSyntheticMVarsNoPostponing
+  let ty ← instantiateMVars ty
+  let g ← mkFreshExprMVar ty
+  try
+    discard <| Tactic.run g.mvarId! (runGrid { export? := some p })
+  catch ex =>
+    let msg ← ex.toMessageData.toString
+    if msg.startsWith "interval_grid: wrote" then logInfo m!"{msg}" else throw ex
 
 end RealFP.Grid.Tac

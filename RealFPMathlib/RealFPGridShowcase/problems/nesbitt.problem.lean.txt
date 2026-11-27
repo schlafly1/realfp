@@ -1,0 +1,5 @@
+-- problem written by interval_grid (export := ...); fnv 5cdc02594ba863f3
+e : (.add (.add (.div (.var 0) (.add (.var 1) (.var 2))) (.div (.var 1) (.add (.var 2) (.var 0)))) (.div (.var 2) (.add (.var 0) (.var 1))))
+bs : [((1 / 1 : Rat), (3 / 1 : Rat)), ((1 / 1 : Rat), (3 / 1 : Rat)), ((1 / 1 : Rat), (3 / 1 : Rat))]
+c : (95 / 64 : Rat)
+upper : false

@@ -1,4 +1,5 @@
 import RealFPGridNative.Basic
+import Std.Data.HashMap
 
 /-! # RealFP.Grid: the C batch checker and split certificates (Mathlib-free, precompiled)
 
@@ -21,30 +22,56 @@ open Interval64 Interval64.KF
 
 namespace RealFP.Grid
 
-/-- Tape opcodes: 0 var, 1 const, 2 add, 3 sub, 4 mul, 5 neg, 6 pow, 7 div, 8 sqrt. -/
-abbrev TapeSt := Array UInt32 × Array Float
+/-- Tape opcodes: 0 var, 1 const, 2 add, 3 sub, 4 mul, 5 neg, 6 pow, 7 div, 8 sqrt.
+State: instructions, constants, and the register of every subexpression already emitted
+(common subexpressions are computed once; the key spells constants by their bit patterns). -/
+abbrev TapeSt := Array UInt32 × Array Float × Std.HashMap String Nat
 
-def emit (op a b : Nat) : StateT TapeSt Option Nat := do
-  let (code, ks) ← get
+def emit (key : String) (op a b : Nat) : StateT TapeSt Option Nat := do
+  let (code, ks, memo) ← get
   if a < 2 ^ 32 ∧ b < 2 ^ 32 then
-    set (code.push op.toUInt32 |>.push a.toUInt32 |>.push b.toUInt32, ks)
-    return code.size / 3
+    let r := code.size / 3
+    set (code.push op.toUInt32 |>.push a.toUInt32 |>.push b.toUInt32, ks, memo.insert key r)
+    return r
   else failure
 
-def tapeAux : FExpr → StateT TapeSt Option Nat
-  | .var i => emit 0 i 0
+/-- Emit `fe` (or reuse its register); returns the register and the subexpression's key. -/
+partial def tapeAux : FExpr → StateT TapeSt Option (Nat × String)
+  | .var i => leaf s!"v{i}" (emit s!"v{i}" 0 i 0)
   | .const I => do
-      let (code, ks) ← get
-      set (code, ks.push I.lo |>.push I.hi)
-      emit 1 (ks.size / 2) 0
-  | .add a b => do let x ← tapeAux a; let y ← tapeAux b; emit 2 x y
-  | .sub a b => do let x ← tapeAux a; let y ← tapeAux b; emit 3 x y
-  | .mul a b => do let x ← tapeAux a; let y ← tapeAux b; emit 4 x y
-  | .neg a => do let x ← tapeAux a; emit 5 x 0
-  | .pow a n => do let x ← tapeAux a; emit 6 x n
-  | .div a b => do let x ← tapeAux a; let y ← tapeAux b; emit 7 x y
-  | .sqrt a => do let x ← tapeAux a; emit 8 x 0
+      let key := s!"k{I.lo.toBits}:{I.hi.toBits}"
+      leaf key do
+        let (code, ks, memo) ← get
+        set (code, ks.push I.lo |>.push I.hi, memo)
+        emit key 1 (ks.size / 2) 0
+  | .add a b => bin "+" 2 a b
+  | .sub a b => bin "-" 3 a b
+  | .mul a b => bin "*" 4 a b
+  | .div a b => bin "/" 7 a b
+  | .neg a => do
+      let (x, ka) ← tapeAux a
+      let key := s!"(n{ka})"
+      leaf key (emit key 5 x 0)
+  | .pow a n => do
+      let (x, ka) ← tapeAux a
+      let key := s!"(^{ka} {n})"
+      leaf key (emit key 6 x n)
+  | .sqrt a => do
+      let (x, ka) ← tapeAux a
+      let key := s!"(r{ka})"
+      leaf key (emit key 8 x 0)
   | _ => failure
+where
+  leaf (key : String) (mk : StateT TapeSt Option Nat) : StateT TapeSt Option (Nat × String) := do
+    let (_, _, memo) ← get
+    match memo[key]? with
+    | some r => return (r, key)
+    | none => return (← mk, key)
+  bin (s : String) (op : Nat) (a b : FExpr) : StateT TapeSt Option (Nat × String) := do
+    let (x, ka) ← tapeAux a
+    let (y, kb) ← tapeAux b
+    let key := s!"({s}{ka} {kb})"
+    leaf key (emit key op x y)
 
 def u32le (b : ByteArray) (x : UInt32) : ByteArray :=
   b.push x.toUInt8 |>.push (x >>> 8).toUInt8 |>.push (x >>> 16).toUInt8 |>.push (x >>> 24).toUInt8
@@ -52,8 +79,11 @@ def u32le (b : ByteArray) (x : UInt32) : ByteArray :=
 /-- The instructions `(op, a, b)` and the constant pool (lo, hi pairs), or `none` if the
 expression has an operation the C checker does not implement (or more than 4096 nodes). -/
 def tapeOf (fe : FExpr) : Option (Array UInt32 × Array Float) :=
-  match (tapeAux fe).run (#[], #[]) with
-  | some (_, (code, ks)) => if code.size ≤ 3 * 4096 then some (code, ks) else none
+  match (tapeAux fe).run (#[], #[], {}) with
+  | some ((r, _), (code, ks, _)) =>
+    -- the value is the last register (it is: a fresh root is emitted last, and a root equal to an
+    -- earlier subexpression is impossible since it contains every subexpression)
+    if code.size ≤ 3 * 4096 && r + 1 == code.size / 3 then some (code, ks) else none
   | none => none
 
 /-- Flat tape (12 bytes per instruction, little-endian) and constant pool. -/
