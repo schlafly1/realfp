@@ -6,6 +6,10 @@
 
 - `snippets/PaperSnippets.lean`: every Lean snippet in the paper; `make snippets`
   checks them (all kernel-checked, standard axioms, except the one `trust := native` demo).
+- `snippets/PaperGridSnippets.lean` (+ its certificate cache `snippets/certs/`): the
+  `interval_grid` snippets (opt-in GPU module, native_decide); check with
+  `cd RealFPMathlib && lake build RealFPGrid && lake lean ../paper/snippets/PaperGridSnippets.lean`.
+  Table 4 (grid timings, DGX Spark, 2026-11-27) is taken from docs/GPU.md.
 - `bench/`: raw logs and goal files behind the benchmark tables (2026-11-25 unless the
   file name says otherwise; 8-vCPU Xeon VM with AVX-512, Lean/Mathlib v4.36.0, realfp 61f8eef).
   - `kernel-vs-native-*.txt`, `goals-kn/`: Table 1 (`goals-kn/run.sh`).

@@ -85,7 +85,11 @@ base for speed on very large certificates, and a 128-bit dyadic mode gives
 about 38 significant digits. Beyond plain bisection, \realfp{} uses derivative
 and monotonicity certificates, Krawczyk's operator, Taylor-model quadrature,
 exact rational $LDL^{\mathsf T}$ factorizations, and a second-order
-certificate for bounds that are attained at interior points. We describe the
+certificate for bounds that are attained at interior points. An opt-in
+module adds plain-bisection proofs with $10^8$--$10^{10}$ boxes: an untrusted
+CUDA or multithreaded CPU search writes a certificate that a compiled C
+checker re-verifies in Lean, turning such bounds into theorems in minutes.
+We describe the
 design, state the soundness theorems, give examples, compare with Arb/FLINT,
 CoqInterval, FloatLib and LeanCert, and report benchmarks.
 \end{abstract}
@@ -134,6 +138,11 @@ Both theorems are checked by the Lean kernel and depend only on
 \item An assurance story aimed at users: no \lean{sorry}, a build-time axiom
   audit of every theorem, bit-for-bit differential tests of the C runtime,
   and continuous integration (\cref{sec:assurance}).
+\item An opt-in GPU module, \lean{interval\_grid}: untrusted CUDA or
+  multicore search for very large bisection certificates, re-checked in Lean
+  by a compiled checker with a soundness proof over $\R$; it proves
+  8-variable polynomial bounds needing $10^{10}$ nodes in about ten minutes
+  (\cref{sec:grid}).
 \item Benchmarks against other Lean tools and a downstream re-verification
   of a published formal proof (\cref{sec:bench}).
 \end{itemize}
@@ -320,7 +329,8 @@ default floating-point environment (no flush-to-zero).
 \end{corollary}
 The corollary is not a Lean theorem but a statement about what
 \lean{\#print axioms} reports; it is enforced mechanically by the axiom audit
-described in \cref{sec:assurance}.
+described in \cref{sec:assurance}. The opt-in grid module of
+\cref{sec:grid} always uses native checking, with its own compiled checker.
 
 The other certificate families have soundness theorems of the same shape.
 We list the mathematical content.
@@ -682,6 +692,162 @@ CPU-hours. Kernel mode is the default, but it is not free, and the
 appropriate trust level depends on the size of the computation.
 
 
+\section{GPU search and compiled certificate checking}\label{sec:grid}
+
+Some true inequalities are tight on large parts of the box: the minimum is
+attained, or nearly attained, on curves or surfaces, there are several
+variables, and the margin is small. Derivative tests then remove few boxes,
+and a proof needs $10^5$ to $10^{10}$ boxes of plain bisection, each running
+the same few operations. This is work a GPU does well. The opt-in module
+\lean{RealFP.Grid} (unreleased at the time of writing; documented in
+\texttt{docs/GPU.md}) provides it without adding the GPU to the trusted base.
+Nothing in it is part of the default build, and a file that does not import
+\lean{RealFPGrid} cannot depend on it.
+
+\paragraph{Design.} The work is split, as elsewhere in \realfp{}, into an
+untrusted search and a trusted check. The bisection tree is fixed in
+advance: a box is split at the binary64 midpoint
+$\mathrm{lo}\cdot0.5+\mathrm{hi}\cdot0.5$ in variable $\ell\bmod d$ at level
+$\ell$. A \emph{certificate} is one bit per node of this tree, $1$ for a
+split and $0$ for a leaf on which the interval enclosure of the expression
+proves the bound. The goal's expression is compiled to a straight-line
+tape, with common subexpressions shared.
+\begin{itemize}[nosep]
+\item \emph{Search.} A standalone C++ program, \lean{realfp-grid}, finds
+  the certificate. Its engines are \lean{cpu} (binary64 on all cores, with
+  the checker's arithmetic), \lean{gpu64} (CUDA~\cite{cuda} binary64 with
+  the directed-rounding intrinsics such as \lean{\_\_dadd\_rd}) and
+  \lean{gpu32} (CUDA binary32, rounded outward; faster but wider). On the
+  GPU the tape is compiled at run time with NVRTC~\cite{nvrtc} into
+  straight-line code. All engines walk the checker's tree; \lean{cpu} and
+  \lean{gpu64} produce bit-identical certificates. Without the tool,
+  \lean{interval\_grid} uses a built-in single-threaded search, about
+  $1.6\cdot10^5$ boxes per second (Nesbitt's inequality below, about
+  $2.8\cdot10^5$ nodes, in 1.75\,s on the x86 machine of \cref{sec:bench}).
+\item \emph{Check.} A multithreaded C checker of about 390 lines
+  (\lean{c/grid\_tape.c}), linked by \lean{@[implemented\_by]} to its Lean
+  specification \lean{checkGridSpec}, walks the same tree, recomputes every
+  box and its binary64 outward-rounded enclosure with \realfp{}'s interval
+  kernels, and confirms every leaf. It runs under one \lean{native\_decide}.
+\end{itemize}
+
+\begin{theorem}[Grid soundness; \lean{Grid.prove\_le}, \lean{prove\_ge}]
+\label{thm:grid}
+Let $e$ be an expression in $d$ variables, $B$ a box with rational
+endpoints, $c\in\Q$ and $h$ a certificate. If
+$\lean{checkGrid}(\lean{compile}\ e,\ c,\ d,\ h,\ B)=\lean{true}$, then
+$e.\lean{denote}(x)\le c$ for every $x\in B$ (and similarly for $\ge$).
+\end{theorem}
+The proof goes through a Lean checker over the kernel mirrors of
+\cref{sec:kernel} and the certificate theorem \cref{thm:cert}, so a wrong
+or forged certificate can only make the check return \lean{false}.
+
+\paragraph{Trust.} \lean{\#print axioms} on an \lean{interval\_grid} theorem
+lists the three standard axioms and one generated \lean{native\_decide}
+axiom per check. In the terms of \cref{cor:trust}, such a theorem trusts the
+Lean compiler, the agreement of the C checker with \lean{checkGridSpec}, and
+\realfp{}'s binary64 C kernels, which the checker calls. The GPU, the CPU
+search, the certificate file and any generated Lean files are not trusted.
+The checker is tested against its specification by mutation tests and
+3000 random expressions, on x86-64 (AVX-512 backend) and aarch64 (RN plus
+error term). Continuous integration builds the grid libraries and a CPU-only
+\lean{realfp-grid} on both architectures and checks that the tool
+reproduces a committed certificate; the CUDA engine is not built in CI.
+
+\paragraph{Workflow.} A first call with \lean{(explore := true)} proves
+nothing and always fails; its message gives a rigorous enclosure of the
+extremum, a point where it is (nearly) attained, and the time taken. This
+alone is useful as rigorous exploration, with trust in the search code
+only. A proof then caches its certificate next to the Lean file, keyed by a
+hash of the problem, so later builds and other users need neither the
+search nor a GPU:
+\begin{lstlisting}
+example : ∀ x ∈ Set.Icc (-1 : ℝ) 1, ∀ y ∈ Set.Icc (-1 : ℝ) 1,
+    x * y - x ^ 2 ≤ 1 / 4 + 1 / 1000 := by
+  interval_grid (explore := true)   -- fails, reporting the maximum
+theorem nesbitt (a b c : ℝ) (ha : 1 ≤ a) (ha' : a ≤ 3) (hb : 1 ≤ b)
+    (hb' : b ≤ 3) (hc : 1 ≤ c) (hc' : c ≤ 3) :
+    3 / 2 - 1 / 64 ≤ a / (b + c) + b / (c + a) + c / (a + b) := by
+  interval_grid (cert := "certs/nesbitt.cert")
+\end{lstlisting}
+Other options choose the engine (\lean{tool := auto}, \lean{none},
+\lean{cpu}, \lean{gpu32}, \lean{gpu64}), the depth and a box budget;
+\lean{(export := "P.problem")} and \lean{\#grid\_export} write a problem file
+for the command-line tool, whose \lean{minmax} mode explores with a time
+limit. A failing proof reports the box where it got stuck and, if the bound
+is false at its midpoint, a rigorously checked counterexample.
+
+\paragraph{Very large certificates.} A certificate with $10^{10}$ bits is too
+big for one Lean term and too slow for one process. A driver script splits it
+at depth $K$ into a top tree and up to $2^K$ sub-certificates, writes one
+Lean module per group of sub-certificates, each closed by its own
+\lean{native\_decide}, and lets Lake check the groups in parallel. A glue
+module proves, partly by kernel evaluation, that the leaves of the top tree
+are exactly the groups' boxes, and the final theorem, stated in ordinary
+notation, is closed by \lean{interval\_grid (use := bound)}, which checks
+that the stored bound is about the same expression, box and constant.
+
+\paragraph{When to use it.} \lean{interval\_grid} supports $+$, $-$, $\times$,
+$/$, negation, $\sqrt{\ }$ and natural powers, goals $\le$ and $\ge$ (and
+conjunctions) on boxes in up to 16 variables, and plain bisection only.
+The front-door tactic remains the first choice: it is kernel-checked by
+default, handles transcendental functions, and its derivative and touching
+certificates often cut the box count by orders of magnitude; it ran at about
+20--60 boxes per second on the 6--8-variable problems below. The grid module
+pays off when \lean{interval} fails, the margin is small and the dimension is
+roughly 4 to 8, where the box count grows like $\delta^{-k}$ in the margin
+$\delta$.
+
+\begin{table}[t]
+\centering\small
+\caption{\lean{realfp-grid} search times (seconds, as reported by the tool)
+on a DGX Spark (GB10 GPU, 48 SMs, CUDA~13.0; 10 Cortex-X925 + 10
+Cortex-A725 cores; measured 2026-11-27 while another user's job was
+running). Nodes are certificate bits.}
+\label{tab:grid}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Goal on $[-1,1]^d$ & nodes & GPU fp32 & GPU fp64 & CPU 20 thr. & CPU 1 thr.\\
+\midrule
+R8 $\ge -12$  & $3.9\cdot10^8$  & 3.3  & 5.5  & 40.6 & 290 \\
+R8 $\ge -10$  & $2.0\cdot10^9$  & 21.9 & 33.9 & 173  & --- \\
+R8 $\ge -9$   & $1.07\cdot10^{10}$ & 112 & 176 & 914 & --- \\
+M6 $\ge -1/2$ & $3.2\cdot10^8$  & 2.5  & 3.4  & 16.7 & 115 \\
+M6 $\ge -3/8$ & $1.5\cdot10^9$  & 6.8  & 11.2 & 83.2 & --- \\
+M6 $\ge -1/4$ & $1.3\cdot10^{10}$ & 90.0 & 129 & 817 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Measurements.} \Cref{tab:grid} uses two polynomial goals:
+R8, $\sum_{i=1}^8 T_4(x_i)T_4(x_{i+1})\ge c$ on $[-1,1]^8$ (indices mod 8,
+$T_4$ the Chebyshev polynomial; true minimum $-8$, attained at irrational
+points), and M6, $x_6^{12}+P\sum_{i\le5}x_i^2-6x_6^2P\ge c$ on $[-1,1]^6$
+with $P=x_1^2\cdots x_5^2$, a form built from the arithmetic--geometric
+inequality in the manner of Motzkin and Reznick~\cite{motzkin1967,reznick1989}
+(minimum $0$, attained). Against all 20 CPU threads the GPU is 7--12$\times$
+faster in binary32 and 5--7$\times$ in binary64, and 46--87$\times$ faster
+than one thread. The $10^{10}$-node searches need about 42\,GB of host memory.
+End to end, with the binary64 GPU search, the split into 256 groups, their
+parallel check (379\,s and 257\,s), glue and final theorem, R8~$\ge-9$
+(5.3$\cdot10^9$ leaves) becomes a Lean theorem in 611\,s and M6~$\ge-1/4$
+(6.5$\cdot10^9$ leaves) in 464\,s; each depends on the standard axioms and
+256 \lean{native\_decide} axioms. With the CPU search instead, the sum of the
+measured steps is about 22 and 18 minutes. By contrast,
+\lean{interval (trust := native)} with a 3000-box budget gave up on the
+easiest rows after 145\,s and 48\,s; at its measured rate, the
+$1.9\cdot10^8$ and $1.6\cdot10^8$ leaves of the plain-bisection
+certificates for those rows would take months (an extrapolation). Most of
+the gain comes from plain bisection with a compiled multithreaded checker;
+the GPU makes the search another 5--12$\times$ faster.
+
+\paragraph{Limitations of the module.} No transcendental functions, no strict
+inequalities (prove a slightly tighter $\le$), no kernel-only mode (the
+kernel checks about 15 boxes per second), at most 16 variables and 4096 tape
+instructions (1024 in the tool), and little-endian hosts only. It was tested
+on Linux x86-64 (CPU) and aarch64 (CPU and CUDA, on the GB10 only); macOS,
+Windows and other GPUs are untested.
+
 \section{Assurance}\label{sec:assurance}
 
 \paragraph{No \lean{sorry}; axiom audit.} The default build of the Mathlib
@@ -708,8 +874,9 @@ true enclosure is rejected in both modes.
 \paragraph{Continuous integration.} Every push to the main branch builds
 the core library and proofs, runs the tests and both axiom audits, and
 compiles every tutorial snippet (about 11--16 minutes on GitHub-hosted
-runners, using the portable backend); the slow example files and the full
-audit run weekly.
+runners, using the portable backend), on x86-64 and on aarch64; both jobs also
+build the grid module and a CPU-only search tool; the slow example files and
+the full audit run weekly.
 
 \paragraph{Size.} The library consists of about 51{,}000 lines of Lean in
 187 files and about 3{,}300 lines of C, plus the unmodified CORE-MATH
@@ -788,7 +955,8 @@ repository.
   of bisection grows quickly with the number of variables and with
   cancellation in the expression. Derivative, centred-form and touching
   certificates reduce the number of boxes greatly, but goals in more than a
-  handful of variables need problem-specific structure.
+  handful of variables need problem-specific structure or, for polynomial
+  and rational goals, the native grid module of \cref{sec:grid}.
 \item \emph{Kernel cost.} A kernel-checked elementary function evaluation
   costs roughly 0.1\,s for $\log$ and 0.5\,s for $\sin$ or $\cos$, so tight
   trigonometric bounds needing many boxes can be slow or exceed heartbeat
@@ -813,7 +981,8 @@ repository.
   \lean{v4.36.0}. On x86-64 the default backend needs AVX-512F and gcc;
   other machines use the portable backend.
 \item \emph{Native mode.} In native mode the C runtime is trusted on the
-  strength of testing, not proof.
+  strength of testing, not proof. The same holds for the grid module's
+  checker, whose CUDA search engine has been tested on one GPU only.
 \end{itemize}
 
 
@@ -836,7 +1005,8 @@ checking in the kernel. Floating-point arithmetic is precisely specified by
 IEEE~754, so it can be modelled exactly in a proof assistant; directed
 rounding makes it rigorous; and the search/check split lets the fast,
 unverified part do the hard work of finding certificates while only a small
-verified checker has to be trusted. For a mathematician with a numerical
+verified checker has to be trusted. The same split lets a GPU do the search
+for certificates with billions of boxes, while Lean re-checks them. For a mathematician with a numerical
 lemma inside a formal proof, the result is a tactic that is usually one
 line, usually takes seconds, and produces a theorem with the same axioms as
 the rest of Mathlib.
