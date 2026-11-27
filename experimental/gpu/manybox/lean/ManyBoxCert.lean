@@ -1,4 +1,5 @@
 import RealFPMathlib
+import ManyBoxFast
 
 /-! Shared part of the manybox Lean check (see `../README.md`).
 
@@ -177,5 +178,76 @@ theorem proveF_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : Cert)
     (h : checkF e (gGe (KI.ofRat c).hi) cert (boxes bs) = true) (xs : List ℝ)
     (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs :=
   RealFP.prove_ge e bs c cert (checkF_sound e _ (gGe_canon _) cert _ (boxes_wf bs) h) xs hxs
+
+end ManyBox
+
+/-! ### `checkC`: `checkF` precompiled (`fast/ManyBoxFast.lean`)
+
+Same definition as `checkF`, but in a Mathlib-free module built with `precompileModules`, so
+`native_decide` runs it (and the decoder `decodeCertC`) as native code. -/
+
+namespace ManyBox
+open Interval64 Interval64.KF RealFP.IntervalTactic
+
+theorem evalC_eq {env : List KI} (h : ∀ X ∈ env, WF X) (e : IExpr) :
+    evalC env e = ⟨canon (evalK env e).lo, canon (evalK env e).hi⟩ := by
+  have hK := evalK_toI h e
+  have hm : (env.map fun X => (⟨toFlC X.lo, toFlC X.hi⟩ : Interval64)) = env.map toI := rfl
+  have h1 : evalI (env.map fun X => (⟨toFlC X.lo, toFlC X.hi⟩ : Interval64)) e = toI (evalK env e) := by
+    rw [hm, hK.1]
+  unfold evalC
+  simp only [h1]
+  show KI.mk (toF (evalK env e).lo).toBits.toNat (toF (evalK env e).hi).toBits.toNat = _
+  rw [toNat_toBits_toF hK.2.1, toNat_toBits_toF hK.2.2]
+
+theorem checkC_sound (e : IExpr) (g : KI → Bool) (hg : CanonOK g) :
+    ∀ (c : Cert) (env : List KI), (∀ X ∈ env, WF X) → checkC e g c env = true →
+      checkK e g c env = true := by
+  intro c
+  induction c with
+  | leaf =>
+    intro env hwf h
+    simp only [checkC, checkK] at *
+    rw [evalC_eq hwf] at h
+    exact hg _ _ h
+  | split i m l r ihl ihr =>
+    intro env hwf h
+    simp only [checkC, checkK, Bool.and_eq_true] at *
+    obtain ⟨⟨⟨hn, hm⟩, hl⟩, hr⟩ := h
+    have hm' : m < 2 ^ 64 := Nat.blt_eq ▸ hm
+    have hwi := getD_wf hwf i
+    refine ⟨⟨⟨hn, hm⟩, ihl _ (set_wf hwf i ⟨hwi.1, hm'⟩) hl⟩, ihr _ (set_wf hwf i ⟨hm', hwi.2⟩) hr⟩
+
+theorem proveC_le (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : Cert)
+    (h : checkC e (gLe (KI.ofRat c).lo) cert (boxes bs) = true) (xs : List ℝ)
+    (hxs : RealFP.InBoxes xs bs) : e.denote xs ≤ (c : ℝ) :=
+  RealFP.prove_le e bs c cert (checkC_sound e _ (gLe_canon _) cert _ (boxes_wf bs) h) xs hxs
+
+theorem proveC_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : Cert)
+    (h : checkC e (gGe (KI.ofRat c).hi) cert (boxes bs) = true) (xs : List ℝ)
+    (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs :=
+  RealFP.prove_ge e bs c cert (checkC_sound e _ (gGe_canon _) cert _ (boxes_wf bs) h) xs hxs
+
+end ManyBox
+
+/-! ### `checkC3`: precompiled, constants rounded once, Float boxes (`fast/ManyBoxFast.lean`)
+
+`checkC3 (compile e) g cert ((boxes bs).map toIC) = checkC e g cert (boxes bs)` by
+`checkC3_map` and `checkC2_compile` (both proved in the fast module). -/
+
+namespace ManyBox
+open Interval64 Interval64.KF
+
+theorem proveC3_le (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : Cert)
+    (h : checkC3 (compile e) (gLe (KI.ofRat c).lo) cert ((boxes bs).map toIC) = true) (xs : List ℝ)
+    (hxs : RealFP.InBoxes xs bs) : e.denote xs ≤ (c : ℝ) := by
+  rw [checkC3_map, checkC2_compile] at h
+  exact proveC_le e bs c cert h xs hxs
+
+theorem proveC3_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (cert : Cert)
+    (h : checkC3 (compile e) (gGe (KI.ofRat c).hi) cert ((boxes bs).map toIC) = true) (xs : List ℝ)
+    (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs := by
+  rw [checkC3_map, checkC2_compile] at h
+  exact proveC_ge e bs c cert h xs hxs
 
 end ManyBox

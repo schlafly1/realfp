@@ -118,6 +118,89 @@ and `Quot.sound`, plus one `native_decide` axiom for the native variants.
   about 2.5·10⁴–1·10⁵ nodes/s. The last is limited by Lean's interpreter walking the tree,
   because `ManyBoxCert` is not precompiled; the C evaluation itself is about 0.1 µs/box.
 
+## Precompiled checker (`lean/fast/`, `checkC3`)
+
+`lean/fast/` is a small Mathlib-free Lake package that depends on the realfp core through a
+path and is built with `precompileModules := true`. It contains the decoder and three
+compiled checkers:
+
+* **`checkC`:** `checkF`, compiled. Precompiling it alone changed nothing: P1 δ=1 took 1.62 s
+  against 1.65 s. Profiling showed why. `evalI` rounds every rational constant with exact
+  rational arithmetic (`ofRat q`) on every leaf, at about 73 µs per evaluation of P1 against
+  about 1.3 µs for an expression without constants.
+* **`checkC2`:** first applies `compile : IExpr → FExpr`, which rounds each `.rat q` to its
+  interval once. Then it walks the tree with `evalFE`. `evalFE_compile` proves
+  `evalFE env (compile e) = evalI env e`.
+* **`checkC3`:** keeps the current box as `Interval64` (Float endpoints) during the walk, so a
+  leaf needs no `Nat` ↔ `Float` conversion. `checkC3_map` proves it equals `checkC2` on the
+  converted box list.
+
+The proof chain is all proved, with no `sorry`. `checkC2_compile`, `evalFE_compile` and
+`checkC3_map` are in `fast/ManyBoxFast.lean`; `checkC_sound` and `proveC3_le` / `proveC3_ge`
+are in `ManyBoxCert.lean`:
+
+`checkC3 (compile e) g cert ((boxes bs).map toIC) = true` → `checkC2 … = true` →
+`checkC … = true` → realfp's `checkK … = true` → `RealFP.prove_le` / `prove_ge` → the real
+theorem.
+
+`lean/run.sh` loads the compiled library with `--plugin`. `native_decide` then calls
+`decodeCertC` and `checkC3` as native code, and only the small auxiliary definition is
+interpreted.
+
+Timings were measured on the idle dev box, one file at a time, Lean 4.36.0. "eval" is the
+`native_decide` evaluation as reported by the profiler. "total" is the wall time of the whole
+file, including Lean start-up and imports (about 2.5 s).
+
+| certificate | nodes / leaves | before: `checkF` eval | after: `checkC3` eval | after, total | speedup | after, leaves/s | GPU search +cert copy |
+|---|---|---|---|---|---|---|---|
+| P1 δ=4 | 8,887 / 4,444 | 0.35 s | 0.072 s | 0.22 s elab | 4.9× | 62 k | 0.61 ms |
+| P1 δ=1 | 42,607 / 21,304 | 1.7 s | 0.245 s | 0.34 s elab | 6.9× | 87 k | 0.80 ms |
+| P1 δ=1/64 | 1,240,303 / 620,152 | 49.7 s | 7.34 s | 9.9 s | 6.8× | 84 k | 3.2 ms |
+| P1 δ=1/1024 | 16,407,431 / 8,203,716 | 644 s (647 s total) | 98.8 s | 101.6 s | 6.5× | 83 k | 28.8 ms |
+| P2 δ=1/8 | 4,424,415 / 2,212,208 | 40.9 s | 25.6 s | 28.2 s | 1.6× | 86 k | 8.75 ms |
+| P2 δ=1/16 | 34,603,103 / 17,301,552 | 320 s (327 s total) | 198 s | 201 s | 1.6× | 87 k | 69.7 ms |
+
+* **Elaboration vs evaluation:** reading the certificate literal takes 0.07–0.1 s even at
+  8.6 MB. The compiled decoder takes at most 3.5 s (P1 δ=1/1024) or 6.3 s (P2 δ=1/16), and those
+  figures include an interpreted leaf count. Almost all of the time is leaf evaluation.
+* **Where the remaining time goes:** realfp's Lean-level interval operations (`Interval64.add`,
+  `mul`, `pown`). Each costs about 0.2–0.75 µs, because of Float boxing, tuples and one C call
+  per endpoint. That makes about 12 µs per P1 leaf, against about 0.13 µs for the same
+  evaluation in the C benchmark.
+* **Why P2 gains less:** P2 has only one constant (`4`), so `compile` saves little.
+* **Trust base:** unchanged from realfp's `(trust := native)`. `#print axioms` shows
+  `propext`, `Classical.choice`, `Quot.sound` and the `native_decide` axiom; in Lean 4.36 that
+  is the per-theorem `…_native.native_decide.ax_1_1`, which plays the role of
+  `Lean.ofReduceBool`. Trusted are the Lean compiler and interpreter, realfp's
+  `@[implemented_by]` C directed-rounding kernels (as for every realfp native proof), and the
+  compiled `ManyBoxFast` shared library being the code Lake built from that module. No new
+  C code was added.
+* **Caveats:**
+  * `--plugin` / `precompileModules` produce platform shared libraries. This was tested on
+    Linux x86-64 only.
+  * `lake env lean` does not load them by itself, so `run.sh` passes the flags. Without them
+    the same proofs still check, but interpreted and slower.
+  * Lake cannot precompile a module that imports Mathlib, which is why the compiled part is a
+    separate Mathlib-free package and the soundness proof lives in `ManyBoxCert.lean`.
+
+### Native only, or the kernel too?
+
+The kernel cannot run compiled code. `decide +kernel` evaluates `checkK` itself at about 15
+leaves/s, so a GPU certificate with 10⁶–10⁷ leaves is out of reach there: 8.2 M leaves would
+take about 6 days. For kernel-only proofs the derivative certificates win (4,208 leaves for
+P1 δ=1/1024, 17,056 for P2 δ=1/16). There the GPU helps only with the search and exploration,
+or on problems where derivatives don't shrink the count.
+
+Under `native_decide`, the precompiled checker now verifies the 16 M-node P1 δ=1/1024
+certificate in about 100 s, at about 85 k leaves/s. That is in the same range as realfp's own
+derivative *search* for that claim (≤ 160 s, from the earlier, parallel-loaded measurement;
+the check of the derivative certificate itself was not timed). It is still about 3,500× the
+GPU search time (29 ms).
+
+The next step would be a batched C box evaluator: an `@[implemented_by]` routine with
+specification `evalFE`, like realfp's Bernstein and quadrature routines. It could plausibly
+gain another 30–100×, but it would add new trusted C code.
+
 ## The smarter alternative: realfp's own derivative search
 
 `lean/Search*.lean` runs the `interval` tactic's certificate search (`findCertDM`:
@@ -154,14 +237,15 @@ them (MCert, centred forms) was not timed here.
   2. problems where derivative methods don't collapse the count: many near-extremal
      points, degenerate (line or surface) minima in 4D and above, or families of many
      independent instances;
-  3. combined with a faster trusted checker (precompiled `checkF`, or a C checker trusted
-     like `native_decide`), the remaining 10⁴× gap would shrink to the search itself.
+  3. combined with a faster trusted checker. The precompiled `checkC3` (above) cut the gap
+     from about 10⁴× to about 3·10³×. A batched C evaluator could shrink it further.
 
 ## Rerun
 
 ```sh
 manybox/build.sh                # needs nvcc + gcc with OpenMP; -> build/mbbench, build/mbexport
 manybox/build/mbbench           # full table (about 40 s on GB10); `quick` for the small sizes
-manybox/make_certs.sh           # certificates for lean/ (p1_d1024 is 4 MB, not committed)
-manybox/lean/run.sh CheckNative.lean   # needs RealFPMathlib built; also CheckKernel, CheckP1d64, ...
+manybox/make_certs.sh           # certificates for lean/ (p1_d1024 4 MB and p2_d16 8.6 MB are not committed)
+(cd manybox/lean/fast && lake build +ManyBoxFast:dynlib)   # precompiled checker
+manybox/lean/run.sh FastSmall.lean FastP1d1024.lean    # needs RealFPMathlib built; also Check*.lean (before)
 ```

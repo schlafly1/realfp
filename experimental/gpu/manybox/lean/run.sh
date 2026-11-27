@@ -8,6 +8,12 @@ LP=$(lake env printenv LEAN_PATH)
 # load realfp's compiled code (C kernels + precompiled core modules), as `lake lean` does
 lib="$(pwd)/../.lake/build/lib"
 LOAD="--load-dynlib=$lib/libleaninterval64.so --plugin=$lib/libinterval64_Interval64.so"
+# the precompiled checker (fast/, `lake build +ManyBoxFast:dynlib` there)
+fastlib="$here/fast/.lake/build/lib/lean"
+if [ -f "$fastlib/manyboxfast_ManyBoxFast.so" ] && [ -z "${MB_NO_FAST:-}" ]; then
+  LOAD="$LOAD --plugin=$fastlib/manyboxfast_ManyBoxFast.so"
+fi
+LP="$LP:$fastlib"
 out="$here/../build/olean"; mkdir -p "$out"
 if [ ! -f "$out/ManyBoxCert.olean" ] || [ "$here/ManyBoxCert.lean" -nt "$out/ManyBoxCert.olean" ]; then
   LEAN_PATH="$LP:$out" lake env lean $LOAD --root="$here" -o "$out/ManyBoxCert.olean" "$here/ManyBoxCert.lean"
