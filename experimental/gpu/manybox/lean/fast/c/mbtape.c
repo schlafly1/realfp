@@ -2,8 +2,10 @@
 
    TRUSTED (under native_decide): this file must compute exactly the Lean specification
      checkC3 fe (if upper then gLe c else gGe c) (decodeCertC d hex) env
-   whenever `checkHexImpl` calls it (a straight-line tape for `fe` with ops var/const/add/sub/
-   mul/neg/pow only; d = length of env, 1 <= d <= 16; c < 2^64). Every Lean definition it mirrors
+   (or, for `checkHexAt`, the same on `decC d hex l0 cs0`: a subtree rooted at depth l0 with
+   integer coordinates cs0) whenever `checkHexImpl` / `checkHexAtImpl` calls it (a straight-line
+   tape for `fe` with ops var/const/add/sub/mul/neg/pow/div/sqrt only; d = length of env,
+   1 <= d <= 16; c < 2^64). Every Lean definition it mirrors
    is named in the comments. Directed rounding uses realfp's own runtime kernels
    `iv64_dir_*` (AVX-512 or RN+error backend, exactly what `addDown` etc. run natively), so the
    only new trusted code is the control flow below. Any doubt (out-of-range coordinate or
@@ -11,7 +13,8 @@
 
    Tape (`ManyBox.toTape`): instruction k = three little-endian u32 (op, a, b), result in
    register k; op 0 var a | 1 const a (consts[2a], consts[2a+1]) | 2 add a b | 3 sub a b |
-   4 mul a b | 5 neg a | 6 pow a b (exponent b). The last register is the expression value. */
+   4 mul a b | 5 neg a | 6 pow a b (exponent b) | 7 div a b (= a * inv b, as evalFE) |
+   8 sqrt a (sqrtI). The last register is the expression value. */
 #include <lean/lean.h>
 #include <math.h>
 #include <stdint.h>
@@ -27,6 +30,10 @@ double iv64_dir_sub_down(double a, double b);
 double iv64_dir_sub_up(double a, double b);
 double iv64_dir_mul_down(double a, double b);
 double iv64_dir_mul_up(double a, double b);
+double iv64_dir_div_down(double a, double b);
+double iv64_dir_div_up(double a, double b);
+double iv64_dir_sqrt_down(double a);
+double iv64_dir_sqrt_up(double a);
 
 #define MB_MAXREG 4096
 #define MB_MAXD 16
@@ -108,6 +115,35 @@ static inline iv iv_pown(iv a, uint32_t n) {
   iv r = {pow_lo(b.lo, n), pow_hi(b.hi, n)}; return r;
 }
 
+/* Interval64.containsZero: !isInvalid i && decide (i.lo <= 0) && decide (0 <= i.hi) */
+static inline int contains_zero(iv a) { return !(isnan(a.lo) || isnan(a.hi)) && a.lo <= 0 && 0 <= a.hi; }
+/* Interval64.inv */
+static inline iv iv_inv(iv a) {
+  if (isnan(a.lo) || isnan(a.hi)) return IV_INVALID;
+  if (contains_zero(a)) { iv w = {-INFINITY, INFINITY}; return w; }   /* whole */
+  iv r = {iv64_dir_div_down(1.0, a.hi), iv64_dir_div_up(1.0, a.lo)}; return r;
+}
+/* fmin x y := if decide (x < y) then x else y */
+static inline double fmin_l(double x, double y) { return (x < y) ? x : y; }
+/* Interval64.sqrt (Interval.lean) */
+static inline iv iv_sqrt(iv a) {
+  if (isnan(a.lo) || isnan(a.hi)) return IV_INVALID;
+  if (a.hi < 0) return IV_INVALID;
+  double l = (a.lo < 0) ? 0.0 : a.lo;
+  iv r = {iv64_dir_sqrt_down(l), iv64_dir_sqrt_up(a.hi)}; return r;
+}
+/* Interval64.hull */
+static inline iv iv_hull(iv a, iv b) {
+  if (isnan(a.lo) || isnan(a.hi)) return b;
+  if (isnan(b.lo) || isnan(b.hi)) return a;
+  iv r = {fmin_l(a.lo, b.lo), fmax_l(a.hi, b.hi)}; return r;
+}
+/* KF.sqrtI X := if decide (X.lo < 0) then hull zeroI (Interval64.sqrt X) else Interval64.sqrt X */
+static inline iv iv_sqrtI(iv a) {
+  if (a.lo < 0) { iv z = {0.0, 0.0}; return iv_hull(z, iv_sqrt(a)); }
+  return iv_sqrt(a);
+}
+
 /* Interval64.KF.cmp / le on bit patterns (0 lt, 1 eq, 2 gt, 3 unordered) */
 static inline uint64_t magB(uint64_t n) { return n & 0x7FFFFFFFFFFFFFFFull; }
 static inline int kf_isnan(uint64_t n) { return magB(n) > 0x7FF0000000000000ull; }
@@ -166,6 +202,8 @@ static int leaf_ok(st_t *S) {
       case 4: R[k] = iv_mul(R[a], R[b]); break;
       case 5: R[k] = iv_neg(R[a]); break;
       case 6: R[k] = iv_pown(R[a], b); break;
+      case 7: R[k] = iv_mul(R[a], iv_inv(R[b])); break;     /* evalFE (.div a b) = a * inv b */
+      case 8: R[k] = iv_sqrtI(R[a]); break;
       default: return 0;
     }
   }
@@ -286,10 +324,10 @@ static int n_threads(void) {
   return (int)n;
 }
 
-/* @[extern "mb_check_tape"] opaque checkTapeExt (code : @& ByteArray) (consts : @& FloatArray)
-     (upper : UInt8) (c : UInt64) (d : UInt32) (hex : @& String) (box : @& FloatArray) : Bool */
-LEAN_EXPORT uint8_t mb_check_tape(b_lean_obj_arg code, b_lean_obj_arg consts, uint8_t upper,
-                                  uint64_t c, uint32_t d, b_lean_obj_arg hex, b_lean_obj_arg box) {
+/* Common entry: tree rooted at depth l0 with integer coordinates cs0 (decC d s l0 cs0 0). */
+static uint8_t check_at(b_lean_obj_arg code, b_lean_obj_arg consts, uint8_t upper, uint64_t c,
+                        uint32_t d, uint32_t l0, const uint64_t *cs0, b_lean_obj_arg hex,
+                        b_lean_obj_arg box) {
   static __thread st_t S;   /* large (register file); one check at a time per thread */
   const uint32_t one = 1;
   if (*(const uint8_t *)&one != 1) return 0;               /* tape is little-endian */
@@ -303,20 +341,22 @@ LEAN_EXPORT uint8_t mb_check_tape(b_lean_obj_arg code, b_lean_obj_arg consts, ui
   /* validate the tape once: operands refer to earlier registers / existing constants */
   for (uint32_t k = 0; k < S.n; k++) {
     uint32_t op = S.code[3 * k], a = S.code[3 * k + 1], b = S.code[3 * k + 2];
-    if (op > 6) return 0;
+    if (op > 8) return 0;
     if (op == 1 && a >= S.nk) return 0;
-    if ((op >= 2 && op <= 6) && a >= k) return 0;
-    if ((op >= 2 && op <= 4) && b >= k) return 0;
+    if ((op >= 2 && op <= 8) && a >= k) return 0;
+    if (((op >= 2 && op <= 4) || op == 7) && b >= k) return 0;
   }
   S.upper = upper != 0; S.c = c; S.d = d;
   S.s = (const uint8_t *)lean_string_cstr(hex);
   S.slen = lean_string_size(hex) - 1;                      /* UTF-8 bytes without the NUL */
   const double *bx = lean_float_array_cptr(box);
-  for (uint32_t j = 0; j < d; j++) { S.env[j].lo = bx[2 * j]; S.env[j].hi = bx[2 * j + 1]; S.cs[j] = 0; }
+  for (uint32_t j = 0; j < d; j++) {
+    S.env[j].lo = bx[2 * j]; S.env[j].hi = bx[2 * j + 1]; S.cs[j] = cs0 ? cs0[j] : 0;
+  }
   S.pos = 0;
+  if (l0 > (1u << 20)) return 0;
   int nt = n_threads();
-  if (nt == 1) return (uint8_t)walk(&S, 0);
-  /* cut depth: about 2^cut >= 64 * threads subtrees */
+  if (nt == 1) return (uint8_t)walk(&S, l0);
   /* cut depth (affects speed only): at least 64 subtrees per thread, and about 2^(L-6)
      subtrees for a certificate of 2^L bits (bisection trees are very unbalanced) */
   uint32_t cut = 0; while ((1u << cut) < 64u * (unsigned)nt && cut < 24) cut++;
@@ -326,7 +366,7 @@ LEAN_EXPORT uint8_t mb_check_tape(b_lean_obj_arg code, b_lean_obj_arg consts, ui
   const char *ce = getenv("MB_CUT");                       /* tuning only */
   if (ce) { long v = atol(ce); if (v >= 0 && v <= 40) cut = (uint32_t)v; }
   tasks_t T = {NULL, 0, 0};
-  int ok = top(&S, 0, cut, &T);
+  int ok = top(&S, l0, l0 + cut, &T);
   if (ok && T.n > 0) {
     size_t next = 0; int fail = 0;
     pthread_t th[64]; worker_t W[64]; int started = 0;
@@ -341,4 +381,28 @@ LEAN_EXPORT uint8_t mb_check_tape(b_lean_obj_arg code, b_lean_obj_arg consts, ui
   }
   free(T.t);
   return (uint8_t)ok;
+}
+
+/* @[extern "mb_check_tape"] opaque checkTapeExt (code : @& ByteArray) (consts : @& FloatArray)
+     (upper : UInt8) (c : UInt64) (d : UInt32) (hex : @& String) (box : @& FloatArray) : Bool */
+LEAN_EXPORT uint8_t mb_check_tape(b_lean_obj_arg code, b_lean_obj_arg consts, uint8_t upper,
+                                  uint64_t c, uint32_t d, b_lean_obj_arg hex, b_lean_obj_arg box) {
+  return check_at(code, consts, upper, c, d, 0, NULL, hex, box);
+}
+
+/* @[extern "mb_check_tape_at"] opaque checkTapeAtExt (code : @& ByteArray) (consts : @& FloatArray)
+     (upper : UInt8) (c : UInt64) (d : UInt32) (l0 : UInt32) (cs0 : @& ByteArray) (hex : @& String)
+     (box : @& FloatArray) : Bool    -- cs0: d little-endian u64 */
+LEAN_EXPORT uint8_t mb_check_tape_at(b_lean_obj_arg code, b_lean_obj_arg consts, uint8_t upper,
+                                     uint64_t c, uint32_t d, uint32_t l0, b_lean_obj_arg cs0,
+                                     b_lean_obj_arg hex, b_lean_obj_arg box) {
+  if (d == 0 || d > MB_MAXD || lean_sarray_size(cs0) != 8 * (size_t)d) return 0;
+  uint64_t cs[MB_MAXD];
+  const uint8_t *p = lean_sarray_cptr(cs0);
+  for (uint32_t j = 0; j < d; j++) {
+    uint64_t v = 0;
+    for (int b = 7; b >= 0; b--) v = (v << 8) | p[8 * j + b];
+    cs[j] = v;
+  }
+  return check_at(code, consts, upper, c, d, l0, cs, hex, box);
 }

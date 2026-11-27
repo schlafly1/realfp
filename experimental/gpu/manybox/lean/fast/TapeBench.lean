@@ -1,4 +1,5 @@
 import ManyBoxTape
+import ManyBoxProbs
 
 /-! Mathlib-free benchmark / agreement test of the C batch checker (run with `./bench.sh` from this
 directory, certificates in `../../certs`). For each certificate: the C checker
@@ -56,9 +57,82 @@ def mutTest (name : String) (e : IExpr) (upper : Bool) (c : Rat) (d : Nat) (file
       n := n + 1; if a then pass := pass + 1; if a != b then bad := bad + 1
   IO.println s!"{name} mutated: {n} cases, {pass} pass, {bad} C/spec disagreements"
 
+/-! Random expressions (all tape ops, including division by intervals containing 0, square roots
+of negative intervals, overflow to ±∞) on random boxes, bounds and certificate strings. -/
+
+def lcg (s : Nat) : Nat := (s * 6364136223846793005 + 1442695040888963407) % 2 ^ 64
+
+def consts : Array Rat := #[0, 1, -1, 2, 1/2, -3, 1/3, 10 ^ 200, -(10 ^ 200), 1 / 10 ^ 200, 7/5]
+def ends : Array Rat := #[-2, -1, -1/2, 0, 1/3, 1/2, 1, 2, 10 ^ 300, -(10 ^ 300), 1 / 10 ^ 300]
+
+partial def genE (s : Nat) (depth : Nat) : IExpr × Nat :=
+  let s := lcg s
+  let k := (s >>> 33) % (if depth == 0 then 2 else 10)
+  match k with
+  | 0 => (.var ((s >>> 40) % 3), s)
+  | 1 => (.rat consts[(s >>> 40) % consts.size]!, s)
+  | 2 => let (a, s) := genE s (depth - 1); let (b, s) := genE s (depth - 1); (.add a b, s)
+  | 3 => let (a, s) := genE s (depth - 1); let (b, s) := genE s (depth - 1); (.sub a b, s)
+  | 4 => let (a, s) := genE s (depth - 1); let (b, s) := genE s (depth - 1); (.mul a b, s)
+  | 5 => let (a, s) := genE s (depth - 1); let (b, s) := genE s (depth - 1); (.div a b, s)
+  | 6 => let (a, s) := genE s (depth - 1); (.neg a, s)
+  | 7 => let (a, s) := genE s (depth - 1); (.pow a ((s >>> 45) % 7), s)
+  | _ => let (a, s) := genE s (depth - 1); (.sqrt a, s)
+
+def randTest (n : Nat) : IO Unit := do
+  let mut s := 12345; let mut bad := 0; let mut pass := 0; let mut cnt := 0
+  let hexes := #["0", "8", "c0", "f000", "e00", "ff0000", "a8", "fc0000"]
+  for _ in [0:n] do
+    let (e, s1) := genE s 4
+    s := s1
+    let mut bs : List (Rat × Rat) := []
+    for _ in [0:3] do
+      s := lcg s
+      let a := ends[(s >>> 33) % ends.size]!; let b := ends[(s >>> 45) % ends.size]!
+      bs := bs ++ [if a ≤ b then (a, b) else (b, a)]
+    s := lcg s
+    let up := (s >>> 50) % 2 == 0
+    let c := consts[(s >>> 33) % consts.size]!
+    let hex := hexes[(s >>> 40) % hexes.size]!
+    let cb := if up then (KI.ofRat c).lo else (KI.ofRat c).hi
+    let env := (boxes bs).map toIC
+    let fe := compile e
+    let a := checkHex fe up cb 3 hex env
+    let b := checkHexSpec fe up cb 3 hex env
+    -- the sub-tree entry point (`checkHexAt`) at a random start depth / coordinates
+    s := lcg s
+    let l0 := (s >>> 33) % 7
+    let cs0 := [(s >>> 20) % 5, (s >>> 30) % 3, (s >>> 40) % 9]
+    let a2 := checkHexAt fe up cb 3 l0 cs0 hex env
+    let b2 := checkHexAtSpec fe up cb 3 l0 cs0 hex env
+    if a2 != b2 then
+      bad := bad + 1
+      IO.println s!"DISAGREE (at): C {a2} spec {b2} l0 {l0} cs0 {cs0} hex {hex} box {bs}"
+    cnt := cnt + 1; if a then pass := pass + 1
+    if a != b then
+      bad := bad + 1
+      IO.println s!"DISAGREE: C {a} spec {b} up {up} c {c} hex {hex} box {bs}"
+  IO.println s!"random expressions: {cnt} cases (each checkHex and checkHexAt), {pass} pass, {bad} C/spec disagreements"
+
 def main (args : List String) : IO Unit := do
   let dir := "../../certs/"
   let spec := !args.contains "nospec"
+  let v2 := "../../certs/v2/"
+  if args.contains "rand" then
+    randTest 200000
+    return
+  if args.contains "v2" then
+    -- div / sqrt (tape ops 7, 8): mutation agreement, then the certificates
+    mutTest "nes_0.25" V2.eNES false (3/2 - 1/4) 3 (v2 ++ "nes_0.25.cert") 1
+    mutTest "nes_0.25 c=3/2" V2.eNES false (3/2) 3 (v2 ++ "nes_0.25.cert") 1
+    mutTest "pm_0.25" V2.ePM true (1/4) 3 (v2 ++ "pm_0.25.cert") 1
+    mutTest "pm_0.25 c=0" V2.ePM true 0 3 (v2 ++ "pm_0.25.cert") 1
+    mutTest "nes_1/64" V2.eNES false (3/2 - 1/64) 3 (v2 ++ "nes_0.015625.cert") 997
+    mutTest "pm_1/64" V2.ePM true (1/64) 3 (v2 ++ "pm_0.015625.cert") 4999
+    for (nm, e, up, c) in [("nes", V2.eNES, false, (3/2 - 1/64 : Rat)), ("pm", V2.ePM, true, 1/64)] do
+      for f in ["_0.015625.cert", "_0.015625_f32.cert"] do
+        bench (nm ++ f) e up c 3 (v2 ++ nm ++ f) spec
+    return
   if !args.contains "nomut" then
     mutTest "p1_d1 c=3" eP1 true 3 2 (dir ++ "p1_d1.cert") 7
     mutTest "p1_d1 c=2.1" eP1 true (21/10) 2 (dir ++ "p1_d1.cert") 7

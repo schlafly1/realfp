@@ -2,3 +2,4 @@ build/
 certs/p1_d1024.cert
 certs/p2_d16.cert
 lean/fast/.lake/
+certs/split/

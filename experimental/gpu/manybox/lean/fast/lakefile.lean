@@ -30,5 +30,5 @@ extern_lib libmbtape pkg := do
 
 @[default_target]
 lean_lib ManyBoxFast where
-  roots := #[`ManyBoxFast, `ManyBoxTape]
+  roots := #[`ManyBoxFast, `ManyBoxTape, `ManyBoxProbs]
 

@@ -269,4 +269,26 @@ theorem proveT_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (d : Nat) (hex 
   rw [checkHex_ge] at h
   exact proveC3_ge e bs c _ h xs hxs
 
+
+/-! ### Split certificates (`Top`, `fast/ManyBoxTape.lean`)
+
+The sub-checks `Job.check` can be proved in separate files (separate processes); `Top.sound`
+glues them into `checkC2` on the whole box, and realfp's `prove_le/ge` give the theorem. -/
+
+theorem proveTop_le (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (d : Nat) (t : Top)
+    (hm : t.midsOK = true)
+    (hj : (t.jobs (boxes bs)).all (Job.check (compile e) true (KI.ofRat c).lo d) = true)
+    (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : e.denote xs ≤ (c : ℝ) := by
+  have h := Top.sound (compile e) true (KI.ofRat c).lo d t (boxes bs) hm hj
+  simp only [↓reduceIte, checkC2_compile] at h
+  exact proveC_le e bs c _ h xs hxs
+
+theorem proveTop_ge (e : IExpr) (bs : List (ℚ × ℚ)) (c : ℚ) (d : Nat) (t : Top)
+    (hm : t.midsOK = true)
+    (hj : (t.jobs (boxes bs)).all (Job.check (compile e) false (KI.ofRat c).hi d) = true)
+    (xs : List ℝ) (hxs : RealFP.InBoxes xs bs) : (c : ℝ) ≤ e.denote xs := by
+  have h := Top.sound (compile e) false (KI.ofRat c).hi d t (boxes bs) hm hj
+  simp only [Bool.false_eq_true, ↓reduceIte, checkC2_compile] at h
+  exact proveC_ge e bs c _ h xs hxs
+
 end ManyBox
