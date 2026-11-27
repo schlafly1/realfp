@@ -1,0 +1,801 @@
+# R8 >= -9 (delta=1) on spark (GB10, 20 cores), Thu Nov 26 22:42:43 PST 2026 .. Thu Nov 26 23:20:50 PST 2026
+## sub-files (run_split.sh R8d1 20 1)
+  G06: 54.64 s
+  G08: 60.95 s
+  G02: 61.36 s
+  G104: 64.71 s
+  G105: 65.5 s
+  G01: 66.89 s
+  G05: 68.19 s
+  G04: 68.76 s
+  G103: 70.53 s
+  G100: 73.38 s
+  G107: 74.59 s
+  G00: 75.54 s
+  G108: 77.52 s
+  G10: 78.08 s
+  G101: 78.34 s
+  G03: 78.53 s
+  G106: 79.01 s
+  G07: 79.97 s
+  G09: 81.8 s
+  G102: 83.81 s
+  G109: 65.8 s
+  G11: 66.45 s
+  G116: 60.56 s
+  G111: 68.2 s
+  G110: 75.85 s
+  G113: 72.85 s
+  G121: 63.35 s
+  G123: 63.82 s
+  G114: 76.07 s
+  G112: 78.85 s
+  G120: 67.66 s
+  G115: 79.17 s
+  G122: 69.6 s
+  G117: 75.69 s
+  G119: 73.89 s
+  G12: 72.04 s
+  G118: 78.53 s
+  G126: 72.04 s
+  G125: 74.51 s
+  G124: 80.2 s
+  G128: 59.67 s
+  G127: 71.34 s
+  G130: 55.98 s
+  G129: 69.58 s
+  G131: 66.29 s
+  G13: 78.76 s
+  G134: 67.47 s
+  G132: 74.07 s
+  G136: 70.4 s
+  G135: 71.86 s
+  G143: 60.18 s
+  G138: 69.17 s
+  G140: 70.67 s
+  G139: 71.93 s
+  G133: 79.49 s
+  G141: 72.2 s
+  G137: 79.04 s
+  G142: 72.24 s
+  G144: 70.64 s
+  G14: 83.63 s
+  G145: 70.95 s
+  G146: 70.52 s
+  G147: 75.04 s
+  G150: 57.3 s
+  G148: 72.19 s
+  G149: 73.33 s
+  G154: 67.28 s
+  G15: 72.4 s
+  G151: 68.95 s
+  G158: 63.43 s
+  G159: 62.7 s
+  G16: 61.2 s
+  G153: 73.15 s
+  G156: 73.98 s
+  G152: 78.49 s
+  G157: 74.67 s
+  G155: 78.71 s
+  G161: 65.42 s
+  G162: 72.5 s
+  G160: 78.65 s
+  G163: 63.32 s
+  G164: 72.27 s
+  G168: 61.84 s
+  G165: 75.11 s
+  G166: 76.92 s
+  G171: 62.66 s
+  G169: 64.69 s
+  G167: 76.78 s
+  G17: 69.62 s
+  G170: 71.84 s
+  G172: 70.92 s
+  G174: 73.31 s
+  G176: 70.71 s
+  G175: 71.45 s
+  G173: 77.63 s
+  G178: 72.44 s
+  G18: 68.59 s
+  G177: 82.41 s
+  G180: 71.38 s
+  G179: 82.1 s
+  G181: 72.09 s
+  G182: 64.2 s
+  G184: 65.01 s
+  G183: 71.08 s
+  G19: 60.28 s
+  G188: 67.45 s
+  G185: 77.59 s
+  G189: 71.16 s
+  G187: 76.54 s
+  G186: 77.8 s
+  G192: 63.13 s
+  G191: 66.52 s
+  G190: 76.52 s
+  G194: 69.95 s
+  G193: 72.76 s
+  G195: 74.23 s
+  G196: 72.91 s
+  G198: 73.21 s
+  G199: 74.03 s
+  G197: 74.85 s
+  G20: 60.41 s
+  G200: 60.99 s
+  G202: 63.21 s
+  G201: 68.15 s
+  G204: 71.3 s
+  G205: 66.45 s
+  G21: 61.41 s
+  G203: 74.91 s
+  G207: 72.14 s
+  G208: 75.2 s
+  G209: 76.17 s
+  G210: 70.9 s
+  G206: 81.71 s
+  G211: 71.1 s
+  G216: 62.16 s
+  G212: 76.68 s
+  G213: 76.29 s
+  G214: 73.42 s
+  G215: 70.49 s
+  G217: 68.94 s
+  G218: 72.66 s
+  G219: 71.17 s
+  G22: 71.0 s
+  G220: 73.46 s
+  G223: 65.13 s
+  G224: 69.85 s
+  G222: 72.26 s
+  G221: 75.72 s
+  G226: 68.66 s
+  G225: 74.59 s
+  G228: 68.92 s
+  G227: 72.95 s
+  G229: 71.09 s
+  G232: 62.07 s
+  G23: 74.34 s
+  G230: 66.72 s
+  G233: 66.89 s
+  G234: 65.84 s
+  G231: 73.72 s
+  G235: 73.21 s
+  G236: 70.17 s
+  G237: 69.29 s
+  G238: 74.55 s
+  G242: 62.97 s
+  G243: 58.2 s
+  G239: 78.38 s
+  G24: 74.82 s
+  G241: 73.28 s
+  G245: 61.38 s
+  G240: 75.27 s
+  G246: 65.95 s
+  G247: 71.89 s
+  G244: 78.79 s
+  G25: 70.65 s
+  G248: 71.17 s
+  G249: 72.62 s
+  G251: 72.08 s
+  G250: 73.68 s
+  G254: 66.33 s
+  G252: 76.69 s
+  G255: 68.3 s
+  G253: 75.57 s
+  G26: 71.17 s
+  G27: 70.97 s
+  G31: 65.26 s
+  G29: 74.45 s
+  G28: 75.87 s
+  G30: 73.57 s
+  G33: 68.96 s
+  G32: 75.62 s
+  G36: 62.92 s
+  G35: 67.43 s
+  G34: 75.17 s
+  G38: 70.78 s
+  G39: 74.2 s
+  G37: 77.59 s
+  G40: 70.06 s
+  G42: 71.93 s
+  G41: 75.4 s
+  G44: 70.63 s
+  G43: 77.17 s
+  G45: 72.33 s
+  G46: 62.82 s
+  G49: 64.99 s
+  G47: 73.59 s
+  G48: 73.34 s
+  G51: 70.18 s
+  G50: 72.21 s
+  G54: 65.9 s
+  G52: 76.79 s
+  G53: 71.62 s
+  G55: 71.63 s
+  G57: 71.48 s
+  G59: 68.92 s
+  G56: 80.68 s
+  G63: 65.48 s
+  G60: 76.48 s
+  G58: 78.85 s
+  G62: 72.69 s
+  G61: 75.62 s
+  G64: 69.23 s
+  G65: 69.21 s
+  G66: 59.99 s
+  G67: 75.82 s
+  G68: 75.28 s
+  G72: 69.26 s
+  G70: 74.57 s
+  G69: 76.38 s
+  G74: 67.13 s
+  G71: 75.73 s
+  G73: 70.0 s
+  G75: 66.79 s
+  G76: 71.05 s
+  G79: 67.94 s
+  G78: 74.38 s
+  G77: 75.71 s
+  G83: 65.88 s
+  G84: 65.14 s
+  G82: 71.55 s
+  G80: 77.22 s
+  G81: 79.44 s
+  G85: 75.66 s
+  G86: 72.95 s
+  G91: 53.13 s
+  G87: 60.29 s
+  G90: 59.07 s
+  G89: 60.25 s
+  G92: 57.89 s
+  G95: 55.9 s
+  G88: 69.13 s
+  G94: 65.3 s
+  G96: 58.54 s
+  G98: 50.28 s
+  G93: 74.2 s
+  G99: 63.25 s
+  G97: 68.67 s
+== R8d1 sub-files: 941.62 s wall (P=20, MB_THREADS=1)
+G06 native_decide 51.2s
+G08 native_decide 58.1s
+G02 native_decide 57.9s
+G104 native_decide 60.4s
+G105 native_decide 62s
+G01 native_decide 63.4s
+G05 native_decide 64.7s
+G04 native_decide 65.8s
+G103 native_decide 66.6s
+G100 native_decide 70.8s
+G107 native_decide 70.3s
+G00 native_decide 71.7s
+G108 native_decide 73.9s
+G10 native_decide 73.7s
+G101 native_decide 75s
+G03 native_decide 74s
+G106 native_decide 76.2s
+G07 native_decide 74.6s
+G09 native_decide 77.3s
+G102 native_decide 79.6s
+G109 native_decide 61.5s
+G11 native_decide 63.8s
+G116 native_decide 56.4s
+G111 native_decide 65.1s
+G110 native_decide 73.2s
+G113 native_decide 70s
+G121 native_decide 59.9s
+G123 native_decide 60.8s
+G114 native_decide 72.2s
+G112 native_decide 74.7s
+G120 native_decide 63.5s
+G115 native_decide 75.3s
+G122 native_decide 66.7s
+G117 native_decide 71.2s
+G119 native_decide 70.8s
+G12 native_decide 69.2s
+G118 native_decide 74.5s
+G126 native_decide 68s
+G125 native_decide 70.6s
+G124 native_decide 75.8s
+G128 native_decide 55.4s
+G127 native_decide 68.2s
+G130 native_decide 53.2s
+G129 native_decide 66.3s
+G131 native_decide 62.7s
+G13 native_decide 76s
+G134 native_decide 64.7s
+G132 native_decide 70.5s
+G136 native_decide 67.1s
+G135 native_decide 68.7s
+G143 native_decide 55.6s
+G138 native_decide 65.8s
+G140 native_decide 67.9s
+G139 native_decide 67.7s
+G133 native_decide 76.6s
+G141 native_decide 68.7s
+G137 native_decide 75.2s
+G142 native_decide 68.9s
+G144 native_decide 67.9s
+G14 native_decide 79.2s
+G145 native_decide 67s
+G146 native_decide 66.6s
+G147 native_decide 71.5s
+G150 native_decide 53.6s
+G148 native_decide 69.4s
+G149 native_decide 70.2s
+G154 native_decide 63.2s
+G15 native_decide 69.5s
+G151 native_decide 65.5s
+G158 native_decide 59.8s
+G159 native_decide 59.5s
+G16 native_decide 57.4s
+G153 native_decide 69.7s
+G156 native_decide 69.6s
+G152 native_decide 73.9s
+G157 native_decide 71.3s
+G155 native_decide 74s
+G161 native_decide 61.8s
+G162 native_decide 69.7s
+G160 native_decide 74.4s
+G163 native_decide 59.3s
+G164 native_decide 68s
+G168 native_decide 58.8s
+G165 native_decide 72s
+G166 native_decide 72.6s
+G169 native_decide 61.6s
+G171 native_decide 59.2s
+G167 native_decide 73.7s
+G17 native_decide 66.7s
+G170 native_decide 68.9s
+G172 native_decide 67.3s
+G174 native_decide 69.9s
+G176 native_decide 67.7s
+G175 native_decide 67.2s
+G173 native_decide 74.5s
+G178 native_decide 69.3s
+G18 native_decide 65.6s
+G177 native_decide 78.9s
+G180 native_decide 68.2s
+G179 native_decide 77.9s
+G181 native_decide 68.5s
+G182 native_decide 60.4s
+G184 native_decide 61.1s
+G183 native_decide 67.7s
+G19 native_decide 57.4s
+G188 native_decide 63.9s
+G185 native_decide 74.3s
+G189 native_decide 67.8s
+G187 native_decide 72.3s
+G186 native_decide 74.2s
+G192 native_decide 59.9s
+G191 native_decide 63.3s
+G190 native_decide 73.6s
+G194 native_decide 65.4s
+G193 native_decide 69.3s
+G195 native_decide 70.7s
+G196 native_decide 68.5s
+G198 native_decide 69.1s
+G199 native_decide 69.9s
+G197 native_decide 71.5s
+G20 native_decide 56.9s
+G200 native_decide 57.3s
+G202 native_decide 59s
+G201 native_decide 64.4s
+G204 native_decide 67.8s
+G205 native_decide 62.1s
+G21 native_decide 57.2s
+G203 native_decide 71.6s
+G207 native_decide 68.2s
+G208 native_decide 71.6s
+G209 native_decide 72.8s
+G210 native_decide 67.9s
+G206 native_decide 78s
+G211 native_decide 67.5s
+G216 native_decide 58.1s
+G212 native_decide 73.3s
+G213 native_decide 73.3s
+G214 native_decide 70.3s
+G215 native_decide 65.9s
+G217 native_decide 64s
+G218 native_decide 68.7s
+G219 native_decide 67.5s
+G22 native_decide 66.9s
+G220 native_decide 68.9s
+G223 native_decide 61.3s
+G224 native_decide 67s
+G222 native_decide 69.2s
+G221 native_decide 72.1s
+G226 native_decide 65.8s
+G225 native_decide 70.4s
+G228 native_decide 65.9s
+G227 native_decide 69s
+G229 native_decide 67.9s
+G232 native_decide 59.1s
+G23 native_decide 71.1s
+G230 native_decide 63.3s
+G233 native_decide 63.5s
+G234 native_decide 62.3s
+G231 native_decide 68.8s
+G235 native_decide 69.5s
+G236 native_decide 66.8s
+G237 native_decide 65.4s
+G238 native_decide 71.8s
+G242 native_decide 60s
+G239 native_decide 74.4s
+G243 native_decide 53.7s
+G24 native_decide 71.2s
+G241 native_decide 70.5s
+G245 native_decide 57.3s
+G240 native_decide 71.5s
+G246 native_decide 62.8s
+G247 native_decide 68.9s
+G244 native_decide 75.6s
+G25 native_decide 66.6s
+G248 native_decide 68s
+G249 native_decide 69.5s
+G251 native_decide 68.2s
+G250 native_decide 69.7s
+G254 native_decide 62.7s
+G252 native_decide 73s
+G255 native_decide 65.7s
+G253 native_decide 72.2s
+G26 native_decide 67.6s
+G27 native_decide 67.3s
+G31 native_decide 61s
+G29 native_decide 71.3s
+G28 native_decide 72.5s
+G30 native_decide 69.3s
+G33 native_decide 65.2s
+G32 native_decide 71.4s
+G36 native_decide 59.2s
+G35 native_decide 64.2s
+G34 native_decide 71.2s
+G38 native_decide 66.1s
+G39 native_decide 70.9s
+G37 native_decide 74.3s
+G40 native_decide 67.5s
+G42 native_decide 69s
+G41 native_decide 71.9s
+G44 native_decide 68.1s
+G43 native_decide 74.3s
+G45 native_decide 69.2s
+G46 native_decide 59.1s
+G49 native_decide 62.2s
+G47 native_decide 70.4s
+G48 native_decide 69.7s
+G51 native_decide 66.7s
+G50 native_decide 68.9s
+G54 native_decide 62.8s
+G52 native_decide 72.8s
+G53 native_decide 68.4s
+G55 native_decide 68.6s
+G57 native_decide 66.8s
+G59 native_decide 64.8s
+G56 native_decide 77.9s
+G63 native_decide 60.9s
+G60 native_decide 72.8s
+G58 native_decide 74.5s
+G62 native_decide 69s
+G61 native_decide 71.4s
+G64 native_decide 66.1s
+G65 native_decide 64.9s
+G66 native_decide 55.6s
+G67 native_decide 72.8s
+G68 native_decide 72.5s
+G72 native_decide 65.5s
+G70 native_decide 71.3s
+G69 native_decide 71.6s
+G74 native_decide 63.5s
+G71 native_decide 71.7s
+G73 native_decide 66.3s
+G75 native_decide 63s
+G76 native_decide 67.4s
+G79 native_decide 64.7s
+G78 native_decide 70.1s
+G77 native_decide 71.3s
+G83 native_decide 61.9s
+G84 native_decide 61.5s
+G82 native_decide 68.4s
+G80 native_decide 73s
+G81 native_decide 75.4s
+G85 native_decide 72.6s
+G86 native_decide 68.8s
+G91 native_decide 49.7s
+G87 native_decide 56.6s
+G90 native_decide 55s
+G89 native_decide 56.2s
+G92 native_decide 54.5s
+G95 native_decide 52.2s
+G88 native_decide 64.9s
+G94 native_decide 61.6s
+G96 native_decide 55.6s
+G98 native_decide 46.2s
+G93 native_decide 70.3s
+G99 native_decide 59s
+G97 native_decide 65.9s
+## one-level Main.lean (first attempt, failed: def top 71 s / 42 GB, jobs_eq rfl hit maxRecDepth)
+parsing took 5.36s
+instantiate metavars took 2.69s
+share common exprs took 1.89s
+process pre-definitions took 2.86s
+elaboration took 71.1s
+linting took 25.2s
+type checking took 3.63s
+/home/roger/grok/mbx/rfp/experimental/gpu/manybox/lean/split/R8d1/Main.lean:131349:0: error: maximum recursion depth has been reached
+attribute application took 272s
+/home/roger/grok/mbx/rfp/experimental/gpu/manybox/lean/split/R8d1/Main.lean:131349:0: error: maximum recursion depth has been reached
+elaboration took 306s
+/home/roger/grok/mbx/rfp/experimental/gpu/manybox/lean/split/R8d1/Main.lean:131353:2: error: Tactic `simp` failed with a nested error:
+/home/roger/grok/mbx/rfp/experimental/gpu/manybox/lean/split/R8d1/Main.lean:131351:8: error: (kernel) unknown constant 'ManyBox.Split.R8d1.jobs_eq'
+elaboration took 35.7s
+## two-level glue (gen_hier.py)
+Thu Nov 26 23:19:49 PST 2026
+TOPC_OK
+256 H files + Hier.lean in /home/roger/grok/mbx/rfp/experimental/gpu/manybox/lean/split/R8d1
+== H files: 55.87 s
+attribute application took 337ms
+elaboration took 264ms
+'ManyBox.Split.R8d1.bound2' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound,
+ Split.R8d1.G00.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G01.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G02.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G03.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G04.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G05.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G06.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G07.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G08.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G09.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G10.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G100.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G101.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G102.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G103.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G104.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G105.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G106.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G107.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G108.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G109.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G11.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G110.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G111.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G112.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G113.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G114.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G115.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G116.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G117.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G118.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G119.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G12.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G120.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G121.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G122.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G123.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G124.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G125.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G126.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G127.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G128.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G129.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G13.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G130.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G131.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G132.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G133.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G134.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G135.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G136.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G137.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G138.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G139.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G14.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G140.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G141.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G142.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G143.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G144.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G145.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G146.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G147.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G148.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G149.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G15.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G150.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G151.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G152.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G153.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G154.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G155.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G156.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G157.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G158.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G159.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G16.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G160.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G161.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G162.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G163.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G164.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G165.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G166.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G167.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G168.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G169.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G17.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G170.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G171.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G172.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G173.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G174.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G175.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G176.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G177.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G178.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G179.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G18.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G180.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G181.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G182.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G183.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G184.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G185.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G186.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G187.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G188.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G189.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G19.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G190.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G191.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G192.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G193.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G194.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G195.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G196.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G197.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G198.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G199.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G20.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G200.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G201.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G202.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G203.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G204.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G205.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G206.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G207.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G208.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G209.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G21.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G210.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G211.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G212.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G213.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G214.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G215.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G216.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G217.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G218.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G219.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G22.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G220.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G221.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G222.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G223.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G224.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G225.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G226.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G227.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G228.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G229.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G23.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G230.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G231.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G232.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G233.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G234.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G235.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G236.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G237.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G238.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G239.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G24.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G240.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G241.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G242.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G243.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G244.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G245.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G246.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G247.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G248.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G249.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G25.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G250.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G251.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G252.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G253.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G254.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G255.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G26.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G27.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G28.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G29.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G30.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G31.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G32.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G33.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G34.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G35.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G36.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G37.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G38.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G39.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G40.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G41.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G42.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G43.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G44.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G45.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G46.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G47.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G48.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G49.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G50.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G51.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G52.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G53.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G54.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G55.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G56.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G57.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G58.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G59.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G60.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G61.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G62.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G63.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G64.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G65.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G66.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G67.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G68.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G69.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G70.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G71.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G72.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G73.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G74.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G75.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G76.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G77.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G78.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G79.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G80.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G81.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G82.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G83.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G84.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G85.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G86.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G87.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G88.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G89.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G90.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G91.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G92.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G93.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G94.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G95.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G96.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G97.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G98.ok._native.native_decide.ax_1_1,
+ Split.R8d1.G99.ok._native.native_decide.ax_1_1]
+cumulative profiling times:
+== /home/roger/grok/mbx/rfp/experimental/gpu/manybox/lean/split/R8d1/Hier.lean 2.46 s
+== Hier: 2.95 s
+Thu Nov 26 23:20:50 PST 2026
+HIER_DONE

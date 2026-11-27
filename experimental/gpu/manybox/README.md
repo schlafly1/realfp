@@ -365,15 +365,44 @@ and 54–220× faster than one.
 | (same two, fp32-searched certificates) | | | same | same |
 | R8 ≥ −12 (δ=4) | 1.95e8 | split: 256 jobs in 16 files | 128.5 s (1 proc × 8 thr), 100 s (8 procs × 1 thr) + 4.2 s glue | std + 16 native_decide |
 | R8 ≥ −10 (δ=2) | 1.02e9 | split: 4096 jobs in 32 files | 499 s (8 procs × 1 thr) + 29.7 s glue | std + 32 native_decide |
-| R8 ≥ −9 (δ=1) | 5.34e9 | not checked (see below) | est. ~45 min | — |
+| R8 ≥ −9 (δ=1) | 5.34e9 | split: 65,536 jobs in 256 files, two-level glue; **on the Spark** | 941.6 s (20 procs × 1 thr) + 55.9 s (256 group files) + 3.0 s (final) | std + 256 native_decide |
 
-(`lean/V2DivSqrt.lean`, `lean/split/R8d4/Main.lean`, `lean/split/R8d2/Main.lean`.) The C
+(`lean/V2DivSqrt.lean`, `lean/split/R8d4/Main.lean`, `lean/split/R8d2/Main.lean`,
+`lean/split/R8d1/Hier.lean`; R8 δ=1 log in `results/r8d1_spark.txt`.) The C
 checker does about 2·10⁶ R8 leaves/s on 8 cores (the R8 tape has ~70 operations), so checking
 is 150–250× slower than the fp32 GPU search: 1e10 leaves ≈ 1.4 h, 1e11 ≈ 14 h on this box. The
 practical limit was moving certificates, not checking them: 1 bit per node is 1.3 GB of hex for
 R8 δ=1, and the spark → box link ran at ~0.25 MB/s. Splitting removes every other limit: the
 sub-files are Mathlib-free, independent, and can be compiled on any number of machines; the
 glue (Mathlib) only imports their `ok` theorems.
+
+### R8 ≥ −9 on [−1,1]⁸, proved on the Spark (5.34·10⁹ leaves)
+
+`ManyBox.Split.R8d1.bound2 : ∀ xs, InBoxes xs (cube 8) → (−9 : ℝ) ≤ R8(xs)`; `#print axioms`:
+`propext, Classical.choice, Quot.sound` + 256 `…G**.ok._native.native_decide.ax_1_1`; no `sorry`.
+Run entirely on the Spark (aarch64, realfp's RN+err kernels; Mathlib copied from an existing
+build of the same revision), so the 1.3 GB certificate never moved:
+
+| step | what | wall |
+|---|---|---|
+| GPU split search | `mb2 split R8 64 1 16` (fp64), 65,536 sub-certificates | 233 s |
+| 256 sub-files G** (Mathlib-free) | 256 jobs / 2.09e7 leaves each, `native_decide` → C checker, 20 lean processes × 1 thread | 941.6 s |
+| 256 group files H** | subtree term, `midsOK` (kernel), `t.jobs env = G.jobs` (`rfl`), `Top.sound` | 55.9 s |
+| Hier.lean (Mathlib) | `TopC.sound` over the 256 groups + realfp `proveC_ge` | 3.0 s |
+
+Checking rate: 5.34e9 leaves / 941.6 s = 5.7·10⁶ leaves/s on 20 cores (2.8·10⁵ per process; 8
+cores of the x86 box: ~2·10⁶). The one-level glue (`Main.lean` from gen_split.py: one `Top`
+term and one `rfl` over all 65,536 jobs) does not scale: the term took 71 s and 42 GB, and the
+`rfl` hit `maxRecDepth`. The two-level glue (`split/TopC.lean`, `split/gen_hier.py`) reuses the
+compiled sub-files unchanged. Reproduce (on the machine holding the certificate):
+
+```sh
+v2/build/mb2 split R8 64 1 16 certs/split/r8_1
+cd lean/split && python3 gen_split.py ../../certs/split/r8_1 R8d1 V2.eR8 false -9 256 \
+  && python3 gen_hier.py ../../certs/split/r8_1 R8d1 V2.eR8 false -9 256
+./run_split.sh R8d1 20 1          # G files (its one-level Main step fails at this size; ignore)
+# then compile split/TopC.lean and R8d1/H*.lean to ../build/olean/split/… and run R8d1/Hier.lean
+```
 
 ### Weaker than proof (`lean/Weak*.lean`)
 
@@ -392,6 +421,8 @@ glue (Mathlib) only imports their `ok` theorems.
   were wrong at random, passing 64 samples has probability (1−p)⁶⁴, so p < 4.6% at 95%
   confidence. It cannot detect systematic faults (wrong expression or rounding mode, a
   coverage bug), which only the full check rules out.
+
+(The R8 δ=1 axiom demo is now also proved outright, above; `WeakAxiom.lean` stays as the demo.)
 
 Is a search that cannot be checked worthless? No: (1) a refutation is a proof as soon as one box
 is checked; (2) a successful search is strong evidence that pins down the right margin, the

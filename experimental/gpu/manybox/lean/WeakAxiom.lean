@@ -14,10 +14,9 @@ core library.
 * Certificate: `mb2 split R8 64 1 16 DIR` (233 s on the GB10, 65,536 sub-certificates,
   1.3 GB hex); combined hash `fnv 893675208e4e9f33` (FNV-1a fold of the per-job FNV-1a hashes,
   printed by `mb2 split`).
-* To turn it into a theorem: `split/gen_split.py DIR R8d1 V2.eR8 false -9 N` and
-  `split/run_split.sh R8d1 P T` — the same pipeline that proves R8 δ=4 and δ=2 in
-  `split/R8d4`, `split/R8d2`; estimated ~45 min on 8 x86 cores at the measured C-checker rate
-  (~2e6 R8 leaves/s), not run here (moving 1.3 GB to the checking machine was the bottleneck).
+* Since then PROVED without this axiom: `ManyBox.Split.R8d1.bound2` (`split/R8d1/Hier.lean`,
+  checked on the Spark in ~17 min, axioms standard + native_decide; see the README). This file
+  stays as the demo of the labeled-assumption pattern.
 * Partial evidence in Lean: `WeakSample.lean` (64 random leaves, kernel-checked). -/
 
 namespace ManyBox.Assumed
