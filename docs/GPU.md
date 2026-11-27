@@ -310,5 +310,15 @@ take months or more.
 * **Memory:** the tool keeps the frontier of each level on the device. When it overflows,
   it finishes the level's holes in chunks, so the memory stays bounded and no work is
   repeated. Certificates with 10¹⁰ bits still need tens of GB of host memory.
-* **CI:** CI does not build these libraries (that would need a workflow change), so build
-  them locally.
+* **CI:** CI (`.github/workflows/ci.yml`) runs on x86-64 (`build`) and on aarch64
+  (`build-arm64`, `ubuntu-24.04-arm`), both with the portable RN + error-term backend. Each
+  job:
+  * builds `RealFPGridNative`, `RealFPGrid` and `RealFPGridExamples`, which includes the
+    checker's C-versus-spec tests;
+  * builds the tool CPU-only (the runners have no GPU) and checks that it reproduces the
+    committed Nesbitt certificate;
+  * runs `interval_grid (tool := cpu)` through the tool;
+  * checks the examples' axioms.
+
+  The CUDA engine and `RealFPGridShowcase` are not built in CI; they were tested on a DGX
+  Spark.

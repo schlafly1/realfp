@@ -3,6 +3,9 @@
 # to have AVX-512, so this workflow always builds the portable RN+err C
 # backend (`lake -Kbackend=rnerr`), which is compiled without -mavx512f.
 # The default local build on an AVX-512 machine is unchanged.
+# Both jobs also build the opt-in RealFP.Grid libraries (docs/GPU.md) and the
+# CPU-only realfp-grid tool (no CUDA on the runners), and run their tests.
+# `build-arm64` repeats everything on a GitHub-hosted aarch64 runner.
 name: CI
 
 on:
@@ -22,7 +25,7 @@ jobs:
       # Seen by the core lakefile even when RealFPMathlib is the Lake root
       # (lake -K is not forwarded to required packages).
       IV64_BACKEND: rnerr
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +33,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.elan
-          key: elan-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain') }}
+          key: elan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain') }}
 
       - name: Install elan
         run: |
@@ -42,17 +45,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .lake
-          key: lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-${{ github.sha }}
+          key: lake-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
-            lake-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-
+            lake-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-
 
       - name: Cache RealFPMathlib build artifacts
         uses: actions/cache@v4
         with:
           path: RealFPMathlib/.lake/build
-          key: lake-rfp-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-${{ github.sha }}
+          key: lake-rfp-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
-            lake-rfp-core-rnerr-${{ runner.os }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-
+            lake-rfp-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-
 
       - name: Build core library and proofs
         run: lake -R -Kbackend=rnerr build Interval64 Interval128 Interval64Proofs Interval64CSpec
@@ -73,6 +76,129 @@ jobs:
       - name: Build RealFPMathlib core and axiom audit
         working-directory: RealFPMathlib
         run: lake -R -Kbackend=rnerr build RealFPMathlib.AxiomAuditCore
+
+      - name: Build RealFP.Grid (opt-in GPU module) and run its checker tests
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr build RealFPGridNative RealFPGrid RealFPGridExamples
+
+      - name: Build realfp-grid (CPU only) and smoke-test it
+        run: |
+          grid/build.sh
+          T=grid/build/realfp-grid
+          P=RealFPMathlib/RealFPGridShowcase/problems/nesbitt.problem
+          $T info
+          $T prove "$P" -o /tmp/nesbitt.cert --engine auto
+          # same certificate as the committed one (made by interval_grid)
+          cmp <(tail -n 1 /tmp/nesbitt.cert) <(grep -v '^#' RealFPMathlib/RealFPGridExamples/certs/nesbitt.cert | tail -n 1)
+          $T prove "$P" -o /tmp/nesbitt_cap.cert --cap 5000
+          cmp <(tail -n 1 /tmp/nesbitt.cert) <(tail -n 1 /tmp/nesbitt_cap.cert)
+          $T minmax "$P" --depth 24
+          echo "REALFP_GRID=$PWD/$T" >> "$GITHUB_ENV"
+
+      - name: Grid examples with the tool, and their axioms
+        run: |
+          LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh RealFPMathlib RealFPGridExamples/QuickStart.lean
+          # interval_grid calling the tool (REALFP_GRID, CPU engine), not a cached certificate
+          cat > "$RUNNER_TEMP/GridTool.lean" <<'EOF'
+          import RealFPGrid
+          theorem grid_tool : ∀ a ∈ Set.Icc (1 : ℝ) 3, ∀ b ∈ Set.Icc (1 : ℝ) 3, ∀ c ∈ Set.Icc (1 : ℝ) 3,
+              3 / 2 - 1 / 32 ≤ a / (b + c) + b / (c + a) + c / (a + b) := by
+            interval_grid (tool := cpu)
+          #print axioms grid_tool
+          EOF
+          LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh RealFPMathlib "$RUNNER_TEMP/GridTool.lean"
+
+      - name: Check tutorial snippets
+        run: python3 scripts/check_tutorial_snippets.py
+
+  build-arm64:
+    runs-on: ubuntu-24.04-arm
+    env:
+      # Seen by the core lakefile even when RealFPMathlib is the Lake root
+      # (lake -K is not forwarded to required packages).
+      IV64_BACKEND: rnerr
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache elan
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain') }}
+
+      - name: Install elan
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache core Lake build
+        uses: actions/cache@v4
+        with:
+          path: .lake
+          key: lake-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lakefile.lean', 'lake-manifest.json') }}-
+
+      - name: Cache RealFPMathlib build artifacts
+        uses: actions/cache@v4
+        with:
+          path: RealFPMathlib/.lake/build
+          key: lake-rfp-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-${{ github.sha }}
+          restore-keys: |
+            lake-rfp-core-rnerr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'RealFPMathlib/lean-toolchain', 'RealFPMathlib/lakefile.lean', 'RealFPMathlib/lake-manifest.json') }}-
+
+      - name: Build core library and proofs
+        run: lake -R -Kbackend=rnerr build Interval64 Interval128 Interval64Proofs Interval64CSpec
+
+      - name: Build and run tests
+        run: |
+          lake -R -Kbackend=rnerr build interval64_tests interval128_tests
+          lake -R -Kbackend=rnerr exe interval64_tests
+          lake -R -Kbackend=rnerr exe interval128_tests
+
+      - name: Check core axioms
+        run: LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh
+
+      - name: Get Mathlib cache
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr exe cache get
+
+      - name: Build RealFPMathlib core and axiom audit
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr build RealFPMathlib.AxiomAuditCore
+
+      - name: Build RealFP.Grid (opt-in GPU module) and run its checker tests
+        working-directory: RealFPMathlib
+        run: lake -R -Kbackend=rnerr build RealFPGridNative RealFPGrid RealFPGridExamples
+
+      - name: Build realfp-grid (CPU only) and smoke-test it
+        run: |
+          grid/build.sh
+          T=grid/build/realfp-grid
+          P=RealFPMathlib/RealFPGridShowcase/problems/nesbitt.problem
+          $T info
+          $T prove "$P" -o /tmp/nesbitt.cert --engine auto
+          # same certificate as the committed one (made by interval_grid)
+          cmp <(tail -n 1 /tmp/nesbitt.cert) <(grep -v '^#' RealFPMathlib/RealFPGridExamples/certs/nesbitt.cert | tail -n 1)
+          $T prove "$P" -o /tmp/nesbitt_cap.cert --cap 5000
+          cmp <(tail -n 1 /tmp/nesbitt.cert) <(tail -n 1 /tmp/nesbitt_cap.cert)
+          $T minmax "$P" --depth 24
+          echo "REALFP_GRID=$PWD/$T" >> "$GITHUB_ENV"
+
+      - name: Grid examples with the tool, and their axioms
+        run: |
+          LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh RealFPMathlib RealFPGridExamples/QuickStart.lean
+          # interval_grid calling the tool (REALFP_GRID, CPU engine), not a cached certificate
+          cat > "$RUNNER_TEMP/GridTool.lean" <<'EOF'
+          import RealFPGrid
+          theorem grid_tool : ∀ a ∈ Set.Icc (1 : ℝ) 3, ∀ b ∈ Set.Icc (1 : ℝ) 3, ∀ c ∈ Set.Icc (1 : ℝ) 3,
+              3 / 2 - 1 / 32 ≤ a / (b + c) + b / (c + a) + c / (a + b) := by
+            interval_grid (tool := cpu)
+          #print axioms grid_tool
+          EOF
+          LAKE="lake -R -Kbackend=rnerr" scripts/check_axioms.sh RealFPMathlib "$RUNNER_TEMP/GridTool.lean"
 
       - name: Check tutorial snippets
         run: python3 scripts/check_tutorial_snippets.py

@@ -19,6 +19,10 @@ between minor versions.
   - `grid/showcase.sh` + `grid/gen_lean.py` for certificates with 10⁸–10¹⁰ boxes: split
     certificates, parallel Lean checks, and a checked glue proof.
   - The experiment it grew from stays in `experimental/gpu/manybox/`.
+- CI: a new `build-arm64` job (`ubuntu-24.04-arm`) runs the core build, the tests and the
+  RealFPMathlib core on aarch64 (RN + error-term backend). Both jobs also build the
+  `RealFP.Grid` libraries and run their checker tests, build `realfp-grid` CPU-only and
+  smoke-test it, and check the grid examples' axioms. Caches are now keyed per architecture.
 
 ## [0.1.1] — 2026-11-25
 
